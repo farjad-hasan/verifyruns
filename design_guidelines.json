@@ -1,0 +1,125 @@
+{
+  "theme": "dark",
+  "archetype": "Swiss & High-Contrast",
+  "typography": {
+    "headings": {
+      "family": "Outfit",
+      "weights": [400, 500, 600, 700],
+      "usage": "Use for primary headings and strong titles. Avoid Inter.",
+      "scales": {
+        "h1": "text-4xl sm:text-5xl lg:text-6xl tracking-tight leading-none",
+        "h2": "text-2xl sm:text-3xl lg:text-4xl tracking-tight",
+        "h3": "text-xl sm:text-2xl font-medium"
+      }
+    },
+    "body": {
+      "family": "Manrope",
+      "weights": [400, 500],
+      "usage": "For general UI text and descriptions."
+    },
+    "monospace": {
+      "family": "JetBrains Mono",
+      "weights": [400, 500],
+      "usage": "Crucial for Developer tools: Use for Fingerprints, JSON diffs, expectations, and Webhook URLs."
+    }
+  },
+  "colors": {
+    "background": {
+      "base": "#0A0A0A",
+      "surface": "#121214",
+      "surface_elevated": "#18181B"
+    },
+    "text": {
+      "primary": "#FAFAFA",
+      "secondary": "#A1A1AA",
+      "muted": "#71717A"
+    },
+    "border": {
+      "default": "#27272A",
+      "subtle": "rgba(255,255,255,0.05)",
+      "focus": "#71717A"
+    },
+    "status": {
+      "pass": {
+        "text": "#10B981",
+        "bg_solid": "#10B981",
+        "bg_subtle": "rgba(16, 185, 129, 0.1)",
+        "border": "rgba(16, 185, 129, 0.2)"
+      },
+      "fail": {
+        "text": "#EF4444",
+        "bg_solid": "#EF4444",
+        "bg_subtle": "rgba(239, 68, 68, 0.1)",
+        "border": "rgba(239, 68, 68, 0.2)"
+      }
+    }
+  },
+  "visual_enhancers": {
+    "shadows": {
+      "ambient": "0 4px 20px -2px rgba(0,0,0,0.5)",
+      "glow_pass": "0 0 12px rgba(16,185,129,0.3)",
+      "glow_fail": "0 0 12px rgba(239,68,68,0.3)"
+    },
+    "borders": {
+      "radius": "rounded-none md:rounded-lg",
+      "width": "border"
+    },
+    "surfaces": {
+      "cards": "Flat solid background #121214 with border #27272A. No glassmorphism.",
+      "modals": "Elevated solid surface #18181B with heavy ambient shadow."
+    }
+  },
+  "layouts": {
+    "spacing": "Generous. Use p-8, p-12 for containers. p-6 or p-8 inside cards.",
+    "dashboard_grid": "List view or Bento-style grids. Rows must accommodate the 30-run timeline squarely.",
+    "empty_states": "MUST BE EDUCATIONAL. Generous empty states that teach the 3-step setup. Never use dummy seed data."
+  },
+  "components": {
+    "timeline_squares": {
+      "description": "The Hero component of the app.",
+      "styles": "Sequence of 30 small squares (w-3 h-3 to w-4 h-4), rounded-sm. Rightmost is newest. Pass=bg-emerald-500, Fail=bg-red-500. Add hover tooltip for run details."
+    },
+    "curl_example": {
+      "description": "Copyable webhook example.",
+      "styles": "Darkest background (#000000), JetBrains Mono font, syntax-highlighted appearance, absolute position copy button top-right."
+    },
+    "run_detail_panel": {
+      "description": "Panel for checking verdict and diff message.",
+      "styles": "Right-side sliding panel (Sheet) or centered Dialog. Show Pass/Fail loudly at top. Use monospace for Fingerprint data."
+    }
+  },
+  "instructions_to_main_agent": [
+    "DO NOT USE INTER FONT. Use Outfit, Manrope, and JetBrains Mono.",
+    "Implement the 'dark' theme strictly. Use deep blacks (#0A0A0A) and dark surfaces (#121214).",
+    "Empty states MUST NOT be seeded with fake data. Display the 3-step educational setup.",
+    "Make the Timeline Squares the primary visual focus of the Dashboard and Check Detail pages.",
+    "Do not use glassmorphism. Developer tools need solid readability. Use solid dark backgrounds and subtle 1px borders.",
+    "Include data-testid on all interactive elements.",
+    "Never use completely transparent backgrounds where content scrolls underneath.",
+    "Use Lucide-react icons, focusing on tech/dev visual metaphors."
+  ],
+  "image_urls": {
+    "landing_hero_background": {
+      "url": "https://images.unsplash.com/photo-1644088379091-d574269d422f",
+      "description": "Abstract glowing nodes. Use behind landing page hero text with low opacity (10-20%)."
+    },
+    "landing_developer_context": {
+      "url": "https://images.pexels.com/photos/36571389/pexels-photo-36571389.jpeg",
+      "description": "Code terminal in dark mode. Use in 'problem' or 'how it works' landing page section."
+    }
+  },
+  "UNIVERSAL_GUIDELINES_FOR_MAIN_AGENT": [
+    "You tend to converge toward generic, 'on distribution' outputs. Make creative, distinctive frontends that surprise and delight.",
+    "Dark colors look good when used independently without gradients. DO NOT use dark colors as gradients.",
+    "Don't make generic centered layouts, simplistic gradients, and uniform styling.",
+    "Create depth through layered design elements with z-index hierarchy.",
+    "You MUST NOT apply universal transition (e.g., transition: all). Add transitions for specific interactive elements excluding transforms.",
+    "You MUST NOT center align the app container, i.e. do not add .App { text-align: center; } in the css file.",
+    "NEVER: use AI assistant Emoji characters like 🤖🧠💭💡🔮🎯 etc for icons.",
+    "Every interaction needs micro-animations - hover states, transitions, entrance animations. Static = dead.",
+    "Use 2-3x more spacing than feels comfortable. Cramped designs look cheap.",
+    "Ensure all interactive and key informational elements include a data-testid attribute.",
+    "Use sonner for toasts (located in /app/src/components/ui/sonner.js).",
+    "Prioritize using pre-existing components from src/components/ui when applicable."
+  ]
+}

@@ -1,0 +1,57 @@
+{
+  "summary": "Backend: 19/19 tests passed (1 skipped as public endpoint can't reliably force an empty field). Frontend: full signup -> create check -> run-now -> verdict flow works end-to-end. Verdict PASSes via jsonplaceholder.typicode.com/todos with fingerprint {record_count: 200}. Testids all present. Two minor issues found around post-logout navigation and unhandled 401 rejections.",
+  "backend_issues": {
+    "critical": [],
+    "minor": []
+  },
+  "frontend_issues": {
+    "ui_bugs": [
+      {
+        "component": "Nav.onLogout / App.Protected",
+        "issue": "After clicking Sign out on /dashboard, Protected wrapper renders <Navigate to='/login'> because setUser(false) happens synchronously before nav('/') resolves. Result: user lands on /login instead of the landing page /.",
+        "selector": "[data-testid=nav-logout-btn]",
+        "priority": "LOW"
+      }
+    ],
+    "integration_issues": [
+      {
+        "flow": "CheckDetail run-now polling after logout",
+        "issue": "runNow() schedules setTimeout(load, 4000) and setInterval(load, 1500). If the user signs out (or unmounts) while polling is in flight, the axios GET /api/checks/:id returns 401 as an UNHANDLED promise rejection, which triggers the CRA runtime-error overlay in dev. Should wrap load() in try/catch or clear timers on unmount.",
+        "affected_selectors": ["[data-testid=run-now-btn]", "[data-testid=nav-logout-btn]"]
+      },
+      {
+        "flow": "Dashboard initial load",
+        "issue": "Dashboard.load() has no .catch — a stale token or race condition producing 401 will bubble as unhandled rejection.",
+        "affected_selectors": ["[data-testid=dashboard-empty-state]"]
+      }
+    ],
+    "design_issues": []
+  },
+  "test_report_links": [
+    "/app/backend/tests/backend_test.py",
+    "/app/test_reports/pytest/pytest_results.xml"
+  ],
+  "action_items": [
+    "Wrap Dashboard.load() and CheckDetail.load() in try/catch (or add a global axios 401 handler that clears token + navigates to /login) so background 401s do not surface as uncaught runtime errors.",
+    "Clear the setInterval/setTimeout in CheckDetail.runNow() on unmount and stop scheduling new loads once running is cleared.",
+    "Fix Nav.onLogout: navigate to '/' with `nav('/', {replace:true})` BEFORE calling logout(), or logout() should return a promise/tick so that Protected does not race to /login. Alternative: change Protected to redirect to '/' when user is false (would also match PublicOnly semantics)."
+  ],
+  "critical_code_review_comments": [
+    "server.py mixes many concerns (auth, CRUD, executor, verdict logic) in one file (~490 lines) — approaching the 700-line threshold; consider splitting into modules (auth.py, checks.py, executor.py, models.py) before adding more connectors.",
+    "CORS is configured AFTER app.include_router(api). starlette middleware added after routes still works for FastAPI, but conventionally should be added before include_router. Not blocking.",
+    "In server.execute_check, if resp.text raises or resp.json() raises AFTER a >=400 status, error_details is only set for the >=400 branch; body may still be assigned within the try; overall control flow is fine but could be simplified.",
+    "Frontend api.js has NO 401 interceptor — every consumer must handle 401 manually. Recommend a response interceptor that on 401 clears rp_token and redirects to /login.",
+    "NewCheck.jsx sends bearer_token:null and json_path:null (rather than omitting). Pydantic accepts because both are Optional[str], so OK.",
+    "AuthProvider initial state uses user=null then setReady(true) after /auth/me; Protected only guards on `!ready` but `!user` still shows Loading appropriately. OK."
+  ],
+  "updated_files": [
+    "/app/backend/tests/backend_test.py"
+  ],
+  "success_rate": {"backend": "100% (19/19, 1 skipped by design)", "frontend": "95% - all core flows work; 2 minor post-logout/polling issues"},
+  "test_credentials": "None seeded. Tests create fresh accounts using pattern test_<slug>_<uuid>@example.com / pass123.",
+  "seed_data_creation": "None (per requirements).",
+  "retest_needed": false,
+  "main_agent_can_self_test": true,
+  "context_for_next_testing_agent": "Backend is solid. If retesting, run pytest at /app/backend/tests/backend_test.py; each run generates unique emails so no cleanup needed. Frontend flow via jsonplaceholder.typicode.com/todos gives verdict PASS with record_count=200 within ~5s. When testing logout, use nav('/', replace:true) expectation or accept /login as valid until the race is fixed.",
+  "rca of the issue": "Post-logout race: Nav.onLogout calls logout() (setUser(false)) then nav('/'). React re-renders Routes with user=false; the current /dashboard route's Protected wrapper synchronously returns <Navigate to='/login' replace/> and that navigation wins over the imperative nav('/'). Fix by navigating first or by using a synchronous replace navigation before setting user state, or by making Protected redirect to '/' instead of '/login'."
+}
