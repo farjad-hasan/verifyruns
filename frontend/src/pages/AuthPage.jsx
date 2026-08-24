@@ -39,7 +39,7 @@ export default function AuthPage({ mode }) {
             {isLogin ? "Welcome back" : "Get started"}
           </p>
           <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-2">
-            {isLogin ? "Log in to RunProof" : "Create your account"}
+            {isLogin ? "Log in to VerifyRuns" : "Create your account"}
           </h1>
           <p className="text-zinc-400 mb-10">
             {isLogin ? "Pick up where you left off." : "No credit card. Add your first check in minutes."}
@@ -84,7 +84,7 @@ export default function AuthPage({ mode }) {
           </form>
 
           <p className="mt-8 text-sm text-zinc-500">
-            {isLogin ? "New to RunProof? " : "Already have an account? "}
+            {isLogin ? "New to VerifyRuns? " : "Already have an account? "}
             <Link to={isLogin ? "/signup" : "/login"} className="text-zinc-200 underline underline-offset-4 hover:text-white" data-testid="auth-switch-link">
               {isLogin ? "Create an account" : "Log in"}
             </Link>

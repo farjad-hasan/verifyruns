@@ -84,8 +84,8 @@ function EmptyState() {
       <ol className="space-y-6 mb-10">
         {[
           ["01", "Create a Check", "Give it a name, point it at the GET URL of your destination, add optional expectations."],
-          ["02", "Paste the webhook", "Add one HTTP Request node at the end of your n8n / Make / Zapier workflow that POSTs to the webhook URL RunProof gives you."],
-          ["03", "Trigger your workflow", "After every run, RunProof re-reads the destination and posts a PASS or FAIL to your dashboard."],
+          ["02", "Paste the webhook", "Add one HTTP Request node at the end of your n8n / Make / Zapier workflow that POSTs to the webhook URL VerifyRuns gives you."],
+          ["03", "Trigger your workflow", "After every run, VerifyRuns re-reads the destination and posts a PASS or FAIL to your dashboard."],
         ].map(([step, title, body]) => (
           <li key={step} className="flex gap-5">
             <span className="font-mono text-sm text-emerald-400 pt-1">{step}</span>

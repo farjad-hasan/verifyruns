@@ -61,7 +61,7 @@ export default function NewCheck() {
             <input required className="rp-input" placeholder="airtable-orders-sync" value={name} onChange={(e) => setName(e.target.value)} data-testid="check-name-input" />
           </Section>
 
-          <Section title="HTTP / JSON connector" subtitle="RunProof will GET this URL server-side after each run.">
+          <Section title="HTTP / JSON connector" subtitle="VerifyRuns will GET this URL server-side after each run.">
             <div className="space-y-3">
               <input required type="url" className="rp-input font-mono" placeholder="https://api.example.com/v1/orders" value={url} onChange={(e) => setUrl(e.target.value)} data-testid="check-url-input" />
               <input type="text" className="rp-input font-mono" placeholder="Bearer token (optional, encrypted at rest)" value={token} onChange={(e) => setToken(e.target.value)} data-testid="check-token-input" />
@@ -70,7 +70,7 @@ export default function NewCheck() {
             </div>
           </Section>
 
-          <Section title="Expectations" subtitle="All optional. RunProof will use these to decide PASS or FAIL.">
+          <Section title="Expectations" subtitle="All optional. VerifyRuns will use these to decide PASS or FAIL.">
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
                 <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Minimum new records per run</label>

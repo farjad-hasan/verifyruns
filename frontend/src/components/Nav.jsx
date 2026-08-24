@@ -14,7 +14,7 @@ export default function Nav() {
           <div className="w-7 h-7 rounded-md bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
             <Activity size={15} className="text-emerald-400" strokeWidth={2.5} />
           </div>
-          <span className="font-display text-lg font-semibold tracking-tight">RunProof</span>
+          <span className="font-display text-lg font-semibold tracking-tight">VerifyRuns</span>
         </Link>
         <nav className="flex items-center gap-3">
           {user ? (

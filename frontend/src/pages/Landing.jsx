@@ -18,11 +18,11 @@ export default function Landing() {
           <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.05] tracking-tight rp-fade" style={{ animationDelay: "60ms" }}>
             Your automation said <span className="text-zinc-500 line-through decoration-2 decoration-red-500/60">Done</span>.
             <br />
-            RunProof checks if that&apos;s true.
+            VerifyRuns checks if that&apos;s true.
           </h1>
           <p className="mt-8 text-lg text-zinc-400 max-w-2xl leading-relaxed rp-fade" style={{ animationDelay: "140ms" }}>
             n8n, Make and Zapier finish green while silently writing nothing — or the wrong thing —
-            to your destination. RunProof re-reads the destination itself after every run and tells you
+            to your destination. VerifyRuns re-reads the destination itself after every run and tells you
             when a &ldquo;successful&rdquo; workflow didn&apos;t actually land.
           </p>
           <div className="mt-10 flex items-center gap-3 rp-fade" style={{ animationDelay: "220ms" }}>
@@ -86,9 +86,9 @@ export default function Landing() {
           <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-14">Three steps. About four minutes.</h2>
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              { icon: <ShieldCheck size={20} />, step: "01", title: "Create a Check", body: "Point RunProof at your destination — the GET url that returns your records. Add expectations like &ldquo;at least 1 new record per run&rdquo;." },
-              { icon: <Zap size={20} />, step: "02", title: "Paste the webhook", body: "Add one HTTP Request node at the end of your workflow that POSTs to the RunProof webhook. That's the whole integration." },
-              { icon: <Eye size={20} />, step: "03", title: "Get verdicts", body: "After every run, RunProof re-reads the destination, fingerprints it, and posts a PASS or FAIL with a human-readable diff." },
+              { icon: <ShieldCheck size={20} />, step: "01", title: "Create a Check", body: "Point VerifyRuns at your destination — the GET url that returns your records. Add expectations like &ldquo;at least 1 new record per run&rdquo;." },
+              { icon: <Zap size={20} />, step: "02", title: "Paste the webhook", body: "Add one HTTP Request node at the end of your workflow that POSTs to the VerifyRuns webhook. That's the whole integration." },
+              { icon: <Eye size={20} />, step: "03", title: "Get verdicts", body: "After every run, VerifyRuns re-reads the destination, fingerprints it, and posts a PASS or FAIL with a human-readable diff." },
             ].map((s) => (
               <div key={s.step} className="rp-card p-8">
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 mb-6">
@@ -120,7 +120,7 @@ export default function Landing() {
 
       <footer className="border-t border-[#18181B]">
         <div className="max-w-6xl mx-auto px-6 lg:px-10 py-8 text-sm text-zinc-500 flex justify-between">
-          <span>RunProof</span>
+          <span>VerifyRuns</span>
           <span className="font-mono">v0.1</span>
         </div>
       </footer>

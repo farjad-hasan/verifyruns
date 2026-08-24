@@ -35,12 +35,12 @@ JWT_EXPIRE_DAYS = 7
 
 fernet = Fernet(os.environ["FERNET_KEY"].encode())
 
-app = FastAPI(title="RunProof API")
+app = FastAPI(title="VerifyRuns API")
 api = APIRouter(prefix="/api")
 bearer_scheme = HTTPBearer(auto_error=False)
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s :: %(message)s")
-log = logging.getLogger("runproof")
+log = logging.getLogger("verifyruns")
 
 # ---------- Helpers ----------
 def now_iso() -> str:
@@ -475,7 +475,7 @@ async def on_stop():
 # ---------- Mount ----------
 @api.get("/")
 async def root():
-    return {"app": "RunProof", "ok": True}
+    return {"app": "VerifyRuns", "ok": True}
 
 app.include_router(api)
 app.add_middleware(
