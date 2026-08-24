@@ -5,7 +5,7 @@ import Nav from "../components/Nav";
 import Timeline from "../components/Timeline";
 import CopyButton from "../components/CopyButton";
 import { toast } from "sonner";
-import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save } from "lucide-react";
+import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save, Pencil } from "lucide-react";
 
 export default function CheckDetail() {
   const { id } = useParams();
@@ -160,14 +160,7 @@ export default function CheckDetail() {
               />
             </dl>
           </div>
-          <div className="rp-card p-6 sm:p-8">
-            <p className="font-display text-lg mb-4">Expectations</p>
-            <dl className="space-y-3 text-sm">
-              <Row k="Min new records per run" v={String(check.expectations?.min_new_records ?? 1)} mono />
-              <Row k="Required fields" v={(check.expectations?.required_fields || []).join(", ") || "(none)"} mono />
-              <Row k="Non-empty fields" v={(check.expectations?.non_empty_fields || []).join(", ") || "(none)"} mono />
-            </dl>
-          </div>
+          <ExpectationsCard check={check} onSaved={load} />
         </div>
 
         {/* Alert channel */}
@@ -351,6 +344,111 @@ function AlertChannel({ check, onSaved }) {
             )}
           </div>
         </>
+      )}
+    </div>
+  );
+}
+
+
+function ExpectationsCard({ check, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [minNew, setMinNew] = useState(check.expectations?.min_new_records ?? 1);
+  const [required, setRequired] = useState((check.expectations?.required_fields || []).join(", "));
+  const [nonEmpty, setNonEmpty] = useState((check.expectations?.non_empty_fields || []).join(", "));
+  const [busy, setBusy] = useState(false);
+
+  const startEdit = () => {
+    setMinNew(check.expectations?.min_new_records ?? 1);
+    setRequired((check.expectations?.required_fields || []).join(", "));
+    setNonEmpty((check.expectations?.non_empty_fields || []).join(", "));
+    setEditing(true);
+  };
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.patch(`/checks/${check.id}`, {
+        expectations: {
+          min_new_records: Number(minNew) || 0,
+          required_fields: required.split(",").map((s) => s.trim()).filter(Boolean),
+          non_empty_fields: nonEmpty.split(",").map((s) => s.trim()).filter(Boolean),
+        },
+      });
+      toast.success("Expectations updated");
+      setEditing(false);
+      await onSaved();
+    } catch {
+      toast.error("Could not update expectations");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rp-card p-6 sm:p-8" data-testid="expectations-card">
+      <div className="flex items-center justify-between mb-4">
+        <p className="font-display text-lg">Expectations</p>
+        {!editing && (
+          <button
+            className="rp-btn-ghost !py-1.5 !px-3 !text-xs"
+            onClick={startEdit}
+            data-testid="edit-expectations-btn"
+          >
+            <Pencil size={13} /> Edit
+          </button>
+        )}
+      </div>
+
+      {!editing ? (
+        <dl className="space-y-3 text-sm">
+          <Row k="Min new records per run" v={String(check.expectations?.min_new_records ?? 1)} mono />
+          <Row k="Required fields" v={(check.expectations?.required_fields || []).join(", ") || "(none)"} mono />
+          <Row k="Non-empty fields" v={(check.expectations?.non_empty_fields || []).join(", ") || "(none)"} mono />
+        </dl>
+      ) : (
+        <div className="space-y-3">
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Minimum new records per run</label>
+            <input
+              type="number"
+              min="0"
+              className="rp-input font-mono"
+              value={minNew}
+              onChange={(e) => setMinNew(e.target.value)}
+              data-testid="edit-minnew-input"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Required fields (comma-separated)</label>
+            <input
+              type="text"
+              className="rp-input font-mono"
+              placeholder="id, price, created_at"
+              value={required}
+              onChange={(e) => setRequired(e.target.value)}
+              data-testid="edit-required-input"
+            />
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Fields that must be non-empty</label>
+            <input
+              type="text"
+              className="rp-input font-mono"
+              placeholder="email, customer_id"
+              value={nonEmpty}
+              onChange={(e) => setNonEmpty(e.target.value)}
+              data-testid="edit-nonempty-input"
+            />
+          </div>
+          <div className="flex gap-2 pt-2">
+            <button className="rp-btn-primary" onClick={save} disabled={busy} data-testid="save-expectations-btn">
+              <Save size={14} /> {busy ? "Saving…" : "Save"}
+            </button>
+            <button className="rp-btn-ghost" onClick={() => setEditing(false)} data-testid="cancel-expectations-btn">
+              Cancel
+            </button>
+          </div>
+        </div>
       )}
     </div>
   );
