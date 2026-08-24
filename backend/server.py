@@ -122,11 +122,14 @@ class CheckCreate(BaseModel):
     connector_kind: str = "http_json"
     config: HttpConfig
     expectations: Expectations = Expectations()
+    alert_slack_webhook: Optional[str] = None
 
 class CheckUpdate(BaseModel):
     name: Optional[str] = None
     config: Optional[HttpConfig] = None
     expectations: Optional[Expectations] = None
+    alert_slack_webhook: Optional[str] = None
+    clear_alert_slack: Optional[bool] = False
 
 # ---------- Auth ----------
 @api.post("/auth/register")
@@ -170,6 +173,13 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
     else:
         cfg["has_bearer_token"] = False
     doc["config"] = cfg
+    # Alert channels: never leak Slack webhook URL
+    slack_enc = doc.pop("alert_slack_webhook_encrypted", None)
+    if slack_enc:
+        doc["has_alert_slack"] = True
+        doc["alert_slack_last4"] = mask_token(decrypt_secret(slack_enc))
+    else:
+        doc["has_alert_slack"] = False
     if not include_webhook_secret:
         doc.pop("webhook_secret", None)
     return doc
@@ -191,6 +201,8 @@ async def create_check(payload: CheckCreate, user: dict = Depends(get_current_us
         "webhook_secret": secrets.token_urlsafe(32),
         "created_at": now_iso(),
     }
+    if payload.alert_slack_webhook:
+        doc["alert_slack_webhook_encrypted"] = encrypt_secret(payload.alert_slack_webhook.strip())
     await db.checks.insert_one(doc)
     return _sanitize_check({**doc})
 
@@ -234,8 +246,20 @@ async def update_check(check_id: str, payload: CheckUpdate, user: dict = Depends
         elif c.get("config", {}).get("bearer_token_encrypted"):
             cfg["bearer_token_encrypted"] = c["config"]["bearer_token_encrypted"]
         updates["config"] = cfg
+    if payload.clear_alert_slack:
+        updates["alert_slack_webhook_encrypted"] = None
+    elif payload.alert_slack_webhook is not None and payload.alert_slack_webhook.strip():
+        updates["alert_slack_webhook_encrypted"] = encrypt_secret(payload.alert_slack_webhook.strip())
     if updates:
-        await db.checks.update_one({"id": check_id}, {"$set": updates})
+        # Use $unset for None fields so we actually remove them
+        set_ops = {k: v for k, v in updates.items() if v is not None}
+        unset_ops = {k: "" for k, v in updates.items() if v is None}
+        mongo_update: dict = {}
+        if set_ops:
+            mongo_update["$set"] = set_ops
+        if unset_ops:
+            mongo_update["$unset"] = unset_ops
+        await db.checks.update_one({"id": check_id}, mongo_update)
     updated = await db.checks.find_one({"id": check_id})
     return _sanitize_check(updated)
 
@@ -456,6 +480,55 @@ async def execute_check(check_id: str, trigger: str, run_id: str):
         "error_details": error_details,
     }
     await db.check_runs.insert_one(run_doc)
+    # Fire alerts asynchronously — never let a failure here affect the run itself
+    try:
+        await _maybe_alert(c, run_doc)
+    except Exception:
+        log.exception("alert dispatch failed for run %s", run_id)
+
+
+async def _maybe_alert(check_doc: dict, run: dict):
+    """Send Slack alert on FAIL, or a 'recovered' message when a FAIL streak ends."""
+    slack_enc = check_doc.get("alert_slack_webhook_encrypted")
+    if not slack_enc:
+        return
+    verdict = run["verdict"]
+    # Find the previous run (before this one) to decide FAIL / recovery
+    prev = await db.check_runs.find(
+        {"check_id": check_doc["id"], "id": {"$ne": run["id"]}}, {"_id": 0, "verdict": 1}
+    ).sort("timestamp", -1).limit(1).to_list(1)
+    prev_verdict = prev[0]["verdict"] if prev else None
+
+    should_send = False
+    header = ""
+    if verdict == "FAIL":
+        should_send = True
+        header = f":rotating_light: *FAIL* — {check_doc.get('name')}"
+    elif verdict == "PASS" and prev_verdict == "FAIL":
+        should_send = True
+        header = f":white_check_mark: *Recovered* — {check_doc.get('name')}"
+    if not should_send:
+        return
+
+    slack_url = decrypt_secret(slack_enc)
+    if not slack_url:
+        return
+    app_url = os.environ.get("PUBLIC_APP_URL", "").rstrip("/")
+    detail_link = f"{app_url}/checks/{check_doc['id']}" if app_url else ""
+    text = (
+        f"{header}\n"
+        f"{run['diff_message']}\n"
+        f"_At {run['timestamp']}_"
+    )
+    if detail_link:
+        text += f"\n<{detail_link}|Open in VerifyRuns>"
+    try:
+        async with httpx.AsyncClient(timeout=8.0) as hc:
+            resp = await hc.post(slack_url, json={"text": text})
+        if resp.status_code >= 400:
+            log.warning("Slack alert non-2xx: %s %s", resp.status_code, resp.text[:200])
+    except Exception:
+        log.exception("Slack alert POST failed")
 
 # ---------- Startup ----------
 @app.on_event("startup")

@@ -17,7 +17,11 @@ export default function Dashboard() {
       /* 401 handled by axios interceptor */
     }
   };
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+    const t = setInterval(load, 10000);
+    return () => clearInterval(t);
+  }, []);
 
   return (
     <div className="min-h-screen">

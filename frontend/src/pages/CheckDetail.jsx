@@ -5,7 +5,7 @@ import Nav from "../components/Nav";
 import Timeline from "../components/Timeline";
 import CopyButton from "../components/CopyButton";
 import { toast } from "sonner";
-import { ArrowLeft, Play, Trash2, RefreshCw, X } from "lucide-react";
+import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save } from "lucide-react";
 
 export default function CheckDetail() {
   const { id } = useParams();
@@ -31,6 +31,12 @@ export default function CheckDetail() {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+
+  // Live refresh every 10s while the page is open
+  useEffect(() => {
+    const t = setInterval(load, 10000);
+    return () => clearInterval(t);
+  }, [load]);
 
   // Poll while a run is queued
   useEffect(() => {
@@ -164,6 +170,9 @@ export default function CheckDetail() {
           </div>
         </div>
 
+        {/* Alert channel */}
+        <AlertChannel check={check} onSaved={load} />
+
         {/* Run history */}
         <div className="mt-10">
           <p className="text-xs uppercase tracking-widest text-zinc-500 mb-3">Run history</p>
@@ -243,6 +252,106 @@ function RunPanel({ run, onClose }) {
           )}
         </div>
       </aside>
+    </div>
+  );
+}
+
+
+function AlertChannel({ check, onSaved }) {
+  const [slack, setSlack] = useState("");
+  const [editing, setEditing] = useState(false);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    setBusy(true);
+    try {
+      await api.patch(`/checks/${check.id}`, { alert_slack_webhook: slack.trim() });
+      toast.success("Slack alerts enabled");
+      setSlack("");
+      setEditing(false);
+      await onSaved();
+    } catch {
+      toast.error("Could not save Slack webhook");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const remove = async () => {
+    if (!window.confirm("Remove Slack alerts for this check?")) return;
+    setBusy(true);
+    try {
+      await api.patch(`/checks/${check.id}`, { clear_alert_slack: true });
+      toast.success("Slack alerts removed");
+      await onSaved();
+    } catch {
+      toast.error("Could not remove Slack webhook");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rp-card p-6 sm:p-8 mt-6" data-testid="alert-channel-card">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          {check.has_alert_slack ? (
+            <Bell size={16} className="text-emerald-400" />
+          ) : (
+            <BellOff size={16} className="text-zinc-500" />
+          )}
+          <p className="font-display text-lg">Slack alerts</p>
+        </div>
+        {check.has_alert_slack && !editing && (
+          <button className="rp-btn-danger" onClick={remove} disabled={busy} data-testid="remove-slack-btn">
+            Remove
+          </button>
+        )}
+      </div>
+
+      {check.has_alert_slack && !editing && (
+        <>
+          <p className="text-sm text-zinc-400 mb-3">
+            Sending FAIL and recovery messages to your Slack workspace.
+          </p>
+          <p className="text-xs text-zinc-500 font-mono" data-testid="slack-masked">
+            Webhook: {check.alert_slack_last4}
+          </p>
+          <button
+            className="rp-btn-ghost mt-4 !py-1.5 !px-3 !text-xs"
+            onClick={() => setEditing(true)}
+            data-testid="replace-slack-btn"
+          >
+            Replace
+          </button>
+        </>
+      )}
+
+      {(!check.has_alert_slack || editing) && (
+        <>
+          <p className="text-sm text-zinc-500 mb-3">
+            Paste your Slack incoming webhook URL. VerifyRuns will post a message when a run FAILs and again when it recovers.
+          </p>
+          <div className="flex gap-2">
+            <input
+              type="url"
+              className="rp-input font-mono"
+              placeholder="https://hooks.slack.com/services/..."
+              value={slack}
+              onChange={(e) => setSlack(e.target.value)}
+              data-testid="alert-slack-input"
+            />
+            <button className="rp-btn-primary" onClick={save} disabled={busy || !slack.trim()} data-testid="save-slack-btn">
+              <Save size={14} /> Save
+            </button>
+            {editing && (
+              <button className="rp-btn-ghost" onClick={() => { setEditing(false); setSlack(""); }} data-testid="cancel-slack-btn">
+                Cancel
+              </button>
+            )}
+          </div>
+        </>
+      )}
     </div>
   );
 }

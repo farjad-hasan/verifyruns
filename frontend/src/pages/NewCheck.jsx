@@ -14,6 +14,7 @@ export default function NewCheck() {
   const [minNew, setMinNew] = useState(1);
   const [required, setRequired] = useState("");
   const [nonEmpty, setNonEmpty] = useState("");
+  const [slackWebhook, setSlackWebhook] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -35,6 +36,7 @@ export default function NewCheck() {
           required_fields: required.split(",").map((s) => s.trim()).filter(Boolean),
           non_empty_fields: nonEmpty.split(",").map((s) => s.trim()).filter(Boolean),
         },
+        alert_slack_webhook: slackWebhook.trim() || null,
       };
       const { data } = await api.post("/checks", payload);
       toast.success("Check created");
@@ -85,6 +87,20 @@ export default function NewCheck() {
               <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Fields that must be non-empty</label>
               <input type="text" className="rp-input font-mono" placeholder="email, customer_id" value={nonEmpty} onChange={(e) => setNonEmpty(e.target.value)} data-testid="check-nonempty-input" />
             </div>
+          </Section>
+
+          <Section title="Alert channel" subtitle="Optional. VerifyRuns will POST a message here when a run FAILs and again when it recovers.">
+            <input
+              type="url"
+              className="rp-input font-mono"
+              placeholder="Slack incoming webhook URL (https://hooks.slack.com/services/...)"
+              value={slackWebhook}
+              onChange={(e) => setSlackWebhook(e.target.value)}
+              data-testid="check-slack-input"
+            />
+            <p className="text-xs text-zinc-500 leading-relaxed mt-2">
+              Stored encrypted; only the last 4 characters are shown afterwards.
+            </p>
           </Section>
 
           {error && <div className="text-sm text-red-400 border border-red-500/25 bg-red-500/5 rounded-md p-3" data-testid="new-check-error">{error}</div>}
