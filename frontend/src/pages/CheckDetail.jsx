@@ -5,7 +5,7 @@ import Nav from "../components/Nav";
 import Timeline from "../components/Timeline";
 import CopyButton from "../components/CopyButton";
 import { toast } from "sonner";
-import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save, Pencil } from "lucide-react";
+import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save, Pencil, Globe2, Filter } from "lucide-react";
 
 export default function CheckDetail() {
   const { id } = useParams();
@@ -14,6 +14,7 @@ export default function CheckDetail() {
   const [runs, setRuns] = useState([]);
   const [selectedRun, setSelectedRun] = useState(null);
   const [running, setRunning] = useState(false);
+  const [filters, setFilters] = useState({ verdict: "all", trigger: "all", range: "all" });
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL;
 
@@ -75,6 +76,8 @@ export default function CheckDetail() {
     toast.success("Check deleted");
     nav("/dashboard");
   };
+
+  const filteredRuns = useMemo(() => applyRunFilters(runs, filters), [runs, filters]);
 
   if (!check) {
     return (
@@ -166,16 +169,24 @@ export default function CheckDetail() {
         {/* Alert channel */}
         <AlertChannel check={check} onSaved={load} />
 
+        {/* Public status card */}
+        <PublicStatusCard check={check} onSaved={load} />
+
         {/* Run history */}
         <div className="mt-10">
-          <p className="text-xs uppercase tracking-widest text-zinc-500 mb-3">Run history</p>
-          {runs.length === 0 ? (
+          <div className="flex items-center justify-between mb-3">
+            <p className="text-xs uppercase tracking-widest text-zinc-500">Run history</p>
+            <RunFilters filters={filters} setFilters={setFilters} />
+          </div>
+          {filteredRuns.length === 0 ? (
             <div className="rp-card p-8 text-center text-zinc-500 text-sm">
-              No runs yet. Verdicts will show up here after your workflow posts to the webhook.
+              {runs.length === 0
+                ? "No runs yet. Verdicts will show up here after your workflow posts to the webhook."
+                : "No runs match the current filters."}
             </div>
           ) : (
             <ul className="rp-card divide-y divide-[#27272A]">
-              {runs.map((r) => (
+              {filteredRuns.map((r) => (
                 <li key={r.id}>
                   <button
                     onClick={() => setSelectedRun(r)}
@@ -194,7 +205,13 @@ export default function CheckDetail() {
         </div>
       </div>
 
-      {selectedRun && <RunPanel run={selectedRun} onClose={() => setSelectedRun(null)} />}
+      {selectedRun && (
+        <RunPanel
+          run={selectedRun}
+          previousPassFingerprint={findPreviousPassFingerprint(runs, selectedRun)}
+          onClose={() => setSelectedRun(null)}
+        />
+      )}
     </div>
   );
 }
@@ -216,7 +233,8 @@ function formatDate(iso) {
   }
 }
 
-function RunPanel({ run, onClose }) {
+function RunPanel({ run, previousPassFingerprint, onClose }) {
+  const diff = previousPassFingerprint ? computeFpDiff(previousPassFingerprint, run.fingerprint || {}) : null;
   return (
     <div className="fixed inset-0 z-40" data-testid="run-panel">
       <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" onClick={onClose} />
@@ -233,6 +251,35 @@ function RunPanel({ run, onClose }) {
 
           <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">When</p>
           <p className="text-zinc-300 font-mono text-sm mb-8">{formatDate(run.timestamp)} · {run.trigger}</p>
+
+          {diff && (
+            <>
+              <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Diff vs last PASS</p>
+              <div className="rp-card p-4 mb-8 space-y-2 text-sm" data-testid="fingerprint-diff">
+                <DiffRow label="Record count" a={diff.prev.record_count} b={diff.now.record_count} delta={diff.record_delta} />
+                <DiffRow label="Field count" a={diff.prev.fields.length} b={diff.now.fields.length} delta={diff.now.fields.length - diff.prev.fields.length} />
+                {diff.added_fields.length > 0 && (
+                  <p className="text-emerald-400 font-mono text-xs">+ added: {diff.added_fields.join(", ")}</p>
+                )}
+                {diff.removed_fields.length > 0 && (
+                  <p className="text-red-400 font-mono text-xs">− removed: {diff.removed_fields.join(", ")}</p>
+                )}
+                {diff.null_changes.length > 0 && (
+                  <div className="pt-2 border-t border-[#27272A] mt-2">
+                    <p className="text-xs text-zinc-500 uppercase tracking-wider mb-1">Emptiness changed</p>
+                    {diff.null_changes.map((c) => (
+                      <p key={c.field} className="font-mono text-xs text-zinc-300">
+                        <span className="text-zinc-500">{c.field}</span>: {c.prev}% → {c.now}%
+                      </p>
+                    ))}
+                  </div>
+                )}
+                {diff.added_fields.length === 0 && diff.removed_fields.length === 0 && diff.record_delta === 0 && diff.null_changes.length === 0 && (
+                  <p className="text-zinc-500 text-xs font-mono">No shape changes.</p>
+                )}
+              </div>
+            </>
+          )}
 
           <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Fingerprint</p>
           <div className="mono-block mb-8">{JSON.stringify(run.fingerprint, null, 2)}</div>
@@ -453,3 +500,159 @@ function ExpectationsCard({ check, onSaved }) {
     </div>
   );
 }
+
+function DiffRow({ label, a, b, delta }) {
+  const sign = delta > 0 ? "+" : "";
+  const color = delta > 0 ? "text-emerald-400" : delta < 0 ? "text-red-400" : "text-zinc-500";
+  return (
+    <div className="flex items-center justify-between font-mono text-xs">
+      <span className="text-zinc-500 uppercase tracking-wider">{label}</span>
+      <span className="text-zinc-300">
+        {a} <span className="text-zinc-600">→</span> {b} <span className={color}>({sign}{delta})</span>
+      </span>
+    </div>
+  );
+}
+
+function computeFpDiff(prev, now) {
+  const prevFields = prev?.fields || [];
+  const nowFields = now?.fields || [];
+  const prevSet = new Set(prevFields);
+  const nowSet = new Set(nowFields);
+  const added = nowFields.filter((f) => !prevSet.has(f));
+  const removed = prevFields.filter((f) => !nowSet.has(f));
+  const nullChanges = [];
+  const prevNull = prev?.null_pct || {};
+  const nowNull = now?.null_pct || {};
+  for (const f of nowFields) {
+    if (prevSet.has(f) && (prevNull[f] ?? 0) !== (nowNull[f] ?? 0)) {
+      nullChanges.push({ field: f, prev: prevNull[f] ?? 0, now: nowNull[f] ?? 0 });
+    }
+  }
+  return {
+    prev: { record_count: prev?.record_count ?? 0, fields: prevFields },
+    now: { record_count: now?.record_count ?? 0, fields: nowFields },
+    record_delta: (now?.record_count ?? 0) - (prev?.record_count ?? 0),
+    added_fields: added,
+    removed_fields: removed,
+    null_changes: nullChanges,
+  };
+}
+
+function findPreviousPassFingerprint(allRuns, current) {
+  // allRuns is newest→oldest; find first PASS strictly older than current
+  if (!current) return null;
+  const currentTs = new Date(current.timestamp).getTime();
+  for (const r of allRuns) {
+    if (r.id === current.id) continue;
+    if (r.verdict !== "PASS") continue;
+    if (new Date(r.timestamp).getTime() < currentTs) return r.fingerprint;
+  }
+  return null;
+}
+
+function applyRunFilters(runs, filters) {
+  const now = Date.now();
+  const rangeMs = { "24h": 24 * 3600e3, "7d": 7 * 24 * 3600e3, "30d": 30 * 24 * 3600e3 }[filters.range];
+  return runs.filter((r) => {
+    if (filters.verdict !== "all" && r.verdict !== filters.verdict) return false;
+    if (filters.trigger !== "all" && r.trigger !== filters.trigger) return false;
+    if (rangeMs && (now - new Date(r.timestamp).getTime()) > rangeMs) return false;
+    return true;
+  });
+}
+
+function RunFilters({ filters, setFilters }) {
+  const set = (k, v) => setFilters({ ...filters, [k]: v });
+  const selectCls = "bg-[#0A0A0A] border border-[#27272A] text-zinc-200 text-xs rounded-md px-2 py-1.5 font-mono focus:outline-none focus:border-[#52525B]";
+  return (
+    <div className="flex items-center gap-2" data-testid="run-filters">
+      <Filter size={13} className="text-zinc-500" />
+      <select className={selectCls} value={filters.verdict} onChange={(e) => set("verdict", e.target.value)} data-testid="filter-verdict">
+        <option value="all">All verdicts</option>
+        <option value="PASS">Pass only</option>
+        <option value="FAIL">Fail only</option>
+      </select>
+      <select className={selectCls} value={filters.trigger} onChange={(e) => set("trigger", e.target.value)} data-testid="filter-trigger">
+        <option value="all">Any trigger</option>
+        <option value="webhook">Webhook</option>
+        <option value="manual">Manual</option>
+      </select>
+      <select className={selectCls} value={filters.range} onChange={(e) => set("range", e.target.value)} data-testid="filter-range">
+        <option value="all">All time</option>
+        <option value="24h">Last 24h</option>
+        <option value="7d">Last 7 days</option>
+        <option value="30d">Last 30 days</option>
+      </select>
+    </div>
+  );
+}
+
+function PublicStatusCard({ check, onSaved }) {
+  const [busy, setBusy] = useState(false);
+  const publicUrl = check.public_token
+    ? `${window.location.origin}/status/${check.public_token}`
+    : "";
+
+  const enable = async () => {
+    setBusy(true);
+    try {
+      await api.post(`/checks/${check.id}/public`);
+      toast.success("Public status enabled");
+      await onSaved();
+    } catch {
+      toast.error("Could not enable public status");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const disable = async () => {
+    if (!window.confirm("Disable the public status page? The old link will stop working.")) return;
+    setBusy(true);
+    try {
+      await api.delete(`/checks/${check.id}/public`);
+      toast.success("Public status disabled");
+      await onSaved();
+    } catch {
+      toast.error("Could not disable public status");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className="rp-card p-6 sm:p-8 mt-6" data-testid="public-status-card">
+      <div className="flex items-center justify-between mb-2">
+        <div className="flex items-center gap-2">
+          <Globe2 size={16} className={check.is_public ? "text-emerald-400" : "text-zinc-500"} />
+          <p className="font-display text-lg">Public status page</p>
+        </div>
+        {check.is_public ? (
+          <button className="rp-btn-danger" onClick={disable} disabled={busy} data-testid="disable-public-btn">
+            Disable
+          </button>
+        ) : (
+          <button className="rp-btn-primary !py-1.5 !px-3 !text-xs" onClick={enable} disabled={busy} data-testid="enable-public-btn">
+            {busy ? "Enabling…" : "Enable"}
+          </button>
+        )}
+      </div>
+      {check.is_public ? (
+        <>
+          <p className="text-sm text-zinc-500 mb-3">
+            Anyone with this link can see verdicts and timestamps — no destination URL, tokens, or fingerprints are exposed.
+          </p>
+          <div className="flex items-center gap-2">
+            <div className="mono-block flex-1 break-all" data-testid="public-status-url">{publicUrl}</div>
+            <CopyButton text={publicUrl} testid="copy-public-status" />
+          </div>
+        </>
+      ) : (
+        <p className="text-sm text-zinc-500">
+          Generate a shareable read-only URL so teammates can debug a failing check without an account.
+        </p>
+      )}
+    </div>
+  );
+}
+

@@ -7,6 +7,7 @@ import AuthPage from "@/pages/AuthPage";
 import Dashboard from "@/pages/Dashboard";
 import NewCheck from "@/pages/NewCheck";
 import CheckDetail from "@/pages/CheckDetail";
+import PublicStatus from "@/pages/PublicStatus";
 
 function Protected({ children }) {
   const { user, ready } = useAuth();
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/dashboard" element={<Protected><Dashboard /></Protected>} />
           <Route path="/checks/new" element={<Protected><NewCheck /></Protected>} />
           <Route path="/checks/:id" element={<Protected><CheckDetail /></Protected>} />
+          <Route path="/status/:token" element={<PublicStatus />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

@@ -180,6 +180,11 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
         doc["alert_slack_last4"] = mask_token(decrypt_secret(slack_enc))
     else:
         doc["has_alert_slack"] = False
+    # Public status: expose the token to the owner so they can share the URL
+    if doc.get("public_token"):
+        doc["is_public"] = True
+    else:
+        doc["is_public"] = False
     if not include_webhook_secret:
         doc.pop("webhook_secret", None)
     return doc
@@ -271,6 +276,38 @@ async def delete_check(check_id: str, user: dict = Depends(get_current_user)):
     await db.checks.delete_one({"id": check_id})
     await db.check_runs.delete_many({"check_id": check_id})
     return {"ok": True}
+
+@api.post("/checks/{check_id}/public")
+async def enable_public(check_id: str, user: dict = Depends(get_current_user)):
+    c = await db.checks.find_one({"id": check_id, "user_id": user["id"]})
+    if not c:
+        raise HTTPException(404, "Check not found")
+    token = c.get("public_token") or secrets.token_urlsafe(24)
+    await db.checks.update_one({"id": check_id}, {"$set": {"public_token": token}})
+    return {"public_token": token, "is_public": True}
+
+@api.delete("/checks/{check_id}/public")
+async def disable_public(check_id: str, user: dict = Depends(get_current_user)):
+    c = await db.checks.find_one({"id": check_id, "user_id": user["id"]})
+    if not c:
+        raise HTTPException(404, "Check not found")
+    await db.checks.update_one({"id": check_id}, {"$unset": {"public_token": ""}})
+    return {"is_public": False}
+
+@api.get("/public/checks/{token}")
+async def public_check(token: str):
+    c = await db.checks.find_one({"public_token": token})
+    if not c:
+        raise HTTPException(404, "Not found")
+    runs = await db.check_runs.find(
+        {"check_id": c["id"]}, {"_id": 0, "id": 1, "verdict": 1, "timestamp": 1, "diff_message": 1, "trigger": 1}
+    ).sort("timestamp", -1).limit(30).to_list(30)
+    return {
+        "name": c["name"],
+        "connector_kind": c.get("connector_kind", "http_json"),
+        "last_verdict": runs[0]["verdict"] if runs else None,
+        "runs": runs,
+    }
 
 # ---------- Runs ----------
 @api.get("/checks/{check_id}/runs")
