@@ -24,4 +24,4 @@ Expectations SHALL be `min_new_records` (int ≥ 0, default 1), `required_fields
 
 #### Scenario: Claimed mode without a body
 - **WHEN** `growth_mode` is `claimed` and the webhook body carries no integer
-- **THEN** the run FAILs with "This Check expects your workflow to send {\"wrote\": N}; the request had no count."
+- **THEN** the run FAILs with "Run reported success, but your workflow sent no record count (this Check expects {\"wrote\": N} in the webhook body)."

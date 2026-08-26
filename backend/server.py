@@ -13,7 +13,7 @@ import logging
 import asyncio
 import time
 from datetime import datetime, timezone, timedelta
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal
 
 import bcrypt
 import jwt
@@ -115,9 +115,13 @@ class HttpConfig(BaseModel):
     json_path: Optional[str] = None     # dotted path to array, e.g. "data.records"
 
 class Expectations(BaseModel):
-    min_new_records: int = 1
+    min_new_records: int = Field(default=1, ge=0)
     required_fields: List[str] = []
     non_empty_fields: List[str] = []
+    # growth: count must grow by >= min_new_records (or by the claimed count when the webhook sends one)
+    # steady: count must not change
+    # claimed: every webhook run must carry {"wrote": N}; the destination must gain >= N
+    growth_mode: Literal["growth", "steady", "claimed"] = "growth"
 
 class CheckCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
@@ -444,13 +448,40 @@ async def run_check_now(check_id: str, bg: BackgroundTasks, user: dict = Depends
     return {"run_id": run_id, "status": "queued"}
 
 # ---------- Webhook (async) ----------
+CLAIM_KEYS = ("wrote", "expected_new", "count")
+
+
+def _parse_claimed(body: Any) -> tuple:
+    """Return (claimed_new, note). The workflow may say how many records it wrote;
+    anything else in the body is ignored, and a non-integer claim is noted, not fatal."""
+    if not isinstance(body, dict):
+        return None, None
+    for key in CLAIM_KEYS:
+        if key in body:
+            v = body[key]
+            if isinstance(v, bool) or not isinstance(v, int):
+                if isinstance(v, str) and v.strip().lstrip("-").isdigit():
+                    return int(v.strip()), None
+                return None, f"webhook body ignored: `{key}` is not an integer"
+            return v, None
+    return None, None
+
+
 @api.post("/hook/{secret}")
-async def webhook(secret: str, bg: BackgroundTasks):
+async def webhook(secret: str, request: Request, bg: BackgroundTasks):
     c = await db.checks.find_one({"webhook_secret": secret})
     if not c:
         raise HTTPException(404, "Unknown webhook")
+    body: Any = None
+    try:
+        raw = await request.body()
+        if raw:
+            body = json.loads(raw)
+    except Exception:
+        body = None
+    claimed_new, body_note = _parse_claimed(body)
     run_id = str(uuid.uuid4())
-    bg.add_task(execute_check, c["id"], "webhook", run_id)
+    bg.add_task(execute_check, c["id"], "webhook", run_id, False, claimed_new, body_note)
     return {"accepted": True, "run_id": run_id}
 
 # ---------- Check execution logic ----------
@@ -510,10 +541,11 @@ def _human_join(items: List[str]) -> str:
         return f"{items[0]} and {items[1]}"
     return ", ".join(items[:-1]) + f", and {items[-1]}"
 
-def _compute_verdict(fp: dict, prev_passes: List[dict], expectations: dict) -> tuple:
-    """Return (verdict, diff_message)."""
+def _compute_verdict(fp: dict, prev_passes: List[dict], expectations: dict, claimed_new: Optional[int] = None) -> tuple:
+    """Return (verdict, diff_message). `claimed_new` is what the workflow said it wrote, if it said."""
     reasons: List[str] = []
     min_new = int(expectations.get("min_new_records", 1) or 0)
+    mode = expectations.get("growth_mode") or "growth"
     required = [f.strip() for f in expectations.get("required_fields", []) if f.strip()]
     non_empty = [f.strip() for f in expectations.get("non_empty_fields", []) if f.strip()]
 
@@ -521,7 +553,17 @@ def _compute_verdict(fp: dict, prev_passes: List[dict], expectations: dict) -> t
     prev_count = prev_last["fingerprint"]["record_count"] if prev_last else 0
     delta = fp["record_count"] - prev_count if prev_last else fp["record_count"]
 
-    if prev_last and delta < min_new:
+    if mode == "steady":
+        if prev_last and delta != 0:
+            reasons.append(f"the destination changed by {delta:+d} records (expected no change)")
+    elif mode == "claimed" and claimed_new is None:
+        reasons.append('your workflow sent no record count (this Check expects {"wrote": N} in the webhook body)')
+    elif claimed_new is not None:
+        if prev_last and delta < claimed_new:
+            reasons.append(f"your workflow said it wrote {claimed_new} records; the destination gained {delta}")
+        elif not prev_last and fp["record_count"] < claimed_new:
+            reasons.append(f"your workflow said it wrote {claimed_new} records; the destination has only {fp['record_count']}")
+    elif prev_last and delta < min_new:
         reasons.append(
             f"the destination gained {delta} records (expected at least {min_new})"
         )
@@ -557,6 +599,10 @@ def _compute_verdict(fp: dict, prev_passes: List[dict], expectations: dict) -> t
         return "FAIL", "Run reported success, but " + _human_join(reasons) + "."
     if not prev_last:
         return "PASS", f"First successful check. Destination has {fp['record_count']} records across {len(fp['fields'])} fields."
+    if mode == "steady":
+        return "PASS", f"Destination unchanged at {fp['record_count']} records. All expectations met."
+    if claimed_new is not None:
+        return "PASS", f"Destination gained {delta} record(s), matching what your workflow reported."
     return "PASS", f"Destination gained {delta} record(s). All expectations met."
 
 def _annotate_count(message: str, meta: dict) -> str:
@@ -700,7 +746,8 @@ async def _fetch_records(kind: str, cfg: dict):
     return None, None, f"Unknown connector kind: {kind}", None
 
 
-async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool = False):
+async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool = False,
+                        claimed_new: Optional[int] = None, body_note: Optional[str] = None):
     c = await db.checks.find_one({"id": check_id})
     if not c:
         return
@@ -727,7 +774,7 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
                 {"check_id": check_id, "verdict": "PASS"}, {"_id": 0}
             ).sort("timestamp", -1).limit(30).to_list(30)
             prev.reverse()
-            verdict, message = _compute_verdict(fp, prev, expectations)
+            verdict, message = _compute_verdict(fp, prev, expectations, claimed_new)
             message = _annotate_count(message, meta)
     except httpx.HTTPError as e:
         verdict = "FAIL"
@@ -751,6 +798,8 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
         "is_retry": is_retry,
         "count_capped": bool(meta.get("capped")),
         "count_estimated": bool(meta.get("count_estimated")),
+        "claimed_new": claimed_new,
+        "body_note": body_note,
     }
     await db.check_runs.insert_one(run_doc)
 
@@ -762,17 +811,18 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
         retry_enabled = c.get("retry_before_alert", True)
         if (not is_retry) and would_be_fresh_fail and retry_enabled and not snoozed:
             # Retry once before waking anyone — schedule a delayed re-run
-            asyncio.create_task(_schedule_retry(check_id))
+            asyncio.create_task(_schedule_retry(check_id, claimed_new))
         else:
             await _maybe_alert(c, run_doc, snoozed=snoozed)
     except Exception:
         log.exception("post-run alert routing failed for run %s", run_id)
 
 
-async def _schedule_retry(check_id: str):
+async def _schedule_retry(check_id: str, claimed_new: Optional[int] = None):
     try:
         await asyncio.sleep(RETRY_DELAY_SECONDS)
-        await execute_check(check_id, "retry", str(uuid.uuid4()), is_retry=True)
+        # the retry re-checks the same workflow run, so it carries the same claim
+        await execute_check(check_id, "retry", str(uuid.uuid4()), is_retry=True, claimed_new=claimed_new)
     except Exception:
         log.exception("retry scheduling failed for check %s", check_id)
 

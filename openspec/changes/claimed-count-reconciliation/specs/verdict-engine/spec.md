@@ -22,3 +22,7 @@ The system SHALL compute `delta = record_count − last PASS record_count`. In `
 #### Scenario: Steady table changed
 - **WHEN** `growth_mode` is `steady` and the count moved from 12 to 11
 - **THEN** the verdict is FAIL with "the destination changed by -1 records (expected no change)"
+
+#### Scenario: Steady table unchanged
+- **WHEN** `growth_mode` is `steady` and the count is still 12
+- **THEN** the verdict is PASS with "Destination unchanged at 12 records. All expectations met."

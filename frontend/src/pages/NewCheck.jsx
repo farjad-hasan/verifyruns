@@ -23,6 +23,7 @@ export default function NewCheck() {
   const [query, setQuery] = useState("");
   // Expectations + alerts
   const [minNew, setMinNew] = useState(1);
+  const [mode, setMode] = useState("growth");
   const [required, setRequired] = useState("");
   const [nonEmpty, setNonEmpty] = useState("");
   const [slackWebhook, setSlackWebhook] = useState("");
@@ -61,6 +62,7 @@ export default function NewCheck() {
         config,
         expectations: {
           min_new_records: Number(minNew) || 0,
+          growth_mode: mode,
           required_fields: required.split(",").map((s) => s.trim()).filter(Boolean),
           non_empty_fields: nonEmpty.split(",").map((s) => s.trim()).filter(Boolean),
         },
@@ -160,9 +162,17 @@ export default function NewCheck() {
           </Section>
 
           <Section title="Expectations" subtitle="All optional. VerifyRuns will use these to decide PASS or FAIL.">
+            <div className="mb-3">
+              <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Growth mode</label>
+              <select className="rp-input font-mono" value={mode} onChange={(e) => setMode(e.target.value)} data-testid="check-mode-select">
+                <option value="growth">Growth — must gain at least the minimum (or what the workflow claims)</option>
+                <option value="steady">Steady — the count must not change</option>
+                <option value="claimed">Claimed — every run must send {"{"}"wrote": N{"}"} and the destination must gain N</option>
+              </select>
+            </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
-                <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Minimum new records per run</label>
+                <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Minimum new records per run (0 = growth optional)</label>
                 <input type="number" min="0" className="rp-input font-mono" value={minNew} onChange={(e) => setMinNew(e.target.value)} data-testid="check-minnew-input" />
               </div>
               <div>

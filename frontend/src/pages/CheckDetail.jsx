@@ -51,6 +51,10 @@ export default function CheckDetail() {
     () => (check ? `${backendUrl}/api/hook/${check.webhook_secret}` : ""),
     [check, backendUrl]
   );
+  const curlWithClaim = useMemo(
+    () => (webhookUrl ? `curl -X POST "${webhookUrl}" -H "content-type: application/json" -d '{"wrote": 3}'` : ""),
+    [webhookUrl]
+  );
   const curlExample = useMemo(
     () => (webhookUrl ? `curl -X POST "${webhookUrl}"` : ""),
     [webhookUrl]
@@ -151,6 +155,16 @@ export default function CheckDetail() {
             <CopyButton text={curlExample} testid="copy-curl" />
           </div>
           <div className="mono-block" data-testid="curl-example">{curlExample}</div>
+
+          <div className="flex items-center justify-between mt-6 mb-2">
+            <p className="text-xs uppercase tracking-widest text-zinc-500">Tell VerifyRuns what you wrote (optional)</p>
+            <CopyButton text={curlWithClaim} testid="copy-curl-claim" />
+          </div>
+          <div className="mono-block break-all" data-testid="curl-claim-example">{curlWithClaim}</div>
+          <p className="text-xs text-zinc-500 mt-2">
+            Send <code className="font-mono">{"{"}"wrote": N{"}"}</code> in the body and the verdict reconciles your workflow's own count against the destination.
+            n8n: <code className="font-mono">{"{{ $items().length }}"}</code> · Make: the bundle count · Zapier: the step's item count.
+          </p>
         </div>
 
         {/* Config + Expectations */}
@@ -282,7 +296,13 @@ function RunPanel({ run, previousPassFingerprint, onClose }) {
           <p className="text-zinc-100 leading-relaxed mb-8" data-testid="run-diff-message">{run.diff_message}</p>
 
           <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">When</p>
-          <p className="text-zinc-300 font-mono text-sm mb-8">{formatDate(run.timestamp)} · {run.trigger}</p>
+          <p className="text-zinc-300 font-mono text-sm mb-8">
+            {formatDate(run.timestamp)} · {run.trigger}
+            {typeof run.claimed_new === "number" && <span className="text-zinc-500"> · workflow claimed {run.claimed_new}</span>}
+          </p>
+          {run.body_note && (
+            <p className="text-xs text-amber-400 -mt-6 mb-8 font-mono" data-testid="run-body-note">{run.body_note}</p>
+          )}
 
           {run.fingerprint && typeof run.fingerprint.record_count === "number" && (
             <>
@@ -452,12 +472,14 @@ function AlertChannel({ check, onSaved }) {
 function ExpectationsCard({ check, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [minNew, setMinNew] = useState(check.expectations?.min_new_records ?? 1);
+  const [mode, setMode] = useState(check.expectations?.growth_mode || "growth");
   const [required, setRequired] = useState((check.expectations?.required_fields || []).join(", "));
   const [nonEmpty, setNonEmpty] = useState((check.expectations?.non_empty_fields || []).join(", "));
   const [busy, setBusy] = useState(false);
 
   const startEdit = () => {
     setMinNew(check.expectations?.min_new_records ?? 1);
+    setMode(check.expectations?.growth_mode || "growth");
     setRequired((check.expectations?.required_fields || []).join(", "));
     setNonEmpty((check.expectations?.non_empty_fields || []).join(", "));
     setEditing(true);
@@ -469,6 +491,7 @@ function ExpectationsCard({ check, onSaved }) {
       await api.patch(`/checks/${check.id}`, {
         expectations: {
           min_new_records: Number(minNew) || 0,
+          growth_mode: mode,
           required_fields: required.split(",").map((s) => s.trim()).filter(Boolean),
           non_empty_fields: nonEmpty.split(",").map((s) => s.trim()).filter(Boolean),
         },
@@ -500,6 +523,7 @@ function ExpectationsCard({ check, onSaved }) {
 
       {!editing ? (
         <dl className="space-y-3 text-sm">
+          <Row k="Growth mode" v={check.expectations?.growth_mode || "growth"} mono />
           <Row k="Min new records per run" v={String(check.expectations?.min_new_records ?? 1)} mono />
           <Row k="Required fields" v={(check.expectations?.required_fields || []).join(", ") || "(none)"} mono />
           <Row k="Non-empty fields" v={(check.expectations?.non_empty_fields || []).join(", ") || "(none)"} mono />
@@ -507,7 +531,15 @@ function ExpectationsCard({ check, onSaved }) {
       ) : (
         <div className="space-y-3">
           <div>
-            <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Minimum new records per run</label>
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Growth mode</label>
+            <select className="rp-input font-mono" value={mode} onChange={(e) => setMode(e.target.value)} data-testid="edit-mode-select">
+                <option value="growth">Growth — must gain at least the minimum (or what the workflow claims)</option>
+                <option value="steady">Steady — the count must not change</option>
+                <option value="claimed">Claimed — every run must send {"{"}"wrote": N{"}"} and the destination must gain N</option>
+              </select>
+          </div>
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Minimum new records per run (0 = growth optional)</label>
             <input
               type="number"
               min="0"
