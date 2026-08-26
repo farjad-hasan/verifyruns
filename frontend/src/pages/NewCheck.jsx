@@ -18,11 +18,15 @@ export default function NewCheck() {
   const [table, setTable] = useState("");
   const [pat, setPat] = useState("");
   const [view, setView] = useState("");
+  // Postgres
+  const [dsn, setDsn] = useState("");
+  const [query, setQuery] = useState("");
   // Expectations + alerts
   const [minNew, setMinNew] = useState(1);
   const [required, setRequired] = useState("");
   const [nonEmpty, setNonEmpty] = useState("");
   const [slackWebhook, setSlackWebhook] = useState("");
+  const [retryBeforeAlert, setRetryBeforeAlert] = useState(true);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -31,18 +35,26 @@ export default function NewCheck() {
     setError("");
     setBusy(true);
     try {
-      const config = kind === "airtable"
-        ? {
-            base_id: baseId.trim(),
-            table: table.trim(),
-            personal_access_token: pat.trim() || null,
-            view: view.trim() || null,
-          }
-        : {
-            url,
-            bearer_token: token || null,
-            json_path: jsonPath || null,
-          };
+      let config;
+      if (kind === "airtable") {
+        config = {
+          base_id: baseId.trim(),
+          table: table.trim(),
+          personal_access_token: pat.trim() || null,
+          view: view.trim() || null,
+        };
+      } else if (kind === "postgres") {
+        config = {
+          dsn: dsn.trim(),
+          query: query.trim(),
+        };
+      } else {
+        config = {
+          url,
+          bearer_token: token || null,
+          json_path: jsonPath || null,
+        };
+      }
       const payload = {
         name,
         connector_kind: kind,
@@ -53,6 +65,7 @@ export default function NewCheck() {
           non_empty_fields: nonEmpty.split(",").map((s) => s.trim()).filter(Boolean),
         },
         alert_slack_webhook: slackWebhook.trim() || null,
+        retry_before_alert: retryBeforeAlert,
       };
       const { data } = await api.post("/checks", payload);
       toast.success("Check created");
@@ -80,12 +93,12 @@ export default function NewCheck() {
           </Section>
 
           <Section title="Destination" subtitle="Pick the connector VerifyRuns should re-read after each run.">
-            <div className="grid grid-cols-2 gap-3 mb-4">
+            <div className="grid grid-cols-3 gap-3 mb-4">
               <ConnectorOption
                 active={kind === "http_json"}
                 onClick={() => setKind("http_json")}
                 title="HTTP / JSON"
-                sub="Any REST endpoint returning an array of records"
+                sub="Any REST endpoint returning an array"
                 testid="connector-http-json"
               />
               <ConnectorOption
@@ -95,16 +108,25 @@ export default function NewCheck() {
                 sub="A base + table you own"
                 testid="connector-airtable"
               />
+              <ConnectorOption
+                active={kind === "postgres"}
+                onClick={() => setKind("postgres")}
+                title="Postgres"
+                sub="A read-only SELECT query"
+                testid="connector-postgres"
+              />
             </div>
 
-            {kind === "http_json" ? (
+            {kind === "http_json" && (
               <div className="space-y-3">
                 <input required type="url" className="rp-input font-mono" placeholder="https://api.example.com/v1/orders" value={url} onChange={(e) => setUrl(e.target.value)} data-testid="check-url-input" />
                 <input type="text" className="rp-input font-mono" placeholder="Bearer token (optional, encrypted at rest)" value={token} onChange={(e) => setToken(e.target.value)} data-testid="check-token-input" />
                 <input type="text" className="rp-input font-mono" placeholder="JSON path to array (optional, e.g. data.records)" value={jsonPath} onChange={(e) => setJsonPath(e.target.value)} data-testid="check-jsonpath-input" />
                 <p className="text-xs text-zinc-500 leading-relaxed">Leave the path empty if the response body itself is an array.</p>
               </div>
-            ) : (
+            )}
+
+            {kind === "airtable" && (
               <div className="space-y-3">
                 <input required type="text" className="rp-input font-mono" placeholder="Base ID (appXXXXXXXXXXXXXX)" value={baseId} onChange={(e) => setBaseId(e.target.value)} data-testid="check-base-id-input" />
                 <input required type="text" className="rp-input font-mono" placeholder="Table name (e.g. Orders)" value={table} onChange={(e) => setTable(e.target.value)} data-testid="check-table-input" />
@@ -114,6 +136,24 @@ export default function NewCheck() {
                   VerifyRuns lists up to 100 records at a time. Create a PAT at
                   <a className="underline underline-offset-4 hover:text-zinc-300 ml-1" href="https://airtable.com/create/tokens" target="_blank" rel="noreferrer">airtable.com/create/tokens</a>
                   &nbsp;with <span className="font-mono">data.records:read</span> for the base.
+                </p>
+              </div>
+            )}
+
+            {kind === "postgres" && (
+              <div className="space-y-3">
+                <input required type="text" className="rp-input font-mono" placeholder="postgres://user:pass@host:5432/dbname" value={dsn} onChange={(e) => setDsn(e.target.value)} data-testid="check-dsn-input" />
+                <textarea
+                  required
+                  rows={3}
+                  className="rp-input font-mono resize-y"
+                  placeholder="SELECT id, email, created_at FROM orders ORDER BY id DESC LIMIT 100"
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  data-testid="check-query-input"
+                />
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  Read-only: must start with <span className="font-mono">SELECT</span> or <span className="font-mono">WITH</span>, single statement, no <span className="font-mono">INSERT</span>/<span className="font-mono">UPDATE</span>/<span className="font-mono">DELETE</span>/<span className="font-mono">DROP</span>. VerifyRuns caps results at 100 rows.
                 </p>
               </div>
             )}
@@ -148,6 +188,17 @@ export default function NewCheck() {
             <p className="text-xs text-zinc-500 leading-relaxed mt-2">
               Stored encrypted; only the last 4 characters are shown afterwards.
             </p>
+            <label className="flex items-center gap-2 mt-4 cursor-pointer select-none" data-testid="retry-toggle-label">
+              <input
+                type="checkbox"
+                className="w-4 h-4 accent-emerald-500"
+                checked={retryBeforeAlert}
+                onChange={(e) => setRetryBeforeAlert(e.target.checked)}
+                data-testid="check-retry-toggle"
+              />
+              <span className="text-sm text-zinc-300">Retry 30s before alerting</span>
+              <span className="text-xs text-zinc-500">— swallows flaky destinations. Turn off for instant alerts.</span>
+            </label>
           </Section>
 
           {error && <div className="text-sm text-red-400 border border-red-500/25 bg-red-500/5 rounded-md p-3" data-testid="new-check-error">{error}</div>}

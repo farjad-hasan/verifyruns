@@ -17,6 +17,7 @@ from typing import Optional, List, Any
 import bcrypt
 import jwt
 import httpx
+import asyncpg
 from cryptography.fernet import Fernet
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -123,6 +124,7 @@ class CheckCreate(BaseModel):
     config: dict  # shape depends on connector_kind; validated per-connector
     expectations: Expectations = Expectations()
     alert_slack_webhook: Optional[str] = None
+    retry_before_alert: bool = True
 
 class CheckUpdate(BaseModel):
     name: Optional[str] = None
@@ -131,6 +133,7 @@ class CheckUpdate(BaseModel):
     expectations: Optional[Expectations] = None
     alert_slack_webhook: Optional[str] = None
     clear_alert_slack: Optional[bool] = False
+    retry_before_alert: Optional[bool] = None
 
 class SnoozeIn(BaseModel):
     hours: int = Field(ge=1, le=168)  # cap at a week
@@ -197,6 +200,31 @@ def _prepare_config_for_storage(kind: str, cfg_in: dict, existing_cfg: Optional[
         elif existing_cfg.get("pat_encrypted"):
             out["pat_encrypted"] = existing_cfg["pat_encrypted"]
         return out
+    if kind == "postgres":
+        query = (cfg_in or {}).get("query")
+        if not isinstance(query, str) or not query.strip():
+            raise HTTPException(400, "config.query is required for postgres")
+        q = query.strip().rstrip(";").strip()
+        # Read-only guard: single SELECT statement, no dangerous keywords
+        upper = q.upper()
+        if not upper.startswith("SELECT") and not upper.startswith("WITH"):
+            raise HTTPException(400, "postgres query must start with SELECT or WITH")
+        if ";" in q:
+            raise HTTPException(400, "postgres query must be a single statement (no semicolons)")
+        banned = ["INSERT ", "UPDATE ", "DELETE ", "DROP ", "ALTER ", "TRUNCATE ", "GRANT ", "REVOKE ", "CREATE ", "COMMENT "]
+        if any(b in upper for b in banned):
+            raise HTTPException(400, "postgres query is not read-only")
+        out = {"query": q}
+        plain_dsn = cfg_in.get("dsn")
+        if plain_dsn:
+            if not isinstance(plain_dsn, str) or not plain_dsn.strip():
+                raise HTTPException(400, "config.dsn is required for postgres")
+            out["dsn_encrypted"] = encrypt_secret(plain_dsn.strip())
+        elif existing_cfg.get("dsn_encrypted"):
+            out["dsn_encrypted"] = existing_cfg["dsn_encrypted"]
+        else:
+            raise HTTPException(400, "config.dsn is required for postgres")
+        return out
     raise HTTPException(400, f"Unknown connector kind: {kind}")
 
 def _sanitize_config(kind: str, cfg: dict) -> dict:
@@ -211,6 +239,11 @@ def _sanitize_config(kind: str, cfg: dict) -> dict:
         out["has_pat"] = bool(enc)
         if enc:
             out["pat_last4"] = mask_token(decrypt_secret(enc))
+    elif kind == "postgres":
+        enc = out.pop("dsn_encrypted", None)
+        out["has_dsn"] = bool(enc)
+        if enc:
+            out["dsn_last4"] = mask_token(decrypt_secret(enc))
     return out
 
 def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
@@ -229,6 +262,8 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
     # Snooze
     snooze_until = doc.get("snooze_until")
     doc["is_snoozed"] = bool(snooze_until and snooze_until > now_iso())
+    # Retry toggle (default True for older docs)
+    doc["retry_before_alert"] = bool(doc.get("retry_before_alert", True))
     if not include_webhook_secret:
         doc.pop("webhook_secret", None)
     return doc
@@ -246,6 +281,7 @@ async def create_check(payload: CheckCreate, user: dict = Depends(get_current_us
         "expectations": payload.expectations.model_dump(),
         "webhook_secret": secrets.token_urlsafe(32),
         "created_at": now_iso(),
+        "retry_before_alert": payload.retry_before_alert,
     }
     if payload.alert_slack_webhook:
         doc["alert_slack_webhook_encrypted"] = encrypt_secret(payload.alert_slack_webhook.strip())
@@ -289,6 +325,8 @@ async def update_check(check_id: str, payload: CheckUpdate, user: dict = Depends
     if payload.config is not None:
         kind = payload.connector_kind or c.get("connector_kind", "http_json")
         updates["config"] = _prepare_config_for_storage(kind, payload.config, c.get("config"))
+    if payload.retry_before_alert is not None:
+        updates["retry_before_alert"] = bool(payload.retry_before_alert)
     if payload.clear_alert_slack:
         updates["alert_slack_webhook_encrypted"] = None
     elif payload.alert_slack_webhook is not None and payload.alert_slack_webhook.strip():
@@ -566,6 +604,40 @@ async def _fetch_records(kind: str, cfg: dict):
             flat.append(row)
         return flat, None, None
 
+    if kind == "postgres":
+        dsn_enc = cfg.get("dsn_encrypted")
+        query = cfg.get("query")
+        if not dsn_enc or not query:
+            return None, "Postgres config is missing DSN or query.", None
+        dsn = decrypt_secret(dsn_enc)
+        conn = None
+        try:
+            conn = await asyncpg.connect(dsn=dsn, timeout=15.0)
+            # Enforce read-only at the session level as a second line of defence
+            await conn.execute("SET default_transaction_read_only = on")
+            rows = await conn.fetch(f"SELECT * FROM ({query}) AS _vr LIMIT 100")
+        except asyncpg.PostgresError as e:
+            return None, f"Postgres query failed: {type(e).__name__}.", str(e)[:500]
+        except Exception as e:
+            return None, f"Postgres connection error: {type(e).__name__}.", str(e)[:500]
+        finally:
+            if conn is not None:
+                try:
+                    await conn.close()
+                except Exception:
+                    pass
+        flat = []
+        for r in rows:
+            row = {}
+            for k, v in dict(r).items():
+                # Coerce non-JSON-serialisable values to strings for fingerprinting
+                if isinstance(v, (str, int, float, bool)) or v is None:
+                    row[k] = v
+                else:
+                    row[k] = str(v)
+            flat.append(row)
+        return flat, None, None
+
     return None, f"Unknown connector kind: {kind}", None
 
 
@@ -623,7 +695,8 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
         last_alerted = c.get("last_alerted_verdict")
         snoozed = bool(c.get("snooze_until") and c["snooze_until"] > now_iso())
         would_be_fresh_fail = (verdict == "FAIL" and last_alerted != "FAIL")
-        if (not is_retry) and would_be_fresh_fail and not snoozed:
+        retry_enabled = c.get("retry_before_alert", True)
+        if (not is_retry) and would_be_fresh_fail and retry_enabled and not snoozed:
             # Retry once before waking anyone — schedule a delayed re-run
             asyncio.create_task(_schedule_retry(check_id))
         else:
