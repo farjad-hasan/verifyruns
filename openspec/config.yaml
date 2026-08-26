@@ -12,9 +12,9 @@ context: |
   Runtime env: MONGO_URL, DB_NAME, JWT_SECRET, FERNET_KEY, PUBLIC_APP_URL,
   CORS_ORIGINS. Secrets are Fernet-encrypted at rest and masked to last 4.
 
-  Hosting: built and deployed on Emergent (app.emergent.sh) for the Builder
-  Fest contest (closes 2026-08-31 23:59 ET). The Emergent agent reads
-  memory/PRD.md; Claude Code reads openspec/ via .claude/. Nothing in the app
+  Hosting: built on Emergent for the Builder Fest contest (closes 2026-08-31
+  23:59 ET); the contest URL is frozen at that build. Since 2026-08-27 all
+  development is local (Claude Code in this repo); deploy target is TBD. Nothing in the app
   imports Emergent-specific packages — it is portable to Railway/Render/Fly.
 
   Baseline specs in openspec/specs/ describe the code AS IT IS, including known
@@ -31,4 +31,5 @@ rules:
   tasks:
     - Any task touching _fingerprint or _compute_verdict adds pure-function
       tests in backend/tests/ in the same change.
-    - Last task group is always "Verify on Emergent preview, then publish".
+    - Last task group is always "Verify locally, then push" (dev moved off
+      Emergent 2026-08-27; local stack = Docker Mongo + uvicorn + craco).
