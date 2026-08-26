@@ -99,9 +99,9 @@ export default function CheckDetail() {
         </Link>
 
         <div className="flex flex-wrap items-start justify-between gap-4 mb-2">
-          <div>
+          <div className="min-w-0 flex-1">
             <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">HTTP / JSON check</p>
-            <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight" data-testid="check-name">{check.name}</h1>
+            <CheckNameHeader check={check} onSaved={load} />
           </div>
           <div className="flex items-center gap-2">
             {lastVerdict === "PASS" && <span className="badge-pass">Pass</span>}
@@ -653,6 +653,82 @@ function PublicStatusCard({ check, onSaved }) {
         </p>
       )}
     </div>
+  );
+}
+
+
+function CheckNameHeader({ check, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [name, setName] = useState(check.name);
+  const [busy, setBusy] = useState(false);
+
+  const save = async () => {
+    const trimmed = name.trim();
+    if (!trimmed || trimmed === check.name) {
+      setEditing(false);
+      setName(check.name);
+      return;
+    }
+    setBusy(true);
+    try {
+      await api.patch(`/checks/${check.id}`, { name: trimmed });
+      toast.success("Check renamed");
+      setEditing(false);
+      await onSaved();
+    } catch {
+      toast.error("Could not rename check");
+      setName(check.name);
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const cancel = () => {
+    setEditing(false);
+    setName(check.name);
+  };
+
+  if (editing) {
+    return (
+      <div className="flex items-center gap-2">
+        <input
+          autoFocus
+          className="rp-input font-display !text-3xl sm:!text-4xl !py-1 !px-2 tracking-tight bg-transparent"
+          value={name}
+          disabled={busy}
+          onChange={(e) => setName(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") save();
+            if (e.key === "Escape") cancel();
+          }}
+          data-testid="rename-check-input"
+        />
+        <button className="rp-btn-primary !py-1.5 !px-3 !text-xs" onClick={save} disabled={busy} data-testid="rename-check-save">
+          {busy ? "Saving…" : "Save"}
+        </button>
+        <button className="rp-btn-ghost !py-1.5 !px-3 !text-xs" onClick={cancel} disabled={busy} data-testid="rename-check-cancel">
+          Cancel
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={() => setEditing(true)}
+      className="group flex items-center gap-3 text-left"
+      title="Click to rename"
+      data-testid="rename-check-trigger"
+    >
+      <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight" data-testid="check-name">
+        {check.name}
+      </h1>
+      <Pencil
+        size={16}
+        className="text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity"
+      />
+    </button>
   );
 }
 

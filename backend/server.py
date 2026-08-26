@@ -538,7 +538,8 @@ async def _maybe_alert(check_doc: dict, run: dict):
 
     should_send = False
     header = ""
-    if verdict == "FAIL":
+    if verdict == "FAIL" and prev_verdict != "FAIL":
+        # PASS→FAIL or first-ever FAIL: alert. FAIL→FAIL is suppressed (dedup within a streak).
         should_send = True
         header = f":rotating_light: *FAIL* — {check_doc.get('name')}"
     elif verdict == "PASS" and prev_verdict == "FAIL":
