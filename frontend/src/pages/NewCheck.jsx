@@ -8,9 +8,17 @@ import { ArrowLeft } from "lucide-react";
 export default function NewCheck() {
   const nav = useNavigate();
   const [name, setName] = useState("");
+  const [kind, setKind] = useState("http_json");
+  // HTTP / JSON
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [jsonPath, setJsonPath] = useState("");
+  // Airtable
+  const [baseId, setBaseId] = useState("");
+  const [table, setTable] = useState("");
+  const [pat, setPat] = useState("");
+  const [view, setView] = useState("");
+  // Expectations + alerts
   const [minNew, setMinNew] = useState(1);
   const [required, setRequired] = useState("");
   const [nonEmpty, setNonEmpty] = useState("");
@@ -23,14 +31,22 @@ export default function NewCheck() {
     setError("");
     setBusy(true);
     try {
+      const config = kind === "airtable"
+        ? {
+            base_id: baseId.trim(),
+            table: table.trim(),
+            personal_access_token: pat.trim() || null,
+            view: view.trim() || null,
+          }
+        : {
+            url,
+            bearer_token: token || null,
+            json_path: jsonPath || null,
+          };
       const payload = {
         name,
-        connector_kind: "http_json",
-        config: {
-          url,
-          bearer_token: token || null,
-          json_path: jsonPath || null,
-        },
+        connector_kind: kind,
+        config,
         expectations: {
           min_new_records: Number(minNew) || 0,
           required_fields: required.split(",").map((s) => s.trim()).filter(Boolean),
@@ -60,16 +76,47 @@ export default function NewCheck() {
 
         <form onSubmit={submit} className="space-y-10">
           <Section title="Name">
-            <input required className="rp-input" placeholder="airtable-orders-sync" value={name} onChange={(e) => setName(e.target.value)} data-testid="check-name-input" />
+            <input required className="rp-input" placeholder="orders-sync" value={name} onChange={(e) => setName(e.target.value)} data-testid="check-name-input" />
           </Section>
 
-          <Section title="HTTP / JSON connector" subtitle="VerifyRuns will GET this URL server-side after each run.">
-            <div className="space-y-3">
-              <input required type="url" className="rp-input font-mono" placeholder="https://api.example.com/v1/orders" value={url} onChange={(e) => setUrl(e.target.value)} data-testid="check-url-input" />
-              <input type="text" className="rp-input font-mono" placeholder="Bearer token (optional, encrypted at rest)" value={token} onChange={(e) => setToken(e.target.value)} data-testid="check-token-input" />
-              <input type="text" className="rp-input font-mono" placeholder="JSON path to array (optional, e.g. data.records)" value={jsonPath} onChange={(e) => setJsonPath(e.target.value)} data-testid="check-jsonpath-input" />
-              <p className="text-xs text-zinc-500 leading-relaxed">Leave the path empty if the response body itself is an array.</p>
+          <Section title="Destination" subtitle="Pick the connector VerifyRuns should re-read after each run.">
+            <div className="grid grid-cols-2 gap-3 mb-4">
+              <ConnectorOption
+                active={kind === "http_json"}
+                onClick={() => setKind("http_json")}
+                title="HTTP / JSON"
+                sub="Any REST endpoint returning an array of records"
+                testid="connector-http-json"
+              />
+              <ConnectorOption
+                active={kind === "airtable"}
+                onClick={() => setKind("airtable")}
+                title="Airtable"
+                sub="A base + table you own"
+                testid="connector-airtable"
+              />
             </div>
+
+            {kind === "http_json" ? (
+              <div className="space-y-3">
+                <input required type="url" className="rp-input font-mono" placeholder="https://api.example.com/v1/orders" value={url} onChange={(e) => setUrl(e.target.value)} data-testid="check-url-input" />
+                <input type="text" className="rp-input font-mono" placeholder="Bearer token (optional, encrypted at rest)" value={token} onChange={(e) => setToken(e.target.value)} data-testid="check-token-input" />
+                <input type="text" className="rp-input font-mono" placeholder="JSON path to array (optional, e.g. data.records)" value={jsonPath} onChange={(e) => setJsonPath(e.target.value)} data-testid="check-jsonpath-input" />
+                <p className="text-xs text-zinc-500 leading-relaxed">Leave the path empty if the response body itself is an array.</p>
+              </div>
+            ) : (
+              <div className="space-y-3">
+                <input required type="text" className="rp-input font-mono" placeholder="Base ID (appXXXXXXXXXXXXXX)" value={baseId} onChange={(e) => setBaseId(e.target.value)} data-testid="check-base-id-input" />
+                <input required type="text" className="rp-input font-mono" placeholder="Table name (e.g. Orders)" value={table} onChange={(e) => setTable(e.target.value)} data-testid="check-table-input" />
+                <input required type="text" className="rp-input font-mono" placeholder="Personal Access Token (encrypted at rest)" value={pat} onChange={(e) => setPat(e.target.value)} data-testid="check-pat-input" />
+                <input type="text" className="rp-input font-mono" placeholder="View name (optional)" value={view} onChange={(e) => setView(e.target.value)} data-testid="check-view-input" />
+                <p className="text-xs text-zinc-500 leading-relaxed">
+                  VerifyRuns lists up to 100 records at a time. Create a PAT at
+                  <a className="underline underline-offset-4 hover:text-zinc-300 ml-1" href="https://airtable.com/create/tokens" target="_blank" rel="noreferrer">airtable.com/create/tokens</a>
+                  &nbsp;with <span className="font-mono">data.records:read</span> for the base.
+                </p>
+              </div>
+            )}
           </Section>
 
           <Section title="Expectations" subtitle="All optional. VerifyRuns will use these to decide PASS or FAIL.">
@@ -124,5 +171,19 @@ function Section({ title, subtitle, children }) {
       {subtitle && <p className="text-sm text-zinc-500 mb-4">{subtitle}</p>}
       {children}
     </div>
+  );
+}
+
+function ConnectorOption({ active, onClick, title, sub, testid }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testid}
+      className={`text-left p-4 rounded-lg border transition-colors ${active ? "border-emerald-500/50 bg-emerald-500/5" : "border-[#27272A] bg-[#0A0A0A] hover:border-[#3F3F46]"}`}
+    >
+      <p className={`font-display text-sm mb-1 ${active ? "text-emerald-300" : "text-zinc-200"}`}>{title}</p>
+      <p className="text-xs text-zinc-500">{sub}</p>
+    </button>
   );
 }

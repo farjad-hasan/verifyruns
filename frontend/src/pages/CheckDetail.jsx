@@ -5,7 +5,7 @@ import Nav from "../components/Nav";
 import Timeline from "../components/Timeline";
 import CopyButton from "../components/CopyButton";
 import { toast } from "sonner";
-import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save, Pencil, Globe2, Filter } from "lucide-react";
+import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save, Pencil, Globe2, Filter, Moon, Sun } from "lucide-react";
 
 export default function CheckDetail() {
   const { id } = useParams();
@@ -100,12 +100,16 @@ export default function CheckDetail() {
 
         <div className="flex flex-wrap items-start justify-between gap-4 mb-2">
           <div className="min-w-0 flex-1">
-            <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">HTTP / JSON check</p>
+            <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">
+              {check.connector_kind === "airtable" ? "Airtable check" : "HTTP / JSON check"}
+            </p>
             <CheckNameHeader check={check} onSaved={load} />
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-2 flex-wrap">
             {lastVerdict === "PASS" && <span className="badge-pass">Pass</span>}
             {lastVerdict === "FAIL" && <span className="badge-fail">Fail</span>}
+            {check.is_snoozed && <SnoozedBadge until={check.snooze_until} />}
+            <SnoozeControl check={check} onSaved={load} />
             <button className="rp-btn-ghost" onClick={runNow} disabled={running} data-testid="run-now-btn">
               {running ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
               {running ? "Running…" : "Run check now"}
@@ -154,13 +158,28 @@ export default function CheckDetail() {
           <div className="rp-card p-6 sm:p-8">
             <p className="font-display text-lg mb-4">Destination</p>
             <dl className="space-y-3 text-sm">
-              <Row k="GET url" v={check.config?.url} mono />
-              <Row k="JSON path" v={check.config?.json_path || "(root)"} mono />
-              <Row
-                k="Bearer token"
-                v={check.config?.has_bearer_token ? check.config?.bearer_token_last4 : "(none)"}
-                mono
-              />
+              {check.connector_kind === "airtable" ? (
+                <>
+                  <Row k="Base ID" v={check.config?.base_id} mono />
+                  <Row k="Table" v={check.config?.table} mono />
+                  <Row k="View" v={check.config?.view || "(default)"} mono />
+                  <Row
+                    k="Personal token"
+                    v={check.config?.has_pat ? check.config?.pat_last4 : "(none)"}
+                    mono
+                  />
+                </>
+              ) : (
+                <>
+                  <Row k="GET url" v={check.config?.url} mono />
+                  <Row k="JSON path" v={check.config?.json_path || "(root)"} mono />
+                  <Row
+                    k="Bearer token"
+                    v={check.config?.has_bearer_token ? check.config?.bearer_token_last4 : "(none)"}
+                    mono
+                  />
+                </>
+              )}
             </dl>
           </div>
           <ExpectationsCard check={check} onSaved={load} />
@@ -729,6 +748,77 @@ function CheckNameHeader({ check, onSaved }) {
         className="text-zinc-600 opacity-0 group-hover:opacity-100 transition-opacity"
       />
     </button>
+  );
+}
+
+
+function SnoozedBadge({ until }) {
+  const t = until ? new Date(until) : null;
+  return (
+    <span
+      className="text-[11px] uppercase tracking-widest text-amber-400 border border-amber-500/30 bg-amber-500/5 rounded-full px-2 py-1 font-mono"
+      title={t ? `Until ${t.toLocaleString()}` : "Snoozed"}
+      data-testid="snoozed-badge"
+    >
+      Snoozed
+    </span>
+  );
+}
+
+function SnoozeControl({ check, onSaved }) {
+  const [busy, setBusy] = useState(false);
+  const [open, setOpen] = useState(false);
+
+  const snooze = async (hours) => {
+    setBusy(true);
+    setOpen(false);
+    try {
+      await api.post(`/checks/${check.id}/snooze`, { hours });
+      toast.success(`Alerts snoozed for ${hours}h`);
+      await onSaved();
+    } catch {
+      toast.error("Could not snooze");
+    } finally {
+      setBusy(false);
+    }
+  };
+  const wake = async () => {
+    setBusy(true);
+    setOpen(false);
+    try {
+      await api.delete(`/checks/${check.id}/snooze`);
+      toast.success("Alerts resumed");
+      await onSaved();
+    } catch {
+      toast.error("Could not resume alerts");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  if (check.is_snoozed) {
+    return (
+      <button className="rp-btn-ghost" onClick={wake} disabled={busy} data-testid="wake-btn">
+        <Sun size={14} /> Resume alerts
+      </button>
+    );
+  }
+  return (
+    <div className="relative">
+      <button className="rp-btn-ghost" onClick={() => setOpen((v) => !v)} disabled={busy} data-testid="snooze-btn">
+        <Moon size={14} /> Snooze
+      </button>
+      {open && (
+        <div
+          className="absolute right-0 mt-2 rp-card p-2 z-10 min-w-[140px]"
+          data-testid="snooze-menu"
+          onMouseLeave={() => setOpen(false)}
+        >
+          <button className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-[#18181B] rounded-md" onClick={() => snooze(1)} data-testid="snooze-1h">1 hour</button>
+          <button className="w-full text-left px-3 py-2 text-sm text-zinc-200 hover:bg-[#18181B] rounded-md" onClick={() => snooze(24)} data-testid="snooze-24h">24 hours</button>
+        </div>
+      )}
+    </div>
   );
 }
 

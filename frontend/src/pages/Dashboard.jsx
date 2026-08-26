@@ -61,9 +61,12 @@ export default function Dashboard() {
                       <p className="font-display text-lg truncate">{c.name}</p>
                       {c.last_verdict === "PASS" && <span className="badge-pass">Pass</span>}
                       {c.last_verdict === "FAIL" && <span className="badge-fail">Fail</span>}
+                      {c.is_snoozed && (
+                        <span className="text-[10px] uppercase tracking-widest text-amber-400 font-mono" data-testid={`snoozed-${c.id}`}>Snoozed</span>
+                      )}
                     </div>
                     <p className="text-xs text-zinc-500 font-mono flex items-center gap-1.5">
-                      <Globe size={11} /> {c.connector_kind === "http_json" ? "HTTP / JSON" : c.connector_kind}
+                      <Globe size={11} /> {c.connector_kind === "airtable" ? "Airtable" : "HTTP / JSON"}
                     </p>
                   </div>
                   <div className="hidden sm:block">

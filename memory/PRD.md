@@ -29,19 +29,20 @@ Tagline: "Your automation said Done. RunProof checks if that's true."
 ## Implemented (2026-02)
 - Landing page: hero, problem, how-it-works, CTA, footer
 - Email + password auth (register, login, /me, logout on client)
-- Dashboard: checks list with 30-run timeline strips, empty state, 10s live polling, health summary strip (passing / failing / no-runs)
-- New Check form: name, HTTP/JSON connector, expectations, Slack alert webhook
-- Check detail: verdict badge, run-now button, timeline hero, webhook URL + copy + curl example, config, editable expectations, Slack alerts card, public status page toggle, run history with verdict/trigger/date-range filters, run panel with fingerprint + diff-vs-last-PASS, 10s live polling
+- Dashboard: checks list with 30-run timeline strips, empty state, 10s live polling, health summary strip, "Snoozed" tag on rows
+- New Check form: name, connector chooser (HTTP / JSON | Airtable), per-connector fields, expectations, Slack alert webhook
+- Connectors: HTTP/JSON (bearer token, optional JSON path), Airtable (base_id, table, PAT, optional view — flattened `{id, createdTime, ...fields}` per record)
+- Check detail: inline rename, verdict badge, snooze menu (1h/24h) + Resume-alerts, run-now, timeline hero, webhook URL + copy + curl, connector-aware Destination card, editable expectations, Slack alerts, public status, run filters + fingerprint diff in the run panel, 10s live polling
 - Webhook endpoint `POST /api/hook/{secret}` (async, returns 200 with run_id)
 - Manual `POST /api/checks/{id}/run` (async)
 - Fingerprint + verdict logic (record delta, required fields, disappeared fields, non-empty)
-- Server-side fetch via httpx, bearer tokens Fernet-encrypted, only last 4 shown
-- Slack FAIL alerts + recovery alerts (on FAIL→PASS transition), non-blocking, Fernet-encrypted webhook URL
-- Public status page: `POST/DELETE /api/checks/{id}/public` + `GET /api/public/checks/{token}` (no auth, no destination URL / secrets / fingerprint data leaked); frontend route `/status/:token`
+- Server-side fetch via httpx; secrets (bearer tokens, Airtable PATs, Slack webhooks) Fernet-encrypted, only last 4 shown
+- Slack FAIL / recovery alerts with **state-based dedup** (`last_alerted_verdict` on check) and **30s retry-before-alert** on fresh FAIL — no alert if the retry PASSes; snoozed checks skip alerting entirely
+- Public status page: `POST/DELETE /api/checks/{id}/public` + unauthenticated `GET /api/public/checks/{token}` — no config/secrets/fingerprint leaked; frontend route `/status/:token`
+- Snooze: `POST/DELETE /api/checks/{id}/snooze` with hours cap of 168; UI dropdown in detail header
 
 ## Backlog / Next
-- P1: Additional connectors (Airtable, Postgres) — connector_kind is already stored typed
-- P1: Email alerts (requires a platform-built-in email mechanism; currently Slack-only)
+- P1: Postgres connector (typed config already supports it)
+- P1: Email alerts (requires a platform-built-in email mechanism)
 - P2: Discord webhook alerts (same shape as Slack)
-- P2: Alert deduping / snooze
-- P2: Rename check inline from detail header
+- P2: Airtable multi-page (offset) for tables > 100 records

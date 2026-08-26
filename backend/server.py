@@ -120,16 +120,20 @@ class Expectations(BaseModel):
 class CheckCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     connector_kind: str = "http_json"
-    config: HttpConfig
+    config: dict  # shape depends on connector_kind; validated per-connector
     expectations: Expectations = Expectations()
     alert_slack_webhook: Optional[str] = None
 
 class CheckUpdate(BaseModel):
     name: Optional[str] = None
-    config: Optional[HttpConfig] = None
+    connector_kind: Optional[str] = None
+    config: Optional[dict] = None
     expectations: Optional[Expectations] = None
     alert_slack_webhook: Optional[str] = None
     clear_alert_slack: Optional[bool] = False
+
+class SnoozeIn(BaseModel):
+    hours: int = Field(ge=1, le=168)  # cap at a week
 
 # ---------- Auth ----------
 @api.post("/auth/register")
@@ -162,17 +166,57 @@ async def me(user: dict = Depends(get_current_user)):
     return user
 
 # ---------- Check CRUD ----------
+RETRY_DELAY_SECONDS = int(os.environ.get("VR_RETRY_DELAY_SECONDS", "30"))
+
+def _prepare_config_for_storage(kind: str, cfg_in: dict, existing_cfg: Optional[dict] = None) -> dict:
+    """Validate + normalise a config dict per connector, encrypting secrets and
+    preserving previously encrypted values when the client omits them."""
+    existing_cfg = existing_cfg or {}
+    if kind == "http_json":
+        url = (cfg_in or {}).get("url")
+        if not isinstance(url, str) or not url.strip():
+            raise HTTPException(400, "config.url is required for http_json")
+        out: dict = {"url": url.strip(), "json_path": (cfg_in.get("json_path") or None)}
+        plain = cfg_in.get("bearer_token")
+        if plain:
+            out["bearer_token_encrypted"] = encrypt_secret(plain)
+        elif existing_cfg.get("bearer_token_encrypted"):
+            out["bearer_token_encrypted"] = existing_cfg["bearer_token_encrypted"]
+        return out
+    if kind == "airtable":
+        base_id = (cfg_in or {}).get("base_id")
+        table = (cfg_in or {}).get("table")
+        if not isinstance(base_id, str) or not base_id.strip():
+            raise HTTPException(400, "config.base_id is required for airtable")
+        if not isinstance(table, str) or not table.strip():
+            raise HTTPException(400, "config.table is required for airtable")
+        out = {"base_id": base_id.strip(), "table": table.strip(), "view": (cfg_in.get("view") or None)}
+        plain = cfg_in.get("personal_access_token")
+        if plain:
+            out["pat_encrypted"] = encrypt_secret(plain)
+        elif existing_cfg.get("pat_encrypted"):
+            out["pat_encrypted"] = existing_cfg["pat_encrypted"]
+        return out
+    raise HTTPException(400, f"Unknown connector kind: {kind}")
+
+def _sanitize_config(kind: str, cfg: dict) -> dict:
+    out = {**(cfg or {})}
+    if kind == "http_json":
+        enc = out.pop("bearer_token_encrypted", None)
+        out["has_bearer_token"] = bool(enc)
+        if enc:
+            out["bearer_token_last4"] = mask_token(decrypt_secret(enc))
+    elif kind == "airtable":
+        enc = out.pop("pat_encrypted", None)
+        out["has_pat"] = bool(enc)
+        if enc:
+            out["pat_last4"] = mask_token(decrypt_secret(enc))
+    return out
+
 def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
     doc.pop("_id", None)
-    cfg = doc.get("config", {}) or {}
-    # never leak encrypted or plaintext token
-    enc = cfg.pop("bearer_token_encrypted", None)
-    if enc:
-        cfg["bearer_token_last4"] = mask_token(decrypt_secret(enc))
-        cfg["has_bearer_token"] = True
-    else:
-        cfg["has_bearer_token"] = False
-    doc["config"] = cfg
+    kind = doc.get("connector_kind", "http_json")
+    doc["config"] = _sanitize_config(kind, doc.get("config") or {})
     # Alert channels: never leak Slack webhook URL
     slack_enc = doc.pop("alert_slack_webhook_encrypted", None)
     if slack_enc:
@@ -181,10 +225,10 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
     else:
         doc["has_alert_slack"] = False
     # Public status: expose the token to the owner so they can share the URL
-    if doc.get("public_token"):
-        doc["is_public"] = True
-    else:
-        doc["is_public"] = False
+    doc["is_public"] = bool(doc.get("public_token"))
+    # Snooze
+    snooze_until = doc.get("snooze_until")
+    doc["is_snoozed"] = bool(snooze_until and snooze_until > now_iso())
     if not include_webhook_secret:
         doc.pop("webhook_secret", None)
     return doc
@@ -192,10 +236,7 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
 @api.post("/checks")
 async def create_check(payload: CheckCreate, user: dict = Depends(get_current_user)):
     cid = str(uuid.uuid4())
-    cfg = payload.config.model_dump()
-    plain_token = cfg.pop("bearer_token", None)
-    if plain_token:
-        cfg["bearer_token_encrypted"] = encrypt_secret(plain_token)
+    cfg = _prepare_config_for_storage(payload.connector_kind, payload.config)
     doc = {
         "id": cid,
         "user_id": user["id"],
@@ -243,14 +284,11 @@ async def update_check(check_id: str, payload: CheckUpdate, user: dict = Depends
         updates["name"] = payload.name
     if payload.expectations is not None:
         updates["expectations"] = payload.expectations.model_dump()
+    if payload.connector_kind is not None:
+        updates["connector_kind"] = payload.connector_kind
     if payload.config is not None:
-        cfg = payload.config.model_dump()
-        plain_token = cfg.pop("bearer_token", None)
-        if plain_token:
-            cfg["bearer_token_encrypted"] = encrypt_secret(plain_token)
-        elif c.get("config", {}).get("bearer_token_encrypted"):
-            cfg["bearer_token_encrypted"] = c["config"]["bearer_token_encrypted"]
-        updates["config"] = cfg
+        kind = payload.connector_kind or c.get("connector_kind", "http_json")
+        updates["config"] = _prepare_config_for_storage(kind, payload.config, c.get("config"))
     if payload.clear_alert_slack:
         updates["alert_slack_webhook_encrypted"] = None
     elif payload.alert_slack_webhook is not None and payload.alert_slack_webhook.strip():
@@ -276,6 +314,24 @@ async def delete_check(check_id: str, user: dict = Depends(get_current_user)):
     await db.checks.delete_one({"id": check_id})
     await db.check_runs.delete_many({"check_id": check_id})
     return {"ok": True}
+
+@api.post("/checks/{check_id}/snooze")
+async def snooze_check(check_id: str, payload: SnoozeIn, user: dict = Depends(get_current_user)):
+    c = await db.checks.find_one({"id": check_id, "user_id": user["id"]})
+    if not c:
+        raise HTTPException(404, "Check not found")
+    until = datetime.now(timezone.utc) + timedelta(hours=payload.hours)
+    until_iso = until.isoformat()
+    await db.checks.update_one({"id": check_id}, {"$set": {"snooze_until": until_iso}})
+    return {"snooze_until": until_iso, "is_snoozed": True}
+
+@api.delete("/checks/{check_id}/snooze")
+async def wake_check(check_id: str, user: dict = Depends(get_current_user)):
+    c = await db.checks.find_one({"id": check_id, "user_id": user["id"]})
+    if not c:
+        raise HTTPException(404, "Check not found")
+    await db.checks.update_one({"id": check_id}, {"$unset": {"snooze_until": ""}})
+    return {"is_snoozed": False}
 
 @api.post("/checks/{check_id}/public")
 async def enable_public(check_id: str, user: dict = Depends(get_current_user)):
@@ -450,14 +506,75 @@ def _compute_verdict(fp: dict, prev_passes: List[dict], expectations: dict) -> t
         return "PASS", f"First successful check. Destination has {fp['record_count']} records across {len(fp['fields'])} fields."
     return "PASS", f"Destination gained {delta} record(s). All expectations met."
 
-async def execute_check(check_id: str, trigger: str, run_id: str):
+async def _fetch_records(kind: str, cfg: dict):
+    """Return (records, error_message, error_details). If records is None, error_message is set."""
+    if kind == "http_json":
+        url = cfg.get("url")
+        headers = {}
+        enc = cfg.get("bearer_token_encrypted")
+        if enc:
+            plain = decrypt_secret(enc)
+            if plain:
+                headers["Authorization"] = f"Bearer {plain}"
+        json_path = cfg.get("json_path") or None
+        async with httpx.AsyncClient(timeout=20.0) as hc:
+            resp = await hc.get(url, headers=headers)
+        if resp.status_code >= 400:
+            return None, f"Destination fetch failed with HTTP {resp.status_code}.", resp.text[:500]
+        try:
+            body = resp.json()
+        except Exception:
+            return None, "Destination did not return valid JSON.", None
+        records = _get_records(body, json_path)
+        if records is None:
+            return None, f"Could not find an array of records at path `{json_path or '(root)'}`.", None
+        return records, None, None
+
+    if kind == "airtable":
+        from urllib.parse import quote
+        base_id = cfg.get("base_id")
+        table = cfg.get("table")
+        view = cfg.get("view")
+        headers = {}
+        enc = cfg.get("pat_encrypted")
+        if enc:
+            plain = decrypt_secret(enc)
+            if plain:
+                headers["Authorization"] = f"Bearer {plain}"
+        url = f"https://api.airtable.com/v0/{base_id}/{quote(table, safe='')}?maxRecords=100"
+        if view:
+            url += f"&view={quote(view, safe='')}"
+        async with httpx.AsyncClient(timeout=20.0) as hc:
+            resp = await hc.get(url, headers=headers)
+        if resp.status_code >= 400:
+            return None, f"Airtable fetch failed with HTTP {resp.status_code}.", resp.text[:500]
+        try:
+            body = resp.json()
+        except Exception:
+            return None, "Airtable did not return valid JSON.", None
+        raw = body.get("records") if isinstance(body, dict) else None
+        if not isinstance(raw, list):
+            return None, "Airtable response is missing the `records` array.", None
+        flat = []
+        for r in raw:
+            if not isinstance(r, dict):
+                continue
+            row = {"id": r.get("id"), "createdTime": r.get("createdTime")}
+            fields = r.get("fields") or {}
+            if isinstance(fields, dict):
+                row.update(fields)
+            flat.append(row)
+        return flat, None, None
+
+    return None, f"Unknown connector kind: {kind}", None
+
+
+async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool = False):
     c = await db.checks.find_one({"id": check_id})
     if not c:
         return
-    cfg = c.get("config", {})
-    url = cfg.get("url")
-    token_cipher = cfg.get("bearer_token_encrypted")
-    json_path = cfg.get("json_path") or None
+    kind = c.get("connector_kind", "http_json")
+    cfg = c.get("config", {}) or {}
     expectations = c.get("expectations", {}) or {}
 
     verdict = "FAIL"
@@ -466,36 +583,18 @@ async def execute_check(check_id: str, trigger: str, run_id: str):
     error_details: Optional[str] = None
 
     try:
-        headers = {}
-        if token_cipher:
-            plain = decrypt_secret(token_cipher)
-            if plain:
-                headers["Authorization"] = f"Bearer {plain}"
-        async with httpx.AsyncClient(timeout=20.0) as hc:
-            resp = await hc.get(url, headers=headers)
-        if resp.status_code >= 400:
+        records, err_msg, err_body = await _fetch_records(kind, cfg)
+        if records is None:
             verdict = "FAIL"
-            message = f"Destination fetch failed with HTTP {resp.status_code}."
-            error_details = resp.text[:500]
+            message = err_msg or "Destination fetch failed."
+            error_details = err_body
         else:
-            try:
-                body = resp.json()
-            except Exception:
-                verdict = "FAIL"
-                message = "Destination did not return valid JSON."
-                body = None
-            if body is not None:
-                records = _get_records(body, json_path)
-                if records is None:
-                    verdict = "FAIL"
-                    message = f"Could not find an array of records at path `{json_path or '(root)'}`."
-                else:
-                    fp = _fingerprint(records)
-                    prev = await db.check_runs.find(
-                        {"check_id": check_id, "verdict": "PASS"}, {"_id": 0}
-                    ).sort("timestamp", -1).limit(30).to_list(30)
-                    prev.reverse()
-                    verdict, message = _compute_verdict(fp, prev, expectations)
+            fp = _fingerprint(records)
+            prev = await db.check_runs.find(
+                {"check_id": check_id, "verdict": "PASS"}, {"_id": 0}
+            ).sort("timestamp", -1).limit(30).to_list(30)
+            prev.reverse()
+            verdict, message = _compute_verdict(fp, prev, expectations)
     except httpx.HTTPError as e:
         verdict = "FAIL"
         message = f"Destination fetch error: {type(e).__name__}."
@@ -515,37 +614,55 @@ async def execute_check(check_id: str, trigger: str, run_id: str):
         "diff_message": message,
         "fingerprint": fp,
         "error_details": error_details,
+        "is_retry": is_retry,
     }
     await db.check_runs.insert_one(run_doc)
-    # Fire alerts asynchronously — never let a failure here affect the run itself
+
+    # Decide alert routing (retry + snooze aware) — never let alert paths fail the run
     try:
-        await _maybe_alert(c, run_doc)
+        last_alerted = c.get("last_alerted_verdict")
+        snoozed = bool(c.get("snooze_until") and c["snooze_until"] > now_iso())
+        would_be_fresh_fail = (verdict == "FAIL" and last_alerted != "FAIL")
+        if (not is_retry) and would_be_fresh_fail and not snoozed:
+            # Retry once before waking anyone — schedule a delayed re-run
+            asyncio.create_task(_schedule_retry(check_id))
+        else:
+            await _maybe_alert(c, run_doc, snoozed=snoozed)
     except Exception:
-        log.exception("alert dispatch failed for run %s", run_id)
+        log.exception("post-run alert routing failed for run %s", run_id)
 
 
-async def _maybe_alert(check_doc: dict, run: dict):
-    """Send Slack alert on FAIL, or a 'recovered' message when a FAIL streak ends."""
+async def _schedule_retry(check_id: str):
+    try:
+        await asyncio.sleep(RETRY_DELAY_SECONDS)
+        await execute_check(check_id, "retry", str(uuid.uuid4()), is_retry=True)
+    except Exception:
+        log.exception("retry scheduling failed for check %s", check_id)
+
+
+async def _maybe_alert(check_doc: dict, run: dict, snoozed: bool = False):
+    """Alert on state transitions using last_alerted_verdict tracked on the check."""
     slack_enc = check_doc.get("alert_slack_webhook_encrypted")
     if not slack_enc:
         return
-    verdict = run["verdict"]
-    # Find the previous run (before this one) to decide FAIL / recovery
-    prev = await db.check_runs.find(
-        {"check_id": check_doc["id"], "id": {"$ne": run["id"]}}, {"_id": 0, "verdict": 1}
-    ).sort("timestamp", -1).limit(1).to_list(1)
-    prev_verdict = prev[0]["verdict"] if prev else None
+    if snoozed:
+        log.info("alerts snoozed for check %s until %s", check_doc.get("id"), check_doc.get("snooze_until"))
+        return
 
-    should_send = False
+    verdict = run["verdict"]
+    # Re-read the check to get the latest last_alerted_verdict (a concurrent retry may have updated it)
+    fresh = await db.checks.find_one({"id": check_doc["id"]}, {"_id": 0, "last_alerted_verdict": 1})
+    last_alerted = (fresh or {}).get("last_alerted_verdict")
+
     header = ""
-    if verdict == "FAIL" and prev_verdict != "FAIL":
-        # PASS→FAIL or first-ever FAIL: alert. FAIL→FAIL is suppressed (dedup within a streak).
-        should_send = True
+    new_last_alerted = last_alerted
+    if verdict == "FAIL" and last_alerted != "FAIL":
         header = f":rotating_light: *FAIL* — {check_doc.get('name')}"
-    elif verdict == "PASS" and prev_verdict == "FAIL":
-        should_send = True
+        new_last_alerted = "FAIL"
+    elif verdict == "PASS" and last_alerted == "FAIL":
         header = f":white_check_mark: *Recovered* — {check_doc.get('name')}"
-    if not should_send:
+        new_last_alerted = "PASS"
+    else:
         return
 
     slack_url = decrypt_secret(slack_enc)
@@ -553,11 +670,7 @@ async def _maybe_alert(check_doc: dict, run: dict):
         return
     app_url = os.environ.get("PUBLIC_APP_URL", "").rstrip("/")
     detail_link = f"{app_url}/checks/{check_doc['id']}" if app_url else ""
-    text = (
-        f"{header}\n"
-        f"{run['diff_message']}\n"
-        f"_At {run['timestamp']}_"
-    )
+    text = f"{header}\n{run['diff_message']}\n_At {run['timestamp']}_"
     if detail_link:
         text += f"\n<{detail_link}|Open in VerifyRuns>"
     try:
@@ -567,6 +680,8 @@ async def _maybe_alert(check_doc: dict, run: dict):
             log.warning("Slack alert non-2xx: %s %s", resp.status_code, resp.text[:200])
     except Exception:
         log.exception("Slack alert POST failed")
+    # Persist state only after a delivery attempt so we never dedup a truly un-sent alert
+    await db.checks.update_one({"id": check_doc["id"]}, {"$set": {"last_alerted_verdict": new_last_alerted}})
 
 # ---------- Startup ----------
 @app.on_event("startup")
