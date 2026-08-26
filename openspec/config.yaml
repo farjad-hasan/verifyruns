@@ -1,0 +1,34 @@
+schema: spec-driven
+
+context: |
+  VerifyRuns — "Your automation said Done. VerifyRuns checks if that's true."
+  Re-reads the destination (HTTP/JSON, Airtable, Postgres) after an n8n/Make/
+  Zapier run pings a per-Check webhook, fingerprints it, diffs against the last
+  30 PASS runs, and issues PASS/FAIL with a plain-English diff. Slack alerts
+  on state transitions.
+
+  Stack: single-file FastAPI backend (backend/server.py) + Motor/MongoDB;
+  React 19 + react-router 7 + Tailwind + shadcn/ui frontend (CRA + craco).
+  Runtime env: MONGO_URL, DB_NAME, JWT_SECRET, FERNET_KEY, PUBLIC_APP_URL,
+  CORS_ORIGINS. Secrets are Fernet-encrypted at rest and masked to last 4.
+
+  Hosting: built and deployed on Emergent (app.emergent.sh) for the Builder
+  Fest contest (closes 2026-08-31 23:59 ET). The Emergent agent reads
+  memory/PRD.md; Claude Code reads openspec/ via .claude/. Nothing in the app
+  imports Emergent-specific packages — it is portable to Railway/Render/Fly.
+
+  Baseline specs in openspec/specs/ describe the code AS IT IS, including known
+  defects; the fix for each defect lives in openspec/changes/<name>/ as a delta.
+  Source review: farjad-world docs/research/2026-08-26-verifyruns-viability.md.
+
+rules:
+  proposal:
+    - Under 400 words. State the user-visible symptom before the mechanism.
+    - Deferred changes (post-contest) name the activation trigger in "Why".
+  specs:
+    - Scenarios use exactly four hashtags (#### Scenario:) with WHEN/THEN.
+    - MODIFIED requirements copy the entire existing block, then edit.
+  tasks:
+    - Any task touching _fingerprint or _compute_verdict adds pure-function
+      tests in backend/tests/ in the same change.
+    - Last task group is always "Verify on Emergent preview, then publish".

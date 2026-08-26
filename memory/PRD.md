@@ -26,7 +26,7 @@ Tagline: "Your automation said Done. RunProof checks if that's true."
 - `checks` { id, user_id, name, connector_kind, config { url, bearer_token_encrypted?, json_path? }, expectations { min_new_records, required_fields, non_empty_fields }, webhook_secret (unique), created_at }
 - `check_runs` { id, check_id, timestamp, trigger, verdict, diff_message, fingerprint { record_count, fields, newest_record, null_pct }, error_details }
 
-## Implemented (2026-02)
+## Implemented (2026-08)
 - Landing page: hero, problem, how-it-works, CTA, footer
 - Email + password auth (register, login, /me, logout on client)
 - Dashboard: checks list with 30-run timeline strips, empty state, 10s live polling, health summary strip, "Snoozed" tag on rows
@@ -41,7 +41,18 @@ Tagline: "Your automation said Done. RunProof checks if that's true."
 - Public status page: `POST/DELETE /api/checks/{id}/public` + unauthenticated `GET /api/public/checks/{token}` — no config/secrets/fingerprint leaked; frontend route `/status/:token`
 - Snooze: `POST/DELETE /api/checks/{id}/snooze` with hours cap of 168; UI dropdown in detail header
 
-## Backlog / Next
+## Roadmap and specs — OpenSpec (added 2026-08-26)
+The source of truth for behaviour and planned work is `openspec/`:
+- `openspec/specs/<capability>/spec.md` — current behaviour as built, defects included.
+- `openspec/changes/<name>/` — one folder per planned change: `proposal.md` (why),
+  `design.md` (how), `specs/` (requirement deltas), `tasks.md` (checkboxes).
+Before implementing anything, read the matching change's `tasks.md` and work
+through its checkboxes in order; the last group is always "verify on preview,
+then publish". Run `openspec validate --all --strict` after editing specs.
+Apply-ready now: `fix-record-cap-paging` (do first — tables ≥100 rows FAIL
+forever today), `claimed-count-reconciliation`, `deterministic-newest-record`.
+
+## Backlog / Next (superseded by openspec/changes/ — kept for history)
 - P1: Postgres connector (typed config already supports it)
 - P1: Email alerts (requires a platform-built-in email mechanism)
 - P2: Discord webhook alerts (same shape as Slack)
