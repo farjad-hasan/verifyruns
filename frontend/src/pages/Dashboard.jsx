@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import Nav from "../components/Nav";
+import { connectorLabel } from "./CheckDetail";
 import Timeline from "../components/Timeline";
 import { Plus, Globe, ArrowRight } from "lucide-react";
 
@@ -66,7 +67,7 @@ export default function Dashboard() {
                       )}
                     </div>
                     <p className="text-xs text-zinc-500 font-mono flex items-center gap-1.5">
-                      <Globe size={11} /> {c.connector_kind === "airtable" ? "Airtable" : "HTTP / JSON"}
+                      <Globe size={11} /> {connectorLabel(c.connector_kind)}
                     </p>
                   </div>
                   <div className="hidden sm:block">

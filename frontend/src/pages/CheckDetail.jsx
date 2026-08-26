@@ -101,7 +101,7 @@ export default function CheckDetail() {
         <div className="flex flex-wrap items-start justify-between gap-4 mb-2">
           <div className="min-w-0 flex-1">
             <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">
-              {check.connector_kind === "airtable" ? "Airtable check" : "HTTP / JSON check"}
+              {connectorLabel(check.connector_kind)} check
             </p>
             <CheckNameHeader check={check} onSaved={load} />
           </div>
@@ -158,7 +158,15 @@ export default function CheckDetail() {
           <div className="rp-card p-6 sm:p-8">
             <p className="font-display text-lg mb-4">Destination</p>
             <dl className="space-y-3 text-sm">
-              {check.connector_kind === "airtable" ? (
+              {check.connector_kind === "postgres" ? (
+                <>
+                  <Row k="Connection" v={check.config?.has_dsn ? check.config?.dsn_last4 : "(none)"} mono />
+                  <div>
+                    <dt className="text-xs uppercase tracking-widest text-zinc-500 mb-1">Query</dt>
+                    <dd className="mono-block whitespace-pre-wrap break-words text-xs" data-testid="check-query">{check.config?.query}</dd>
+                  </div>
+                </>
+              ) : check.connector_kind === "airtable" ? (
                 <>
                   <Row k="Base ID" v={check.config?.base_id} mono />
                   <Row k="Table" v={check.config?.table} mono />
@@ -250,6 +258,11 @@ function formatDate(iso) {
   } catch {
     return iso;
   }
+}
+
+const CONNECTOR_LABELS = { http_json: "HTTP / JSON", airtable: "Airtable", postgres: "Postgres" };
+export function connectorLabel(kind) {
+  return CONNECTOR_LABELS[kind] || "HTTP / JSON";
 }
 
 function RunPanel({ run, previousPassFingerprint, onClose }) {
