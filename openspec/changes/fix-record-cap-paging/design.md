@@ -16,7 +16,7 @@
 
 ## Decisions
 
-- **Return `(records, total)` from `_fetch_records`, not a bigger list.** Alternative: page everything into memory and `len()` it — simple but unbounded for Postgres. Returning a separate total keeps memory bounded and lets HTTP/JSON keep `total = len(records)`.
+- **Return `(records, meta, error, details)` from `_fetch_records`, where `meta = {total, capped, count_estimated}`** (implemented 2026-08-27; a dict rather than a bare total so the flags travel with the count). Alternative: page everything into memory and `len()` it — simple but unbounded for Postgres. Returning a separate total keeps memory bounded and lets HTTP/JSON keep `total = len(records)`.
 - **Airtable: page with `offset`, cap at `VR_AIRTABLE_MAX_RECORDS` (default 10,000).** Airtable has no count endpoint, so paging is the only way; the cap protects against runaway bases and is reported in the diff when hit ("count capped at 10,000").
 - **Postgres: two statements in one read-only session** — `SELECT COUNT(*) FROM (<q>) AS _vr` then `SELECT * FROM (<q>) AS _vr LIMIT 100`. Alternative: window function `COUNT(*) OVER()` in one query — fewer round-trips but breaks on queries that already use aggregates. Two statements is robust and the guard already forbids semicolons in `q`.
 - **Fingerprint adds `sample_size`.** Shown in the run panel as "N records (M sampled)" when they differ. Old runs without the field render as before.
@@ -26,3 +26,9 @@
 - [First post-deploy run shows a large positive delta against a capped baseline] → PASS; message says "Destination gained N record(s)" — no false FAIL, one odd-looking bar.
 - [Airtable rate limit (5 req/s/base) on big bases] → sequential paging with the httpx client; 10,000 rows = 100 requests ≈ 20 s, inside the 20 s timeout only if raised per-page; set per-request timeout 20 s, overall budget 60 s.
 - [COUNT(*) on a heavy query is slow] → 15 s statement timeout via `SET statement_timeout`; on timeout fall back to sample length and mark `count_estimated: true`.
+
+## Implementation notes (2026-08-27)
+
+- Outbound HTTP goes through `_http_client()` so tests inject `httpx.MockTransport`; Airtable paging and the ceiling are unit-verified against a fake paged API (no live base available locally).
+- Postgres is verified end-to-end against Docker `postgres:16`: 5,000-row query → `record_count 5000`, `sample_size 100`; COUNT timeout (`VR_PG_COUNT_TIMEOUT_MS`) falls back to the sample length with `count_estimated`.
+- Run documents carry `count_capped` / `count_estimated`; `_annotate_count` appends the explanation to the diff message.

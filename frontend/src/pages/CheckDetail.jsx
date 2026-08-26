@@ -271,6 +271,26 @@ function RunPanel({ run, previousPassFingerprint, onClose }) {
           <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">When</p>
           <p className="text-zinc-300 font-mono text-sm mb-8">{formatDate(run.timestamp)} · {run.trigger}</p>
 
+          {run.fingerprint && typeof run.fingerprint.record_count === "number" && (
+            <>
+              <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Records</p>
+              <p className="text-zinc-300 font-mono text-sm mb-8 flex flex-wrap items-center gap-2" data-testid="run-record-count">
+                <span>
+                  {run.fingerprint.record_count.toLocaleString()} records
+                  {typeof run.fingerprint.sample_size === "number" && run.fingerprint.sample_size < run.fingerprint.record_count
+                    ? ` (${run.fingerprint.sample_size.toLocaleString()} sampled)`
+                    : ""}
+                </span>
+                {run.count_capped && (
+                  <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-amber-500/40 text-amber-400" title="The read stopped at the configured ceiling; the destination has at least this many records.">count capped</span>
+                )}
+                {run.count_estimated && (
+                  <span className="text-[10px] uppercase tracking-wider px-2 py-0.5 rounded border border-amber-500/40 text-amber-400" title="The full count timed out; this is the sample length.">count estimated</span>
+                )}
+              </p>
+            </>
+          )}
+
           {diff && (
             <>
               <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Diff vs last PASS</p>

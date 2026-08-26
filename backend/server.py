@@ -11,6 +11,7 @@ import uuid
 import secrets
 import logging
 import asyncio
+import time
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Any
 
@@ -170,6 +171,17 @@ async def me(user: dict = Depends(get_current_user)):
 
 # ---------- Check CRUD ----------
 RETRY_DELAY_SECONDS = int(os.environ.get("VR_RETRY_DELAY_SECONDS", "30"))
+AIRTABLE_PAGE_SIZE = 100
+AIRTABLE_MAX_RECORDS = int(os.environ.get("VR_AIRTABLE_MAX_RECORDS", "10000"))
+AIRTABLE_FETCH_BUDGET_S = float(os.environ.get("VR_AIRTABLE_FETCH_BUDGET_S", "60"))
+PG_SAMPLE_LIMIT = 100
+PG_COUNT_TIMEOUT_MS = int(os.environ.get("VR_PG_COUNT_TIMEOUT_MS", "15000"))
+PG_SAMPLE_TIMEOUT_MS = int(os.environ.get("VR_PG_SAMPLE_TIMEOUT_MS", "15000"))
+
+
+def _http_client() -> httpx.AsyncClient:
+    """Single place to build the outbound client (tests swap the transport)."""
+    return httpx.AsyncClient(timeout=20.0)
 
 def _prepare_config_for_storage(kind: str, cfg_in: dict, existing_cfg: Optional[dict] = None) -> dict:
     """Validate + normalise a config dict per connector, encrypting secrets and
@@ -466,7 +478,9 @@ def _is_empty(v: Any) -> bool:
         return True
     return False
 
-def _fingerprint(records: List[dict]) -> dict:
+def _fingerprint(records: List[dict], total: Optional[int] = None) -> dict:
+    """`records` is the inspected sample; `total` is the destination's true
+    record count when the connector knows it (defaults to the sample length)."""
     count = len(records)
     fields: set = set()
     for r in records:
@@ -479,7 +493,8 @@ def _fingerprint(records: List[dict]) -> dict:
             null_pct[f] = round((empties / count) * 100, 1)
     newest = records[-1] if records else None
     return {
-        "record_count": count,
+        "record_count": total if total is not None else count,
+        "sample_size": count,
         "fields": field_list,
         "newest_record": newest,
         "null_pct": null_pct,
@@ -544,8 +559,26 @@ def _compute_verdict(fp: dict, prev_passes: List[dict], expectations: dict) -> t
         return "PASS", f"First successful check. Destination has {fp['record_count']} records across {len(fp['fields'])} fields."
     return "PASS", f"Destination gained {delta} record(s). All expectations met."
 
+def _annotate_count(message: str, meta: dict) -> str:
+    """Append what the count means when it is not a plain true count."""
+    if meta.get("capped"):
+        message += f" Count capped at {AIRTABLE_MAX_RECORDS:,} records."
+    if meta.get("count_estimated"):
+        message += " Count estimated from the sample (the full count timed out)."
+    return message
+
+
+def _meta(total: int, capped: bool = False, count_estimated: bool = False) -> dict:
+    return {"total": total, "capped": capped, "count_estimated": count_estimated}
+
+
 async def _fetch_records(kind: str, cfg: dict):
-    """Return (records, error_message, error_details). If records is None, error_message is set."""
+    """Return (records, meta, error_message, error_details).
+
+    `records` is the sample to fingerprint; `meta["total"]` is the true record
+    count (`capped` when a ceiling stopped the read, `count_estimated` when the
+    count fell back to the sample length). If records is None, error_message is set.
+    """
     if kind == "http_json":
         url = cfg.get("url")
         headers = {}
@@ -555,18 +588,18 @@ async def _fetch_records(kind: str, cfg: dict):
             if plain:
                 headers["Authorization"] = f"Bearer {plain}"
         json_path = cfg.get("json_path") or None
-        async with httpx.AsyncClient(timeout=20.0) as hc:
+        async with _http_client() as hc:
             resp = await hc.get(url, headers=headers)
         if resp.status_code >= 400:
-            return None, f"Destination fetch failed with HTTP {resp.status_code}.", resp.text[:500]
+            return None, None, f"Destination fetch failed with HTTP {resp.status_code}.", resp.text[:500]
         try:
             body = resp.json()
         except Exception:
-            return None, "Destination did not return valid JSON.", None
+            return None, None, "Destination did not return valid JSON.", None
         records = _get_records(body, json_path)
         if records is None:
-            return None, f"Could not find an array of records at path `{json_path or '(root)'}`.", None
-        return records, None, None
+            return None, None, f"Could not find an array of records at path `{json_path or '(root)'}`.", None
+        return records, _meta(len(records)), None, None
 
     if kind == "airtable":
         from urllib.parse import quote
@@ -579,47 +612,71 @@ async def _fetch_records(kind: str, cfg: dict):
             plain = decrypt_secret(enc)
             if plain:
                 headers["Authorization"] = f"Bearer {plain}"
-        url = f"https://api.airtable.com/v0/{base_id}/{quote(table, safe='')}?maxRecords=100"
+        url = f"https://api.airtable.com/v0/{base_id}/{quote(table, safe='')}"
+        params: dict = {"pageSize": AIRTABLE_PAGE_SIZE}
         if view:
-            url += f"&view={quote(view, safe='')}"
-        async with httpx.AsyncClient(timeout=20.0) as hc:
-            resp = await hc.get(url, headers=headers)
-        if resp.status_code >= 400:
-            return None, f"Airtable fetch failed with HTTP {resp.status_code}.", resp.text[:500]
-        try:
-            body = resp.json()
-        except Exception:
-            return None, "Airtable did not return valid JSON.", None
-        raw = body.get("records") if isinstance(body, dict) else None
-        if not isinstance(raw, list):
-            return None, "Airtable response is missing the `records` array.", None
-        flat = []
-        for r in raw:
-            if not isinstance(r, dict):
-                continue
-            row = {"id": r.get("id"), "createdTime": r.get("createdTime")}
-            fields = r.get("fields") or {}
-            if isinstance(fields, dict):
-                row.update(fields)
-            flat.append(row)
-        return flat, None, None
+            params["view"] = view
+        flat: List[dict] = []
+        capped = False
+        offset: Optional[str] = None
+        started = time.monotonic()
+        async with _http_client() as hc:
+            while True:
+                if offset:
+                    params["offset"] = offset
+                resp = await hc.get(url, headers=headers, params=params)
+                if resp.status_code >= 400:
+                    return None, None, f"Airtable fetch failed with HTTP {resp.status_code}.", resp.text[:500]
+                try:
+                    body = resp.json()
+                except Exception:
+                    return None, None, "Airtable did not return valid JSON.", None
+                raw = body.get("records") if isinstance(body, dict) else None
+                if not isinstance(raw, list):
+                    return None, None, "Airtable response is missing the `records` array.", None
+                for r in raw:
+                    if not isinstance(r, dict):
+                        continue
+                    row = {"id": r.get("id"), "createdTime": r.get("createdTime")}
+                    fields = r.get("fields") or {}
+                    if isinstance(fields, dict):
+                        row.update(fields)
+                    flat.append(row)
+                offset = body.get("offset") if isinstance(body, dict) else None
+                if not offset:
+                    break
+                if len(flat) >= AIRTABLE_MAX_RECORDS or (time.monotonic() - started) > AIRTABLE_FETCH_BUDGET_S:
+                    capped = True
+                    break
+        if capped:
+            flat = flat[:AIRTABLE_MAX_RECORDS]
+        return flat, _meta(len(flat), capped=capped), None, None
 
     if kind == "postgres":
         dsn_enc = cfg.get("dsn_encrypted")
         query = cfg.get("query")
         if not dsn_enc or not query:
-            return None, "Postgres config is missing DSN or query.", None
+            return None, None, "Postgres config is missing DSN or query.", None
         dsn = decrypt_secret(dsn_enc)
         conn = None
+        total: Optional[int] = None
+        count_estimated = False
         try:
             conn = await asyncpg.connect(dsn=dsn, timeout=15.0)
             # Enforce read-only at the session level as a second line of defence
             await conn.execute("SET default_transaction_read_only = on")
-            rows = await conn.fetch(f"SELECT * FROM ({query}) AS _vr LIMIT 100")
+            # True count first, on its own timeout; fall back to the sample length if it is too slow
+            await conn.execute(f"SET statement_timeout = {int(PG_COUNT_TIMEOUT_MS)}")
+            try:
+                total = int(await conn.fetchval(f"SELECT COUNT(*) FROM ({query}) AS _vr"))
+            except asyncpg.QueryCanceledError:
+                count_estimated = True
+            await conn.execute(f"SET statement_timeout = {int(PG_SAMPLE_TIMEOUT_MS)}")
+            rows = await conn.fetch(f"SELECT * FROM ({query}) AS _vr LIMIT {PG_SAMPLE_LIMIT}")
         except asyncpg.PostgresError as e:
-            return None, f"Postgres query failed: {type(e).__name__}.", str(e)[:500]
+            return None, None, f"Postgres query failed: {type(e).__name__}.", str(e)[:500]
         except Exception as e:
-            return None, f"Postgres connection error: {type(e).__name__}.", str(e)[:500]
+            return None, None, f"Postgres connection error: {type(e).__name__}.", str(e)[:500]
         finally:
             if conn is not None:
                 try:
@@ -636,9 +693,11 @@ async def _fetch_records(kind: str, cfg: dict):
                 else:
                     row[k] = str(v)
             flat.append(row)
-        return flat, None, None
+        if total is None:
+            total = len(flat)
+        return flat, _meta(total, count_estimated=count_estimated), None, None
 
-    return None, f"Unknown connector kind: {kind}", None
+    return None, None, f"Unknown connector kind: {kind}", None
 
 
 async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool = False):
@@ -651,22 +710,25 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
 
     verdict = "FAIL"
     message = ""
-    fp: dict = {"record_count": 0, "fields": [], "newest_record": None, "null_pct": {}}
+    fp: dict = {"record_count": 0, "sample_size": 0, "fields": [], "newest_record": None, "null_pct": {}}
     error_details: Optional[str] = None
+    meta: dict = _meta(0)
 
     try:
-        records, err_msg, err_body = await _fetch_records(kind, cfg)
+        records, fetched_meta, err_msg, err_body = await _fetch_records(kind, cfg)
         if records is None:
             verdict = "FAIL"
             message = err_msg or "Destination fetch failed."
             error_details = err_body
         else:
-            fp = _fingerprint(records)
+            meta = fetched_meta or _meta(len(records))
+            fp = _fingerprint(records, meta["total"])
             prev = await db.check_runs.find(
                 {"check_id": check_id, "verdict": "PASS"}, {"_id": 0}
             ).sort("timestamp", -1).limit(30).to_list(30)
             prev.reverse()
             verdict, message = _compute_verdict(fp, prev, expectations)
+            message = _annotate_count(message, meta)
     except httpx.HTTPError as e:
         verdict = "FAIL"
         message = f"Destination fetch error: {type(e).__name__}."
@@ -687,6 +749,8 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
         "fingerprint": fp,
         "error_details": error_details,
         "is_retry": is_retry,
+        "count_capped": bool(meta.get("capped")),
+        "count_estimated": bool(meta.get("count_estimated")),
     }
     await db.check_runs.insert_one(run_doc)
 

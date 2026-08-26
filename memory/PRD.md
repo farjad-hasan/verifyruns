@@ -49,11 +49,12 @@ The source of truth for behaviour and planned work is `openspec/`:
 Before implementing anything, read the matching change's `tasks.md` and work
 through its checkboxes in order; the last group is always "verify on preview,
 then publish". Run `openspec validate --all --strict` after editing specs.
-Apply-ready now: `fix-record-cap-paging` (do first — tables ≥100 rows FAIL
-forever today), `claimed-count-reconciliation`, `deterministic-newest-record`.
+Done: `fix-record-cap-paging` (2026-08-27). Apply-ready: `claimed-count-reconciliation`,
+`deterministic-newest-record`. Development is local since 2026-08-27 (Emergent credits
+exhausted): Docker Mongo :27017, Postgres :5434, uvicorn :8000, craco :3100.
 
 ## Backlog / Next (superseded by openspec/changes/ — kept for history)
 - P1: Postgres connector (typed config already supports it)
 - P1: Email alerts (requires a platform-built-in email mechanism)
 - P2: Discord webhook alerts (same shape as Slack)
-- P2: Airtable multi-page (offset) for tables > 100 records
+- ~~P2: Airtable multi-page (offset) for tables > 100 records~~ — done 2026-08-27 (`fix-record-cap-paging`): Airtable pages via `offset`, Postgres uses `COUNT(*)`; fingerprints carry `sample_size`
