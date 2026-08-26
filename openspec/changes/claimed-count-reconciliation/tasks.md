@@ -22,3 +22,7 @@
 - [x] 4.2 `min_new_records: 0` and no body → PASS (test_growth_optional_when_min_is_zero_and_no_claim)
 - [x] 4.3 Full suite green (54 + new); production build compiles; editor + snippet checked in Edge
 - [x] 4.4 Commit; push; update `memory/PRD.md`
+
+## Errata
+
+- Commit `49bd974` says "17 new tests; suite at 71 green". Verified after the fact: **18 new tests (13 pure, 5 API); suite at 54 passed + 1 skipped.** The number was written before the run — do not trust test counts in commit messages that were not pasted from pytest output.
