@@ -362,6 +362,19 @@ function RunPanel({ run, previousPassFingerprint, onClose }) {
           <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Fingerprint</p>
           <div className="mono-block mb-8">{JSON.stringify(run.fingerprint, null, 2)}</div>
 
+          {run.sample ? (
+            <>
+              <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Sample · expires {formatDate(run.sample.expires_at)}</p>
+              <div className="mono-block mb-8" data-testid="run-sample">{JSON.stringify({ newest_record: run.sample.newest_record, newest_window: run.sample.newest_window, error_details: run.sample.error_details }, null, 2)}</div>
+            </>
+          ) : (
+            run.fingerprint && "sample_stored" in run.fingerprint && (
+              <p className="text-xs text-zinc-500 mb-8" data-testid="run-sample-note">
+                Destination rows are not stored for this run — only a hash of the newest record. Turn on "Store raw samples" in Expectations to keep them for 30 days.
+              </p>
+            )
+          )}
+
           {run.error_details && (
             <>
               <p className="text-xs uppercase tracking-widest text-red-400 mb-2">Error details</p>
@@ -474,6 +487,7 @@ function ExpectationsCard({ check, onSaved }) {
   const [minNew, setMinNew] = useState(check.expectations?.min_new_records ?? 1);
   const [mode, setMode] = useState(check.expectations?.growth_mode || "growth");
   const [heartbeat, setHeartbeat] = useState(check.heartbeat_hours ?? "");
+  const [storeSamples, setStoreSamples] = useState(!!check.store_samples);
   const [required, setRequired] = useState((check.expectations?.required_fields || []).join(", "));
   const [nonEmpty, setNonEmpty] = useState((check.expectations?.non_empty_fields || []).join(", "));
   const [busy, setBusy] = useState(false);
@@ -482,6 +496,7 @@ function ExpectationsCard({ check, onSaved }) {
     setMinNew(check.expectations?.min_new_records ?? 1);
     setMode(check.expectations?.growth_mode || "growth");
     setHeartbeat(check.heartbeat_hours ?? "");
+    setStoreSamples(!!check.store_samples);
     setRequired((check.expectations?.required_fields || []).join(", "));
     setNonEmpty((check.expectations?.non_empty_fields || []).join(", "));
     setEditing(true);
@@ -498,6 +513,7 @@ function ExpectationsCard({ check, onSaved }) {
           non_empty_fields: nonEmpty.split(",").map((s) => s.trim()).filter(Boolean),
         },
         heartbeat_hours: heartbeat === "" ? null : Number(heartbeat),
+        store_samples: storeSamples,
       });
       toast.success("Expectations updated");
       setEditing(false);
@@ -527,6 +543,7 @@ function ExpectationsCard({ check, onSaved }) {
       {!editing ? (
         <dl className="space-y-3 text-sm">
           <Row k="Heartbeat" v={check.heartbeat_hours ? `expect a run every ${check.heartbeat_hours} h` : "(off)"} mono />
+          <Row k="Raw samples" v={check.store_samples ? "stored for 30 days" : "not stored (hash only)"} mono />
           <Row k="Growth mode" v={check.expectations?.growth_mode || "growth"} mono />
           <Row k="Min new records per run" v={String(check.expectations?.min_new_records ?? 1)} mono />
           <Row k="Required fields" v={(check.expectations?.required_fields || []).join(", ") || "(none)"} mono />
@@ -588,6 +605,12 @@ function ExpectationsCard({ check, onSaved }) {
               data-testid="edit-nonempty-input"
             />
           </div>
+          <label className="flex items-start gap-2 cursor-pointer select-none pt-1">
+            <input type="checkbox" className="w-4 h-4 mt-0.5 accent-emerald-500" checked={storeSamples} onChange={(e) => setStoreSamples(e.target.checked)} data-testid="edit-store-samples" />
+            <span className="text-sm text-zinc-300">Store raw samples for 30 days
+              <span className="block text-xs text-zinc-500">Keeps the newest 5 destination rows and upstream error bodies per run so you can inspect them. Off by default: only a hash of the newest row is kept.</span>
+            </span>
+          </label>
           <div className="flex gap-2 pt-2">
             <button className="rp-btn-primary" onClick={save} disabled={busy} data-testid="save-expectations-btn">
               <Save size={14} /> {busy ? "Saving…" : "Save"}

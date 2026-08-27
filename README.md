@@ -81,7 +81,7 @@ REACT_APP_BACKEND_URL=http://localhost:8000 .venv/bin/pytest tests -q
 # add VR_TEST_PG_DSN=postgresql://... to run the Postgres end-to-end tests
 ```
 
-Before you point it at real data, read [docs/what-we-store.md](docs/what-we-store.md).
+By default a run stores counts, field names and a hash of the newest row — never the rows themselves; raw samples are an opt-in with a 30-day expiry. Details in [docs/what-we-store.md](docs/what-we-store.md).
 
 ## Roadmap
 

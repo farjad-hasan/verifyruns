@@ -7,6 +7,7 @@ load_dotenv(ROOT_DIR / ".env")
 import os
 import re
 import json
+import hashlib
 import uuid
 import secrets
 import logging
@@ -137,6 +138,7 @@ class CheckCreate(BaseModel):
     retry_before_alert: bool = True
     heartbeat_hours: Optional[int] = Field(default=None, ge=1, le=720)  # expect a run at least this often
     alert_channels: List[ChannelIn] = []
+    store_samples: bool = False  # keep raw newest rows + error bodies for SAMPLE_TTL_DAYS
 
 class CheckUpdate(BaseModel):
     name: Optional[str] = None
@@ -147,6 +149,7 @@ class CheckUpdate(BaseModel):
     clear_alert_slack: Optional[bool] = False
     retry_before_alert: Optional[bool] = None
     heartbeat_hours: Optional[int] = Field(default=None, ge=1, le=720)  # null clears (when sent)
+    store_samples: Optional[bool] = None
 
 class SnoozeIn(BaseModel):
     hours: int = Field(ge=1, le=168)  # cap at a week
@@ -181,6 +184,17 @@ async def login(payload: LoginIn):
 @api.get("/auth/me")
 async def me(user: dict = Depends(get_current_user)):
     return user
+
+@api.delete("/auth/me")
+async def delete_me(user: dict = Depends(get_current_user)):
+    """Delete the account and everything it owns: samples, runs, Checks, user."""
+    check_ids = [c["id"] async for c in db.checks.find({"user_id": user["id"]}, {"id": 1})]
+    if check_ids:
+        await db.run_samples.delete_many({"check_id": {"$in": check_ids}})
+        await db.check_runs.delete_many({"check_id": {"$in": check_ids}})
+        await db.checks.delete_many({"id": {"$in": check_ids}})
+    await db.users.delete_one({"id": user["id"]})
+    return {"ok": True, "deleted_checks": len(check_ids)}
 
 # ---------- Check CRUD ----------
 RETRY_DELAY_SECONDS = int(os.environ.get("VR_RETRY_DELAY_SECONDS", "30"))
@@ -295,6 +309,7 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
     # Retry toggle (default True for older docs)
     doc["retry_before_alert"] = bool(doc.get("retry_before_alert", True))
     doc["heartbeat_hours"] = doc.get("heartbeat_hours")
+    doc["store_samples"] = bool(doc.get("store_samples", False))
     if not include_webhook_secret:
         doc.pop("webhook_secret", None)
     return doc
@@ -314,6 +329,7 @@ async def create_check(payload: CheckCreate, user: dict = Depends(get_current_us
         "created_at": now_iso(),
         "retry_before_alert": payload.retry_before_alert,
         "heartbeat_hours": payload.heartbeat_hours,
+        "store_samples": bool(payload.store_samples),
     }
     if payload.alert_slack_webhook:
         doc["alert_slack_webhook_encrypted"] = encrypt_secret(payload.alert_slack_webhook.strip())
@@ -365,6 +381,8 @@ async def update_check(check_id: str, payload: CheckUpdate, user: dict = Depends
         updates["retry_before_alert"] = bool(payload.retry_before_alert)
     if "heartbeat_hours" in payload.model_fields_set:
         updates["heartbeat_hours"] = payload.heartbeat_hours  # None -> $unset below
+    if payload.store_samples is not None:
+        updates["store_samples"] = bool(payload.store_samples)
     if payload.clear_alert_slack:
         updates["alert_slack_webhook_encrypted"] = None
     elif payload.alert_slack_webhook is not None and payload.alert_slack_webhook.strip():
@@ -389,6 +407,7 @@ async def delete_check(check_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(404, "Check not found")
     await db.checks.delete_one({"id": check_id})
     await db.check_runs.delete_many({"check_id": check_id})
+    await db.run_samples.delete_many({"check_id": check_id})
     return {"ok": True}
 
 @api.post("/checks/{check_id}/snooze")
@@ -486,6 +505,12 @@ async def get_run(run_id: str, user: dict = Depends(get_current_user)):
     c = await db.checks.find_one({"id": run["check_id"], "user_id": user["id"]})
     if not c:
         raise HTTPException(404, "Run not found")
+    sample = await db.run_samples.find_one({"run_id": run_id}, {"_id": 0, "run_id": 0, "check_id": 0})
+    if sample:
+        exp = sample.get("expires_at")
+        if isinstance(exp, datetime):
+            sample["expires_at"] = (exp if exp.tzinfo else exp.replace(tzinfo=timezone.utc)).isoformat()
+        run["sample"] = sample
     return run
 
 @api.post("/checks/{check_id}/run")
@@ -603,6 +628,34 @@ def _fingerprint(records: List[dict], total: Optional[int] = None, newest_define
         "newest_defined": bool(newest_defined),
         "null_pct": null_pct,
     }
+
+SAMPLE_TTL_DAYS = int(os.environ.get("VR_SAMPLE_TTL_DAYS", "30"))
+
+
+def _canonical_hash(obj: Any) -> Optional[str]:
+    """SHA-256 of the canonical JSON of a record — equality without the row."""
+    if obj is None:
+        return None
+    return hashlib.sha256(json.dumps(obj, sort_keys=True, separators=(",", ":"), default=str).encode()).hexdigest()
+
+
+def _split_sample(fp: dict, error_details: Optional[str], store_samples: bool) -> tuple:
+    """Return (fingerprint_to_store, sample_doc_or_None). The stored fingerprint never
+    carries destination rows; the sample carries them only when the Check opted in."""
+    stored = {k: v for k, v in fp.items() if k not in ("newest_record", "newest_window")}
+    stored["newest_hash"] = _canonical_hash(fp.get("newest_record"))
+    stored["sample_stored"] = bool(store_samples)
+    if not store_samples:
+        return stored, None
+    expires = datetime.now(timezone.utc) + timedelta(days=SAMPLE_TTL_DAYS)
+    sample = {
+        "newest_record": fp.get("newest_record"),
+        "newest_window": fp.get("newest_window") or [],
+        "error_details": error_details,
+        "expires_at": expires.isoformat(),
+    }
+    return stored, sample
+
 
 def _human_join(items: List[str]) -> str:
     items = [x for x in items if x]
@@ -875,6 +928,7 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
         error_details = str(e)[:500]
         log.exception("execute_check error")
 
+    stored_fp, sample = _split_sample(fp, error_details, bool(c.get("store_samples", False)))
     run_doc = {
         "id": run_id,
         "check_id": check_id,
@@ -882,8 +936,8 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
         "trigger": trigger,
         "verdict": verdict,
         "diff_message": message,
-        "fingerprint": fp,
-        "error_details": error_details,
+        "fingerprint": stored_fp,
+        "error_details": None,  # upstream bodies live in the sample, only when opted in
         "is_retry": is_retry,
         "count_capped": bool(meta.get("capped")),
         "count_estimated": bool(meta.get("count_estimated")),
@@ -891,6 +945,12 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
         "body_note": body_note,
     }
     await db.check_runs.insert_one(run_doc)
+    if sample:
+        await db.run_samples.insert_one({
+            "run_id": run_id, "check_id": check_id,
+            **{k: v for k, v in sample.items() if k != "expires_at"},
+            "expires_at": datetime.fromisoformat(sample["expires_at"]),  # BSON date for the TTL index
+        })
 
     # Decide alert routing (retry + snooze aware) — never let alert paths fail the run
     try:
@@ -1074,8 +1134,8 @@ async def _heartbeat_tick(now: Optional[datetime] = None, database=None) -> int:
             "trigger": "heartbeat",
             "verdict": "FAIL",
             "diff_message": _heartbeat_message(elapsed_h, c["heartbeat_hours"]),
-            "fingerprint": {"record_count": 0, "sample_size": 0, "fields": [], "newest_record": None,
-                            "newest_window": [], "newest_defined": True, "null_pct": {}},
+            "fingerprint": {"record_count": 0, "sample_size": 0, "fields": [], "newest_hash": None,
+                            "sample_stored": False, "newest_defined": True, "null_pct": {}},
             "error_details": None,
             "is_retry": False,
             "count_capped": False,
@@ -1114,6 +1174,8 @@ async def on_start():
     await db.checks.create_index("user_id")
     await db.check_runs.create_index("id", unique=True)
     await db.check_runs.create_index([("check_id", 1), ("timestamp", -1)])
+    await db.run_samples.create_index("run_id", unique=True)
+    await db.run_samples.create_index("expires_at", expireAfterSeconds=0)
     app.state.heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
 @app.on_event("shutdown")

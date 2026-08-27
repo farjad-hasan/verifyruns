@@ -166,7 +166,7 @@ class TestExecution:
         assert run["verdict"] == "PASS", run.get("diff_message")
         assert run["fingerprint"]["record_count"] == 200
         assert "id" in run["fingerprint"]["fields"]
-        assert run["fingerprint"]["newest_record"]
+        assert run["fingerprint"]["newest_hash"]  # rows are not stored by default (data-minimisation)
         assert "null_pct" in run["fingerprint"]
 
     def test_webhook_unknown_secret(self):

@@ -1,11 +1,23 @@
 import { Link, useNavigate } from "react-router-dom";
 import { useAuth } from "../lib/auth";
-import { Activity, LogOut } from "lucide-react";
+import { Activity, LogOut, Trash2 } from "lucide-react";
+import api from "../lib/api";
+import { toast } from "sonner";
 
 export default function Nav() {
   const { user, logout } = useAuth();
   const nav = useNavigate();
   const onLogout = () => { nav("/", { replace: true }); logout(); };
+  const onDeleteAccount = async () => {
+    if (!window.confirm("Delete your account? This removes every Check, run and stored sample. There is no undo.")) return;
+    try {
+      await api.delete("/auth/me");
+      toast.success("Account deleted");
+      onLogout();
+    } catch {
+      toast.error("Could not delete the account");
+    }
+  };
 
   return (
     <header className="border-b border-[#18181B] bg-[#0A0A0A]/80 backdrop-blur-sm sticky top-0 z-30">
@@ -22,6 +34,9 @@ export default function Nav() {
               <span className="text-sm text-zinc-400 hidden sm:inline" data-testid="nav-user-email">{user.email}</span>
               <button className="rp-btn-ghost" onClick={onLogout} data-testid="nav-logout-btn">
                 <LogOut size={14} /> Sign out
+              </button>
+              <button className="rp-link text-xs text-zinc-500 hover:text-red-400" onClick={onDeleteAccount} title="Delete account and all data" data-testid="nav-delete-account-btn">
+                <Trash2 size={13} />
               </button>
             </>
           ) : (
