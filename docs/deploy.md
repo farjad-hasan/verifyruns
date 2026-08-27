@@ -4,10 +4,17 @@ Frontend on **Cloudflare Pages**, API on **Render** (free web service), database
 
 The API is stateless between requests (`serverless-ready`, 2026-08-28): the webhook runs the check inside the request, and heartbeats plus retries are drained by `POST /api/internal/tick`, which the scheduler calls. A host that sleeps between requests loses nothing.
 
-## 1. MongoDB Atlas (M0)
+## 1. MongoDB Atlas (M0) — done 2026-08-28
 
-1. Create a free cluster; add a database user; allow access from anywhere (`0.0.0.0/0` — Render's free tier has no fixed egress IP).
-2. Copy the connection string; that is `MONGO_URL`. `DB_NAME` is `verifyruns`.
+Project **VerifyRuns**, cluster **verifyruns** (AWS ap-southeast-1 / Singapore), database user auto-created by Atlas's security setup, IP access list `0.0.0.0/0` (Render's free tier has no fixed egress IP; the credentials are the protection).
+
+`MONGO_URL` shape (fill the password from the `.env` Atlas gave you — never commit it):
+
+```
+mongodb+srv://<username>:<password>@verifyruns.eyecnyr.mongodb.net/?appName=verifyruns
+```
+
+`DB_NAME` is `verifyruns`. If the password contains `@`, `:`, `/` or `%`, URL-encode it.
 
 ## 2. Render (the API)
 

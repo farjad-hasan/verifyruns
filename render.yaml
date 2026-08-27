@@ -5,6 +5,7 @@ services:
     name: verifyruns-api
     runtime: python
     plan: free
+    region: singapore        # same region as the Atlas cluster (ap-southeast-1)
     rootDir: backend
     buildCommand: pip install -r requirements.txt
     startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
