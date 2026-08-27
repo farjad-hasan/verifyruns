@@ -27,6 +27,7 @@ import asyncpg
 from cryptography.fernet import Fernet
 from fastapi import FastAPI, APIRouter, HTTPException, Depends, Request, BackgroundTasks
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+from fastapi.responses import JSONResponse
 from starlette.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel, EmailStr, Field
@@ -413,6 +414,7 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
     doc["retry_before_alert"] = bool(doc.get("retry_before_alert", True))
     doc["heartbeat_hours"] = doc.get("heartbeat_hours")
     doc["pending_retry_at"] = (doc.pop("pending_retry", None) or {}).get("due_at")
+    doc["pending_runs"] = len(doc.pop("pending_runs", None) or [])
     doc["store_samples"] = bool(doc.get("store_samples", False))
     if not include_webhook_secret:
         doc.pop("webhook_secret", None)
@@ -675,7 +677,7 @@ def _parse_claimed(body: Any) -> tuple:
 
 
 @api.post("/hook/{secret}")
-async def webhook(secret: str, request: Request, bg: BackgroundTasks, wait: int = 0):
+async def webhook(secret: str, request: Request, bg: BackgroundTasks, wait: Optional[int] = None):
     _enforce(HOOK_LIMITER, secret)
     c = await db.checks.find_one({"webhook_secret": secret})
     if not c:
@@ -689,6 +691,11 @@ async def webhook(secret: str, request: Request, bg: BackgroundTasks, wait: int 
         body = None
     claimed_new, body_note = _parse_claimed(body)
     run_id = str(uuid.uuid4())
+    if wait == 0:
+        # Queued mode: fire-and-forget that survives a sleeping host. The next tick runs it.
+        await db.checks.update_one({"id": c["id"]}, {"$push": {"pending_runs": {
+            "run_id": run_id, "claimed_new": claimed_new, "body_note": body_note, "queued_at": now_iso()}}})
+        return JSONResponse(status_code=202, content={"accepted": True, "run_id": run_id, "queued": True})
     # serverless-ready (2026-08-28): always inline. Nothing may depend on this process
     # surviving past the response, so the run is recorded before we answer. `wait` is
     # accepted for older integrations and ignored.
@@ -949,17 +956,30 @@ async def _fetch_records(kind: str, cfg: dict):
             if plain:
                 headers["Authorization"] = f"Bearer {plain}"
         url = f"https://api.airtable.com/v0/{base_id}/{quote(table, safe='')}"
-        params: dict = {"pageSize": AIRTABLE_PAGE_SIZE}
-        if view:
-            params["view"] = view
-        flat: List[dict] = []
+
+        def _flatten(r: dict) -> dict:
+            row = {"id": r.get("id"), "createdTime": r.get("createdTime")}
+            fields = r.get("fields") or {}
+            if isinstance(fields, dict):
+                row.update(fields)
+            return row
+
+        sample: List[dict] = []          # page one, all fields
+        seen: List[tuple] = []           # (createdTime, id) for every record, all pages
+        count_field: Optional[str] = None
         capped = False
         offset: Optional[str] = None
+        page = 0
         started = time.monotonic()
         async with _http_client() as hc:
             while True:
+                params: dict = {"pageSize": AIRTABLE_PAGE_SIZE}
+                if view:
+                    params["view"] = view
                 if offset:
                     params["offset"] = offset
+                if page > 0 and count_field:
+                    params["fields[]"] = [count_field]   # later pages: one field, just to count
                 resp = await hc.get(url, headers=headers, params=params)
                 if resp.status_code >= 400:
                     return None, None, f"Airtable fetch failed with HTTP {resp.status_code}.", resp.text[:500]
@@ -973,21 +993,34 @@ async def _fetch_records(kind: str, cfg: dict):
                 for r in raw:
                     if not isinstance(r, dict):
                         continue
-                    row = {"id": r.get("id"), "createdTime": r.get("createdTime")}
-                    fields = r.get("fields") or {}
-                    if isinstance(fields, dict):
-                        row.update(fields)
-                    flat.append(row)
+                    seen.append((r.get("createdTime") or "", r.get("id")))
+                    if page == 0:
+                        row = _flatten(r)
+                        sample.append(row)
+                        if count_field is None:
+                            for k in (r.get("fields") or {}):
+                                count_field = k
+                                break
                 offset = body.get("offset") if isinstance(body, dict) else None
+                page += 1
                 if not offset:
                     break
-                if len(flat) >= AIRTABLE_MAX_RECORDS or (time.monotonic() - started) > AIRTABLE_FETCH_BUDGET_S:
+                if len(seen) >= AIRTABLE_MAX_RECORDS or (time.monotonic() - started) > AIRTABLE_FETCH_BUDGET_S:
                     capped = True
                     break
-        if capped:
-            flat = flat[:AIRTABLE_MAX_RECORDS]
-        flat = _sort_desc(flat, "createdTime")
-        return flat, _meta(len(flat), capped=capped), None, None
+            if capped:
+                seen = seen[:AIRTABLE_MAX_RECORDS]
+            # newest across every page; fetch it when page one did not carry its fields
+            newest_id = max(seen, key=lambda t: t[0])[1] if seen else None
+            if newest_id and not any(r.get("id") == newest_id for r in sample):
+                one = await hc.get(f"{url}/{quote(str(newest_id), safe='')}", headers=headers)
+                if one.status_code < 400:
+                    try:
+                        sample.insert(0, _flatten(one.json()))
+                    except Exception:
+                        pass
+        sample = _sort_desc(sample, "createdTime")
+        return sample, _meta(len(seen), capped=capped), None, None
 
     if kind == "postgres":
         dsn_enc = cfg.get("dsn_encrypted")
@@ -1321,15 +1354,73 @@ async def _heartbeat_tick(now: Optional[datetime] = None, database=None) -> int:
 
 INTERNAL_TICKER = os.environ.get("VR_INTERNAL_TICKER", "1").lower() in ("1", "true", "yes")
 TICK_SECRET = os.environ.get("VR_TICK_SECRET", "")
+LAZY_TICK_SECONDS = int(os.environ.get("VR_LAZY_TICK_SECONDS", "60"))
+
+
+async def _drain_pending_runs(now: Optional[datetime] = None, database=None) -> int:
+    """Execute queued webhook runs (?wait=0). The array is swapped for [] atomically first,
+    so two ticks can never run the same queued run."""
+    d = database if database is not None else db
+    ran = 0
+    cursor = d.checks.find({"pending_runs.0": {"$exists": True}}, {"_id": 0, "id": 1})
+    async for c in cursor:
+        old = await d.checks.find_one_and_update(
+            {"id": c["id"], "pending_runs.0": {"$exists": True}}, {"$set": {"pending_runs": []}})
+        for item in (old or {}).get("pending_runs") or []:
+            try:
+                await execute_check(c["id"], "webhook", item["run_id"], False, item.get("claimed_new"), item.get("body_note"), database=d)
+                ran += 1
+            except Exception:
+                log.exception("queued run %s failed for check %s", item.get("run_id"), c["id"])
+    return ran
+
+
+async def _stamp_tick(now: datetime, database=None) -> None:
+    d = database if database is not None else db
+    await d.meta.update_one({"_id": "tick"}, {"$set": {"last_at": now.isoformat()}}, upsert=True)
+
+
+async def _claim_lazy_tick(now: Optional[datetime] = None, database=None) -> bool:
+    """True for exactly one caller per LAZY_TICK_SECONDS window (atomic conditional update)."""
+    if LAZY_TICK_SECONDS <= 0:
+        return False
+    now = now or datetime.now(timezone.utc)
+    d = database if database is not None else db
+    cutoff = (now - timedelta(seconds=LAZY_TICK_SECONDS)).isoformat()
+    won = await d.meta.find_one_and_update({"_id": "tick", "last_at": {"$lt": cutoff}}, {"$set": {"last_at": now.isoformat()}})
+    return won is not None
 
 
 async def _tick(now: Optional[datetime] = None, database=None) -> dict:
-    """Everything time-based, in one idempotent sweep: missed heartbeats, then due retries.
-    Driven by the in-process loop locally and by an external scheduler on sleeping hosts."""
+    """Everything time-based, in one idempotent sweep: missed heartbeats, queued runs, due retries.
+    Driven by the in-process loop, by an external scheduler, or lazily by traffic."""
     now = now or datetime.now(timezone.utc)
+    await _stamp_tick(now, database)
     heartbeats = await _heartbeat_tick(now=now, database=database)
+    queued = await _drain_pending_runs(now=now, database=database)
     retries = await _drain_retries(now=now, database=database)
-    return {"heartbeats": heartbeats, "retries": retries}
+    return {"heartbeats": heartbeats, "retries": retries, "queued": queued}
+
+
+async def _tick_safely():
+    try:
+        res = await _tick()
+        if any(res.values()):
+            log.info("lazy tick: %s", res)
+    except Exception:
+        log.exception("lazy tick failed")
+
+
+@app.middleware("http")
+async def lazy_tick_middleware(request: Request, call_next):
+    response = await call_next(request)
+    if LAZY_TICK_SECONDS > 0 and not request.url.path.endswith("/internal/tick"):
+        try:
+            if await _claim_lazy_tick():
+                asyncio.create_task(_tick_safely())
+        except Exception:
+            log.exception("lazy tick claim failed")
+    return response
 
 
 async def _heartbeat_loop():
@@ -1366,6 +1457,7 @@ async def on_start():
     await db.check_runs.create_index([("check_id", 1), ("timestamp", -1)])
     await db.run_samples.create_index("run_id", unique=True)
     await db.run_samples.create_index("expires_at", expireAfterSeconds=0)
+    await db.meta.update_one({"_id": "tick"}, {"$setOnInsert": {"last_at": "1970-01-01T00:00:00+00:00"}}, upsert=True)
     if INTERNAL_TICKER:
         app.state.heartbeat_task = asyncio.create_task(_heartbeat_loop())
 

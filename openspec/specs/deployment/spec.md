@@ -15,3 +15,10 @@ The frontend SHALL be deployable to Cloudflare Pages as a static build with clie
 #### Scenario: API asleep
 - **WHEN** the free API instance has slept and a webhook arrives
 - **THEN** the request succeeds after a cold start; nothing time-based was lost because the scheduler drives ticks
+
+### Requirement: Scheduler is a Cloudflare Worker cron
+The recommended scheduler SHALL be a Cloudflare Worker (`deploy/cloudflare-tick-worker/`) with a `* * * * *` cron trigger that POSTs to `/api/internal/tick` with `X-Tick-Secret` from a Worker secret; it doubles as the keep-awake for the free API host. cron-job.org SHALL be documented as the fallback.
+
+#### Scenario: Deployed with wrangler
+- **WHEN** `wrangler deploy` runs with `TICK_URL` set and `TICK_SECRET` stored via `wrangler secret put`
+- **THEN** the tick endpoint receives one request per minute and the API does not sleep

@@ -62,7 +62,7 @@ def test_airtable_follows_offset_until_exhausted(monkeypatch):
     records, meta, err, details = _run(_fetch_records("airtable", AIRTABLE_CFG))
     assert err is None
     assert meta["total"] == 250
-    assert len(records) == 250
+    assert len(records) == 100  # tick-latency-and-async: the sample is page one; later pages only count
     assert len(calls) == 3
     assert meta["capped"] is False
 

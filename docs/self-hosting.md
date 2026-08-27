@@ -18,6 +18,7 @@ VerifyRuns is a single FastAPI process, a MongoDB database, and a static React b
 | `VR_MAX_RESPONSE_BYTES` | no | HTTP/JSON responses are streamed and abandoned past this size (5 MB) |
 | `VR_RATE_AUTH_PER_MIN` / `VR_RATE_HOOK_PER_MIN` / `VR_RATE_CREATE_PER_MIN` | no | per-minute limits for sign-up+login per client IP (120), webhook per secret (120), Check creation per user (60); excess gets HTTP 429 with `Retry-After` |
 | `VR_TICK_SECRET` | on sleeping hosts | enables `POST /api/internal/tick` (header `X-Tick-Secret`) so an external scheduler can drive heartbeats and retries; unset = endpoint disabled |
+| `VR_LAZY_TICK_SECONDS` | no | any API request more than this many seconds after the last tick runs one in the background (60; `0` disables) |
 | `VR_INTERNAL_TICKER` | no | `1` (default) runs the tick loop inside the API process every `VR_HEARTBEAT_TICK_SECONDS`; set `0` on hosts that sleep and use the scheduler instead |
 | `VR_RETRY_DELAY_SECONDS` | no | how long after a fresh FAIL the retry becomes due (30); it runs on the next tick after that |
 | `VR_HEARTBEAT_TICK_SECONDS` | no | how often the in-process ticker looks for missed heartbeat windows (60) |

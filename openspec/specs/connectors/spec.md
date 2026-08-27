@@ -25,11 +25,15 @@ The system SHALL GET `config.url` with an optional `Authorization: Bearer` heade
 - **THEN** the run FAILs with "Destination fetch failed with HTTP <code>" and the first 500 chars of the body are stored in `error_details`
 
 ### Requirement: Airtable connector reads at most 100 records
-The system SHALL GET `https://api.airtable.com/v0/{base_id}/{table}` with `pageSize=100` (plus `&view=` when set) and the PAT as bearer, follow the `offset` cursor until the response has none or `VR_AIRTABLE_MAX_RECORDS` (default 10,000) is reached, flatten each record to `{id, createdTime, ...fields}`, and report the true number of records fetched as the count. When the ceiling is hit the run message SHALL say so.
+The system SHALL GET `https://api.airtable.com/v0/{base_id}/{table}` with `pageSize=100` (plus `&view=` when set) and the PAT as bearer, follow the `offset` cursor until the response has none or `VR_AIRTABLE_MAX_RECORDS` (default 10,000) is reached, and report the true number of records as the count. Page one SHALL be fetched with all fields and is the sample; later pages SHALL request a single field (`fields[]` = the first field seen on page one) so counting stays cheap. The newest record SHALL be chosen by `createdTime` across all pages and, when it is not on page one, fetched individually so it heads the sample. When the ceiling is hit the run message SHALL say so.
 
 #### Scenario: Table larger than 100 rows
 - **WHEN** the table holds 250 records
-- **THEN** three pages are fetched and the fingerprint reports `record_count: 250`
+- **THEN** three pages are fetched, pages two and three carry `fields[]`, and the fingerprint reports `record_count: 250` with `sample_size` ≤ 101
+
+#### Scenario: Newest record is on a later page
+- **WHEN** the most recently created record is on page three
+- **THEN** it is fetched by id and is `newest_record`
 
 #### Scenario: Ceiling reached
 - **WHEN** the table holds more than `VR_AIRTABLE_MAX_RECORDS` records

@@ -14,6 +14,8 @@ Add one **HTTP Request** node as the last step of the workflow you want verified
 
 Leave the body empty if you only want VerifyRuns to check growth against the Check's own minimum.
 
+Don't want the node to wait for the destination read? Append `?wait=0` to the URL: VerifyRuns answers `202` immediately and runs the check within a minute.
+
 ## What the verdict means
 
 - **PASS** — the destination gained at least what the workflow claimed (or the Check's minimum) and every field rule held.
