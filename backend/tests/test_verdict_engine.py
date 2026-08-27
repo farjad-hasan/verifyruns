@@ -55,7 +55,7 @@ def test_fingerprint_fields_and_null_pct():
     fp = _fingerprint([{"a": 1, "b": ""}, {"a": 2}])
     assert fp["fields"] == ["a", "b"]
     assert fp["null_pct"] == {"a": 0.0, "b": 100.0}
-    assert fp["newest_record"] == {"a": 2}
+    assert fp["newest_record"] == {"a": 1, "b": ""}  # connectors hand records over newest-first
 
 
 # ---------- verdict: growth rule ----------
@@ -106,10 +106,11 @@ def test_disappeared_field_names_the_window():
 def test_non_empty_rule_checks_newest_record():
     exp = {**DEFAULTS, "non_empty_fields": ["email"]}
     records = _records(41, email="a@b.c")
-    records[-1]["email"] = ""
+    for r in records[:3]:  # newest-first; the newest and the majority of the 5-record window are empty
+        r["email"] = ""
     verdict, msg = _compute_verdict(_fingerprint(records), [_pass_run(40)], exp)
     assert verdict == "FAIL"
-    assert "the field `email` is empty in the newest record" in msg
+    assert "the field `email` is empty in 3 of the 5 newest records" in msg
 
 
 def test_two_reasons_are_joined_with_and():

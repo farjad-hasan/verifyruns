@@ -13,6 +13,7 @@ export default function NewCheck() {
   const [url, setUrl] = useState("");
   const [token, setToken] = useState("");
   const [jsonPath, setJsonPath] = useState("");
+  const [newestKey, setNewestKey] = useState("");
   // Airtable
   const [baseId, setBaseId] = useState("");
   const [table, setTable] = useState("");
@@ -54,6 +55,7 @@ export default function NewCheck() {
           url,
           bearer_token: token || null,
           json_path: jsonPath || null,
+          newest_key: newestKey.trim() || null,
         };
       }
       const payload = {
@@ -124,6 +126,7 @@ export default function NewCheck() {
                 <input required type="url" className="rp-input font-mono" placeholder="https://api.example.com/v1/orders" value={url} onChange={(e) => setUrl(e.target.value)} data-testid="check-url-input" />
                 <input type="text" className="rp-input font-mono" placeholder="Bearer token (optional, encrypted at rest)" value={token} onChange={(e) => setToken(e.target.value)} data-testid="check-token-input" />
                 <input type="text" className="rp-input font-mono" placeholder="JSON path to array (optional, e.g. data.records)" value={jsonPath} onChange={(e) => setJsonPath(e.target.value)} data-testid="check-jsonpath-input" />
+                <input type="text" className="rp-input font-mono" placeholder="Newest-record key (optional, e.g. created_at — otherwise the last element is newest)" value={newestKey} onChange={(e) => setNewestKey(e.target.value)} data-testid="check-newestkey-input" />
                 <p className="text-xs text-zinc-500 leading-relaxed">Leave the path empty if the response body itself is an array.</p>
               </div>
             )}

@@ -113,6 +113,7 @@ class HttpConfig(BaseModel):
     url: str
     bearer_token: Optional[str] = None  # plain input from client
     json_path: Optional[str] = None     # dotted path to array, e.g. "data.records"
+    newest_key: Optional[str] = None    # field whose max value marks the newest record
 
 class Expectations(BaseModel):
     min_new_records: int = Field(default=1, ge=0)
@@ -195,7 +196,8 @@ def _prepare_config_for_storage(kind: str, cfg_in: dict, existing_cfg: Optional[
         url = (cfg_in or {}).get("url")
         if not isinstance(url, str) or not url.strip():
             raise HTTPException(400, "config.url is required for http_json")
-        out: dict = {"url": url.strip(), "json_path": (cfg_in.get("json_path") or None)}
+        out: dict = {"url": url.strip(), "json_path": (cfg_in.get("json_path") or None),
+                     "newest_key": ((cfg_in.get("newest_key") or "").strip() or None)}
         plain = cfg_in.get("bearer_token")
         if plain:
             out["bearer_token_encrypted"] = encrypt_secret(plain)
@@ -509,9 +511,30 @@ def _is_empty(v: Any) -> bool:
         return True
     return False
 
-def _fingerprint(records: List[dict], total: Optional[int] = None) -> dict:
-    """`records` is the inspected sample; `total` is the destination's true
-    record count when the connector knows it (defaults to the sample length)."""
+NEWEST_WINDOW = 5
+ORDER_BY_RE = re.compile(r"\border\s+by\b", re.IGNORECASE)
+
+
+def _has_order_by(query: str) -> bool:
+    return bool(ORDER_BY_RE.search(query or ""))
+
+
+def _sort_desc(records: List[dict], key: str) -> List[dict]:
+    """Newest-first by `key`; records without the key go last, original order kept among ties."""
+    with_key = [r for r in records if r.get(key) is not None]
+    without = [r for r in records if r.get(key) is None]
+    try:
+        with_key.sort(key=lambda r: r[key], reverse=True)
+    except TypeError:
+        with_key.sort(key=lambda r: str(r[key]), reverse=True)
+    return with_key + without
+
+
+def _fingerprint(records: List[dict], total: Optional[int] = None, newest_defined: bool = True) -> dict:
+    """`records` is the inspected sample, ordered newest-first by the connector;
+    `total` is the destination's true record count when the connector knows it
+    (defaults to the sample length); `newest_defined` is False when the connector
+    could not order the sample (Postgres without ORDER BY)."""
     count = len(records)
     fields: set = set()
     for r in records:
@@ -522,12 +545,14 @@ def _fingerprint(records: List[dict], total: Optional[int] = None) -> dict:
         for f in field_list:
             empties = sum(1 for r in records if _is_empty(r.get(f))) if f else 0
             null_pct[f] = round((empties / count) * 100, 1)
-    newest = records[-1] if records else None
+    newest = records[0] if records else None
     return {
         "record_count": total if total is not None else count,
         "sample_size": count,
         "fields": field_list,
         "newest_record": newest,
+        "newest_window": records[:NEWEST_WINDOW],
+        "newest_defined": bool(newest_defined),
         "null_pct": null_pct,
     }
 
@@ -589,21 +614,33 @@ def _compute_verdict(fp: dict, prev_passes: List[dict], expectations: dict, clai
         for f in disappeared:
             reasons.append(f"the field `{f}` disappeared — it was present in the last {len(prev_passes)} good runs")
 
-    # non-empty check: look at newest record
+    # non-empty check: the newest record must be non-empty AND so must the majority
+    # of the newest window, so one odd row does not flip the verdict
+    notes: List[str] = []
     newest = fp.get("newest_record") or {}
-    for f in non_empty:
-        if f in fp["fields"] and _is_empty(newest.get(f)):
-            reasons.append(f"the field `{f}` is empty in the newest record")
+    window = fp.get("newest_window") or ([newest] if newest else [])
+    if non_empty and not fp.get("newest_defined", True):
+        notes.append("Newest-record checks were skipped: add ORDER BY <timestamp column> DESC to the query to enable them.")
+    elif window:
+        for f in non_empty:
+            if f not in fp["fields"] or not _is_empty(newest.get(f)):
+                continue
+            empties = sum(1 for r in window if _is_empty((r or {}).get(f)))
+            if len(window) == 1:
+                reasons.append(f"the field `{f}` is empty in the newest record")
+            elif empties * 2 > len(window):
+                reasons.append(f"the field `{f}` is empty in {empties} of the {len(window)} newest records")
 
+    suffix = (" " + " ".join(notes)) if notes else ""
     if reasons:
-        return "FAIL", "Run reported success, but " + _human_join(reasons) + "."
+        return "FAIL", "Run reported success, but " + _human_join(reasons) + "." + suffix
     if not prev_last:
-        return "PASS", f"First successful check. Destination has {fp['record_count']} records across {len(fp['fields'])} fields."
+        return "PASS", f"First successful check. Destination has {fp['record_count']} records across {len(fp['fields'])} fields." + suffix
     if mode == "steady":
-        return "PASS", f"Destination unchanged at {fp['record_count']} records. All expectations met."
+        return "PASS", f"Destination unchanged at {fp['record_count']} records. All expectations met." + suffix
     if claimed_new is not None:
-        return "PASS", f"Destination gained {delta} record(s), matching what your workflow reported."
-    return "PASS", f"Destination gained {delta} record(s). All expectations met."
+        return "PASS", f"Destination gained {delta} record(s), matching what your workflow reported." + suffix
+    return "PASS", f"Destination gained {delta} record(s). All expectations met." + suffix
 
 def _annotate_count(message: str, meta: dict) -> str:
     """Append what the count means when it is not a plain true count."""
@@ -614,8 +651,8 @@ def _annotate_count(message: str, meta: dict) -> str:
     return message
 
 
-def _meta(total: int, capped: bool = False, count_estimated: bool = False) -> dict:
-    return {"total": total, "capped": capped, "count_estimated": count_estimated}
+def _meta(total: int, capped: bool = False, count_estimated: bool = False, newest_defined: bool = True) -> dict:
+    return {"total": total, "capped": capped, "count_estimated": count_estimated, "newest_defined": newest_defined}
 
 
 async def _fetch_records(kind: str, cfg: dict):
@@ -645,7 +682,10 @@ async def _fetch_records(kind: str, cfg: dict):
         records = _get_records(body, json_path)
         if records is None:
             return None, None, f"Could not find an array of records at path `{json_path or '(root)'}`.", None
-        return records, _meta(len(records)), None, None
+        newest_key = cfg.get("newest_key") or None
+        # newest-first: by the configured key, else the endpoint's last element (documented default)
+        ordered = _sort_desc(records, newest_key) if newest_key else list(reversed(records))
+        return ordered, _meta(len(records)), None, None
 
     if kind == "airtable":
         from urllib.parse import quote
@@ -696,6 +736,7 @@ async def _fetch_records(kind: str, cfg: dict):
                     break
         if capped:
             flat = flat[:AIRTABLE_MAX_RECORDS]
+        flat = _sort_desc(flat, "createdTime")
         return flat, _meta(len(flat), capped=capped), None, None
 
     if kind == "postgres":
@@ -741,7 +782,7 @@ async def _fetch_records(kind: str, cfg: dict):
             flat.append(row)
         if total is None:
             total = len(flat)
-        return flat, _meta(total, count_estimated=count_estimated), None, None
+        return flat, _meta(total, count_estimated=count_estimated, newest_defined=_has_order_by(query)), None, None
 
     return None, None, f"Unknown connector kind: {kind}", None
 
@@ -769,7 +810,7 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
             error_details = err_body
         else:
             meta = fetched_meta or _meta(len(records))
-            fp = _fingerprint(records, meta["total"])
+            fp = _fingerprint(records, meta["total"], newest_defined=meta.get("newest_defined", True))
             prev = await db.check_runs.find(
                 {"check_id": check_id, "verdict": "PASS"}, {"_id": 0}
             ).sort("timestamp", -1).limit(30).to_list(30)

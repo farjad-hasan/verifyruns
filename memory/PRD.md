@@ -31,7 +31,7 @@ Tagline: "Your automation said Done. RunProof checks if that's true."
 - Email + password auth (register, login, /me, logout on client)
 - Dashboard: checks list with 30-run timeline strips, empty state, 10s live polling, health summary strip, "Snoozed" tag on rows
 - New Check form: name, connector chooser (HTTP / JSON | Airtable), per-connector fields, expectations, Slack alert webhook
-- Connectors: HTTP/JSON (bearer token, optional JSON path), Airtable (base_id, table, PAT, optional view — flattened `{id, createdTime, ...fields}` per record)
+- Connectors: HTTP/JSON (bearer token, optional JSON path, optional `newest_key`), Airtable (base_id, table, PAT, optional view — flattened `{id, createdTime, ...fields}` per record)
 - Check detail: inline rename, verdict badge, snooze menu (1h/24h) + Resume-alerts, run-now, timeline hero, webhook URL + copy + curl, connector-aware Destination card, editable expectations, Slack alerts, public status, run filters + fingerprint diff in the run panel, 10s live polling
 - Webhook endpoint `POST /api/hook/{secret}` (async, returns 200 with run_id)
 - Manual `POST /api/checks/{id}/run` (async)
@@ -50,7 +50,8 @@ Before implementing anything, read the matching change's `tasks.md` and work
 through its checkboxes in order; the last group is always "verify on preview,
 then publish". Run `openspec validate --all --strict` after editing specs.
 Done: `fix-record-cap-paging`, `postgres-detail-card`, `claimed-count-reconciliation`
-(all 2026-08-27). Apply-ready: `deterministic-newest-record`. Development is local since 2026-08-27 (Emergent credits
+and `deterministic-newest-record` (all 2026-08-27). Next: deferred proposals by trigger
+(`readme-and-docs` is "now"; `heartbeat-checks` on first external user). Development is local since 2026-08-27 (Emergent credits
 exhausted): Docker Mongo :27017, Postgres :5434, uvicorn :8000, craco :3100.
 
 ## Backlog / Next (superseded by openspec/changes/ — kept for history)

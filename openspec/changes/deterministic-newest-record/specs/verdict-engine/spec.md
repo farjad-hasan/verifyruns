@@ -22,6 +22,14 @@ The system SHALL FAIL when any `required_fields` entry is absent from the field 
 - **WHEN** `email` is empty in the newest record but present in 4 of the 5 newest
 - **THEN** the non-empty rule adds no reason
 
+#### Scenario: Newest and majority empty
+- **WHEN** `email` is empty in the newest record and in 3 of the 5 newest
+- **THEN** the diff message includes "the field `email` is empty in 3 of the 5 newest records"
+
+#### Scenario: Skipped with a note
+- **WHEN** `non_empty_fields` is set and `newest_defined` is false
+- **THEN** the run message ends with "Newest-record checks were skipped: add ORDER BY <timestamp column> DESC to the query to enable them."
+
 #### Scenario: Field disappeared
 - **WHEN** `sku` was present in all 30 baseline runs and is absent now
 - **THEN** the diff message includes "the field `sku` disappeared — it was present in the last 30 good runs"

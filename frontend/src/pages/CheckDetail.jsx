@@ -195,6 +195,7 @@ export default function CheckDetail() {
                 <>
                   <Row k="GET url" v={check.config?.url} mono />
                   <Row k="JSON path" v={check.config?.json_path || "(root)"} mono />
+                  <Row k="Newest key" v={check.config?.newest_key || "(last element)"} mono />
                   <Row
                     k="Bearer token"
                     v={check.config?.has_bearer_token ? check.config?.bearer_token_last4 : "(none)"}
