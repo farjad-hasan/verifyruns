@@ -62,6 +62,9 @@ export default function Dashboard() {
                       <p className="font-display text-lg truncate">{c.name}</p>
                       {c.last_verdict === "PASS" && <span className="badge-pass">Pass</span>}
                       {c.last_verdict === "FAIL" && <span className="badge-fail">Fail</span>}
+                      {c.heartbeat_hours && (
+                        <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono" title="Heartbeat: a FAIL is recorded if no run arrives within this window" data-testid={`heartbeat-${c.id}`}>every {c.heartbeat_hours} h</span>
+                      )}
                       {c.is_snoozed && (
                         <span className="text-[10px] uppercase tracking-widest text-amber-400 font-mono" data-testid={`snoozed-${c.id}`}>Snoozed</span>
                       )}

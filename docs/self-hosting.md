@@ -13,6 +13,7 @@ VerifyRuns is a single FastAPI process, a MongoDB database, and a static React b
 | `PUBLIC_APP_URL` | no | used for the "Open in VerifyRuns" link in Slack alerts |
 | `CORS_ORIGINS` | no | comma-separated origins allowed to call the API (default `*`) |
 | `VR_RETRY_DELAY_SECONDS` | no | seconds before the retry that precedes a fresh FAIL alert (30) |
+| `VR_HEARTBEAT_TICK_SECONDS` | no | how often the in-process ticker looks for missed heartbeat windows (60) |
 | `VR_AIRTABLE_MAX_RECORDS` | no | Airtable paging ceiling (10000) |
 | `VR_AIRTABLE_FETCH_BUDGET_S` | no | total time allowed for Airtable paging (60) |
 | `VR_PG_COUNT_TIMEOUT_MS` | no | Postgres `COUNT(*)` timeout before falling back to the sample length (15000) |
@@ -22,7 +23,7 @@ Frontend: `REACT_APP_BACKEND_URL` at build time, pointing at the API origin.
 
 ## Process model
 
-Checks run as FastAPI background tasks in the API process; the retry before a fresh FAIL alert is an `asyncio` sleep in the same process. A restart drops in-flight runs and pending retries. This is fine for small deployments; a worker/queue is on the roadmap (`openspec/changes/heartbeat-checks` carries the scheduler discussion).
+Checks run as FastAPI background tasks in the API process; the retry before a fresh FAIL alert is an `asyncio` sleep in the same process, and the heartbeat ticker is an `asyncio` loop started at startup. A restart drops in-flight runs and pending retries; heartbeats resume on the next tick. Run **one** API process, or two processes may both record a heartbeat FAIL in the same minute (harmless duplicates; alerts are still deduplicated). This is fine for small deployments; a worker/queue is on the roadmap (`openspec/changes/heartbeat-checks` carries the scheduler discussion).
 
 ## Network
 

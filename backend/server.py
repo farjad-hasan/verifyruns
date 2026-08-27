@@ -131,6 +131,7 @@ class CheckCreate(BaseModel):
     expectations: Expectations = Expectations()
     alert_slack_webhook: Optional[str] = None
     retry_before_alert: bool = True
+    heartbeat_hours: Optional[int] = Field(default=None, ge=1, le=720)  # expect a run at least this often
 
 class CheckUpdate(BaseModel):
     name: Optional[str] = None
@@ -140,6 +141,7 @@ class CheckUpdate(BaseModel):
     alert_slack_webhook: Optional[str] = None
     clear_alert_slack: Optional[bool] = False
     retry_before_alert: Optional[bool] = None
+    heartbeat_hours: Optional[int] = Field(default=None, ge=1, le=720)  # null clears (when sent)
 
 class SnoozeIn(BaseModel):
     hours: int = Field(ge=1, le=168)  # cap at a week
@@ -282,6 +284,7 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
     doc["is_snoozed"] = bool(snooze_until and snooze_until > now_iso())
     # Retry toggle (default True for older docs)
     doc["retry_before_alert"] = bool(doc.get("retry_before_alert", True))
+    doc["heartbeat_hours"] = doc.get("heartbeat_hours")
     if not include_webhook_secret:
         doc.pop("webhook_secret", None)
     return doc
@@ -300,6 +303,7 @@ async def create_check(payload: CheckCreate, user: dict = Depends(get_current_us
         "webhook_secret": secrets.token_urlsafe(32),
         "created_at": now_iso(),
         "retry_before_alert": payload.retry_before_alert,
+        "heartbeat_hours": payload.heartbeat_hours,
     }
     if payload.alert_slack_webhook:
         doc["alert_slack_webhook_encrypted"] = encrypt_secret(payload.alert_slack_webhook.strip())
@@ -345,6 +349,8 @@ async def update_check(check_id: str, payload: CheckUpdate, user: dict = Depends
         updates["config"] = _prepare_config_for_storage(kind, payload.config, c.get("config"))
     if payload.retry_before_alert is not None:
         updates["retry_before_alert"] = bool(payload.retry_before_alert)
+    if "heartbeat_hours" in payload.model_fields_set:
+        updates["heartbeat_hours"] = payload.heartbeat_hours  # None -> $unset below
     if payload.clear_alert_slack:
         updates["alert_slack_webhook_encrypted"] = None
     elif payload.alert_slack_webhook is not None and payload.alert_slack_webhook.strip():
@@ -868,8 +874,9 @@ async def _schedule_retry(check_id: str, claimed_new: Optional[int] = None):
         log.exception("retry scheduling failed for check %s", check_id)
 
 
-async def _maybe_alert(check_doc: dict, run: dict, snoozed: bool = False):
+async def _maybe_alert(check_doc: dict, run: dict, snoozed: bool = False, database=None):
     """Alert on state transitions using last_alerted_verdict tracked on the check."""
+    d = database if database is not None else db
     slack_enc = check_doc.get("alert_slack_webhook_encrypted")
     if not slack_enc:
         return
@@ -879,7 +886,7 @@ async def _maybe_alert(check_doc: dict, run: dict, snoozed: bool = False):
 
     verdict = run["verdict"]
     # Re-read the check to get the latest last_alerted_verdict (a concurrent retry may have updated it)
-    fresh = await db.checks.find_one({"id": check_doc["id"]}, {"_id": 0, "last_alerted_verdict": 1})
+    fresh = await d.checks.find_one({"id": check_doc["id"]}, {"_id": 0, "last_alerted_verdict": 1})
     last_alerted = (fresh or {}).get("last_alerted_verdict")
 
     header = ""
@@ -909,7 +916,93 @@ async def _maybe_alert(check_doc: dict, run: dict, snoozed: bool = False):
     except Exception:
         log.exception("Slack alert POST failed")
     # Persist state only after a delivery attempt so we never dedup a truly un-sent alert
-    await db.checks.update_one({"id": check_doc["id"]}, {"$set": {"last_alerted_verdict": new_last_alerted}})
+    await d.checks.update_one({"id": check_doc["id"]}, {"$set": {"last_alerted_verdict": new_last_alerted}})
+
+# ---------- Heartbeat ("did it run at all?") ----------
+HEARTBEAT_TICK_SECONDS = int(os.environ.get("VR_HEARTBEAT_TICK_SECONDS", "60"))
+
+
+def _parse_ts(value: str) -> datetime:
+    dt = datetime.fromisoformat(value)
+    return dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)
+
+
+def _heartbeat_due(heartbeat_hours: Optional[int], anchor_ts: str, last_heartbeat_ts: Optional[str], now: datetime) -> bool:
+    """Due when the last real run is older than the window AND no heartbeat run
+    has been recorded inside the current window."""
+    if not heartbeat_hours:
+        return False
+    window = timedelta(hours=heartbeat_hours)
+    if now - _parse_ts(anchor_ts) <= window:
+        return False
+    if last_heartbeat_ts and now - _parse_ts(last_heartbeat_ts) <= window:
+        return False
+    return True
+
+
+def _heartbeat_message(elapsed_hours: float, heartbeat_hours: int) -> str:
+    return f"No run in {int(round(elapsed_hours))} h — expected one every {heartbeat_hours} h."
+
+
+async def _heartbeat_tick(now: Optional[datetime] = None, database=None) -> int:
+    """Insert a heartbeat FAIL run for every Check whose window has lapsed. Returns how many.
+    `database` lets tests drive the tick against an explicit handle."""
+    now = now or datetime.now(timezone.utc)
+    d = database if database is not None else db
+    fired = 0
+    cursor = d.checks.find({"heartbeat_hours": {"$gt": 0}})
+    async for c in cursor:
+        check_id = c["id"]
+        last_real = await d.check_runs.find_one(
+            {"check_id": check_id, "trigger": {"$ne": "heartbeat"}}, {"_id": 0, "timestamp": 1},
+            sort=[("timestamp", -1)],
+        )
+        anchor_ts = last_real["timestamp"] if last_real else c.get("created_at") or now_iso()
+        last_hb = await d.check_runs.find_one(
+            {"check_id": check_id, "trigger": "heartbeat"}, {"_id": 0, "heartbeat_at": 1, "timestamp": 1},
+            sort=[("heartbeat_at", -1)],
+        )
+        last_hb_ts = (last_hb or {}).get("heartbeat_at") or (last_hb or {}).get("timestamp")
+        if not _heartbeat_due(c["heartbeat_hours"], anchor_ts, last_hb_ts, now):
+            continue
+        elapsed_h = (now - _parse_ts(anchor_ts)).total_seconds() / 3600.0
+        run_doc = {
+            "id": str(uuid.uuid4()),
+            "check_id": check_id,
+            "timestamp": now_iso(),
+            "heartbeat_at": now.isoformat(),
+            "trigger": "heartbeat",
+            "verdict": "FAIL",
+            "diff_message": _heartbeat_message(elapsed_h, c["heartbeat_hours"]),
+            "fingerprint": {"record_count": 0, "sample_size": 0, "fields": [], "newest_record": None,
+                            "newest_window": [], "newest_defined": True, "null_pct": {}},
+            "error_details": None,
+            "is_retry": False,
+            "count_capped": False,
+            "count_estimated": False,
+            "claimed_new": None,
+            "body_note": None,
+        }
+        await d.check_runs.insert_one(run_doc)
+        fired += 1
+        try:
+            snoozed = bool(c.get("snooze_until") and c["snooze_until"] > now_iso())
+            await _maybe_alert(c, run_doc, snoozed=snoozed, database=d)
+        except Exception:
+            log.exception("heartbeat alert routing failed for check %s", check_id)
+    return fired
+
+
+async def _heartbeat_loop():
+    while True:
+        try:
+            fired = await _heartbeat_tick()
+            if fired:
+                log.info("heartbeat tick: %d missed-window run(s) recorded", fired)
+        except Exception:
+            log.exception("heartbeat tick failed")
+        await asyncio.sleep(HEARTBEAT_TICK_SECONDS)
+
 
 # ---------- Startup ----------
 @app.on_event("startup")
@@ -921,9 +1014,13 @@ async def on_start():
     await db.checks.create_index("user_id")
     await db.check_runs.create_index("id", unique=True)
     await db.check_runs.create_index([("check_id", 1), ("timestamp", -1)])
+    app.state.heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
 @app.on_event("shutdown")
 async def on_stop():
+    task = getattr(app.state, "heartbeat_task", None)
+    if task:
+        task.cancel()
     client.close()
 
 # ---------- Mount ----------

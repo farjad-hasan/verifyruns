@@ -474,6 +474,7 @@ function ExpectationsCard({ check, onSaved }) {
   const [editing, setEditing] = useState(false);
   const [minNew, setMinNew] = useState(check.expectations?.min_new_records ?? 1);
   const [mode, setMode] = useState(check.expectations?.growth_mode || "growth");
+  const [heartbeat, setHeartbeat] = useState(check.heartbeat_hours ?? "");
   const [required, setRequired] = useState((check.expectations?.required_fields || []).join(", "));
   const [nonEmpty, setNonEmpty] = useState((check.expectations?.non_empty_fields || []).join(", "));
   const [busy, setBusy] = useState(false);
@@ -481,6 +482,7 @@ function ExpectationsCard({ check, onSaved }) {
   const startEdit = () => {
     setMinNew(check.expectations?.min_new_records ?? 1);
     setMode(check.expectations?.growth_mode || "growth");
+    setHeartbeat(check.heartbeat_hours ?? "");
     setRequired((check.expectations?.required_fields || []).join(", "));
     setNonEmpty((check.expectations?.non_empty_fields || []).join(", "));
     setEditing(true);
@@ -496,6 +498,7 @@ function ExpectationsCard({ check, onSaved }) {
           required_fields: required.split(",").map((s) => s.trim()).filter(Boolean),
           non_empty_fields: nonEmpty.split(",").map((s) => s.trim()).filter(Boolean),
         },
+        heartbeat_hours: heartbeat === "" ? null : Number(heartbeat),
       });
       toast.success("Expectations updated");
       setEditing(false);
@@ -524,6 +527,7 @@ function ExpectationsCard({ check, onSaved }) {
 
       {!editing ? (
         <dl className="space-y-3 text-sm">
+          <Row k="Heartbeat" v={check.heartbeat_hours ? `expect a run every ${check.heartbeat_hours} h` : "(off)"} mono />
           <Row k="Growth mode" v={check.expectations?.growth_mode || "growth"} mono />
           <Row k="Min new records per run" v={String(check.expectations?.min_new_records ?? 1)} mono />
           <Row k="Required fields" v={(check.expectations?.required_fields || []).join(", ") || "(none)"} mono />
@@ -531,6 +535,19 @@ function ExpectationsCard({ check, onSaved }) {
         </dl>
       ) : (
         <div className="space-y-3">
+          <div>
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Heartbeat — expect a run every … hours (blank = off)</label>
+            <input
+              type="number"
+              min="1"
+              max="720"
+              className="rp-input font-mono"
+              placeholder="24"
+              value={heartbeat}
+              onChange={(e) => setHeartbeat(e.target.value)}
+              data-testid="edit-heartbeat-input"
+            />
+          </div>
           <div>
             <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Growth mode</label>
             <select className="rp-input font-mono" value={mode} onChange={(e) => setMode(e.target.value)} data-testid="edit-mode-select">

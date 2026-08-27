@@ -29,6 +29,7 @@ export default function NewCheck() {
   const [nonEmpty, setNonEmpty] = useState("");
   const [slackWebhook, setSlackWebhook] = useState("");
   const [retryBeforeAlert, setRetryBeforeAlert] = useState(true);
+  const [heartbeatHours, setHeartbeatHours] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -70,6 +71,7 @@ export default function NewCheck() {
         },
         alert_slack_webhook: slackWebhook.trim() || null,
         retry_before_alert: retryBeforeAlert,
+        heartbeat_hours: heartbeatHours === "" ? null : Number(heartbeatHours),
       };
       const { data } = await api.post("/checks", payload);
       toast.success("Check created");
@@ -187,6 +189,12 @@ export default function NewCheck() {
               <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Fields that must be non-empty</label>
               <input type="text" className="rp-input font-mono" placeholder="email, customer_id" value={nonEmpty} onChange={(e) => setNonEmpty(e.target.value)} data-testid="check-nonempty-input" />
             </div>
+          </Section>
+
+          <Section title="Heartbeat" subtitle="Optional. Catch the workflow that never ran: if no run arrives within this many hours, VerifyRuns records a FAIL and alerts.">
+            <label className="text-[11px] uppercase tracking-wider text-zinc-500 block mb-2">Expect a run every … hours (blank = off)</label>
+            <input type="number" min="1" max="720" className="rp-input font-mono" placeholder="24" value={heartbeatHours} onChange={(e) => setHeartbeatHours(e.target.value)} data-testid="check-heartbeat-input" />
+            <p className="text-xs text-zinc-500 mt-2">Pick a little longer than your workflow's longest normal gap — a daily job wants 26–30, not 24.</p>
           </Section>
 
           <Section title="Alert channel" subtitle="Optional. VerifyRuns will POST a message here when a run FAILs and again when it recovers.">

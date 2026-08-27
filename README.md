@@ -39,6 +39,7 @@ Secrets are Fernet-encrypted at rest and only ever shown masked to their last fo
 - **Claimed** — every webhook run must send `{"wrote": N}`; the destination must gain N.
 - **Required fields** must be present; a field present in every one of the last 30 good runs that disappears is a FAIL.
 - **Non-empty fields** — FAIL only when the newest record is empty *and* so is the majority of the five newest, so one odd row cannot flip a verdict.
+- **Heartbeat** — "expect a run every N hours": if no run arrives in the window, VerifyRuns records a FAIL ("No run in 26 h — expected one every 24 h.") and alerts; the next real run recovers it. This catches the workflow that never fired, not just the one that fired and wrote nothing.
 
 The engine is deterministic code — no model, no score you cannot inspect. Every rule is a pure function with tests in `backend/tests/`.
 
@@ -70,7 +71,7 @@ npm install --legacy-peer-deps
 PORT=3100 npm start          # or: npm run build
 ```
 
-Optional environment: `VR_RETRY_DELAY_SECONDS` (30), `VR_AIRTABLE_MAX_RECORDS` (10000), `VR_PG_COUNT_TIMEOUT_MS` (15000) — full list in [docs/self-hosting.md](docs/self-hosting.md).
+Optional environment: `VR_RETRY_DELAY_SECONDS` (30), `VR_HEARTBEAT_TICK_SECONDS` (60), `VR_AIRTABLE_MAX_RECORDS` (10000), `VR_PG_COUNT_TIMEOUT_MS` (15000) — full list in [docs/self-hosting.md](docs/self-hosting.md).
 
 Tests run against a live backend plus pure-function suites:
 

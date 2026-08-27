@@ -40,6 +40,7 @@ Tagline: "Your automation said Done. RunProof checks if that's true."
 - Slack FAIL / recovery alerts with **state-based dedup** (`last_alerted_verdict` on check) and **30s retry-before-alert** on fresh FAIL — no alert if the retry PASSes; snoozed checks skip alerting entirely
 - Public status page: `POST/DELETE /api/checks/{id}/public` + unauthenticated `GET /api/public/checks/{token}` — no config/secrets/fingerprint leaked; frontend route `/status/:token`
 - Snooze: `POST/DELETE /api/checks/{id}/snooze` with hours cap of 168; UI dropdown in detail header
+- Heartbeat (2026-08-27): `heartbeat_hours` per Check; in-process ticker records a `trigger="heartbeat"` FAIL run once per missed window (anchored on the last real run), straight to alert routing; next real PASS recovers
 
 ## Roadmap and specs — OpenSpec (added 2026-08-26)
 The source of truth for behaviour and planned work is `openspec/`:
@@ -50,8 +51,8 @@ Before implementing anything, read the matching change's `tasks.md` and work
 through its checkboxes in order; the last group is always "verify on preview,
 then publish". Run `openspec validate --all --strict` after editing specs.
 Done: `fix-record-cap-paging`, `postgres-detail-card`, `claimed-count-reconciliation`
-and `deterministic-newest-record` (all 2026-08-27). Next: deferred proposals by trigger
-(`readme-and-docs` is "now"; `heartbeat-checks` on first external user). Development is local since 2026-08-27 (Emergent credits
+`deterministic-newest-record`, `readme-and-docs`, `heartbeat-checks` (all 2026-08-27; Farjad chose
+to keep building before distribution, overriding the deferred triggers). Development is local since 2026-08-27 (Emergent credits
 exhausted): Docker Mongo :27017, Postgres :5434, uvicorn :8000, craco :3100.
 
 ## Backlog / Next (superseded by openspec/changes/ — kept for history)
