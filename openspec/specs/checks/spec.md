@@ -17,11 +17,15 @@ The system SHALL create a Check with a name (1–120 chars), a `connector_kind` 
 - **THEN** the response is HTTP 400 naming the missing field
 
 ### Requirement: Expectations are a simple form, not a DSL
-Expectations SHALL be `min_new_records` (int, default 1), `required_fields` (list), and `non_empty_fields` (list). The default of 1 means a run that adds no records FAILs unless the user lowers it (known limitation; see change `claimed-count-reconciliation`).
+Expectations SHALL be `min_new_records` (int ≥ 0, default 1), `required_fields` (list), `non_empty_fields` (list), and `growth_mode` (`growth` | `steady` | `claimed`, default `growth`). `min_new_records = 0` means growth is not required. `claimed` mode requires a claimed count on every webhook run.
 
 #### Scenario: Defaults applied
 - **WHEN** a Check is created without `expectations`
-- **THEN** it stores `{min_new_records: 1, required_fields: [], non_empty_fields: []}`
+- **THEN** it stores `{min_new_records: 1, required_fields: [], non_empty_fields: [], growth_mode: "growth"}`
+
+#### Scenario: Claimed mode without a body
+- **WHEN** `growth_mode` is `claimed` and the webhook body carries no integer
+- **THEN** the run FAILs with "Run reported success, but your workflow sent no record count (this Check expects {\"wrote\": N} in the webhook body)."
 
 ### Requirement: List, read, update, delete own Checks only
 The system SHALL scope every Check route to `user_id`; a Check owned by another user returns 404. The list route SHALL include the last 30 runs (oldest → newest) and `last_verdict` and SHALL omit `webhook_secret`; the detail route includes it.
@@ -35,11 +39,15 @@ The system SHALL scope every Check route to `user_id`; a Check owned by another 
 - **THEN** the previously encrypted secret is preserved
 
 ### Requirement: Webhook trigger runs the Check asynchronously
-`POST /api/hook/{secret}` SHALL look up the Check by `webhook_secret`, queue `execute_check` as a background task with `trigger="webhook"`, and return `{accepted: true, run_id}` immediately. The request body SHALL be ignored.
+`POST /api/hook/{secret}` SHALL look up the Check by `webhook_secret`, run the check **inline**, and return `{accepted: true, run_id, verdict, diff_message, timed_out: false}` once the run is recorded. If the JSON body contains an integer under `wrote` (or `expected_new` / `count`), that value SHALL be passed to the run as `claimed_new`; any other body is ignored and noted on the run. A `wait` query parameter SHALL be accepted and ignored.
 
 #### Scenario: Valid secret
 - **WHEN** a workflow POSTs to the webhook URL with any or no body
-- **THEN** a run is queued and a new run appears in history within seconds
+- **THEN** the response carries the verdict and the run already exists in history
+
+#### Scenario: Claimed count supplied
+- **WHEN** the body is `{"wrote": 3}`
+- **THEN** the run stores `claimed_new: 3` and the growth rule expects at least 3
 
 #### Scenario: Unknown secret
 - **WHEN** the secret matches no Check
@@ -65,3 +73,72 @@ The system SHALL scope every Check route to `user_id`; a Check owned by another 
 #### Scenario: Snoozed FAIL
 - **WHEN** a run FAILs while `snooze_until` is in the future
 - **THEN** the run is recorded and no Slack message is posted
+
+### Requirement: Detail view is connector-aware
+The Check detail page SHALL label the Check with its connector kind and SHALL render a Destination card specific to that connector: HTTP/JSON (URL, JSON path, masked bearer), Airtable (base, table, view, masked PAT), Postgres (query, masked DSN).
+
+#### Scenario: Postgres Check
+- **WHEN** the owner opens a Check whose `connector_kind` is `postgres`
+- **THEN** the header reads "Postgres check" and the Destination card shows the query and the DSN masked to its last 4 characters
+
+### Requirement: Heartbeat cadence on a Check
+A Check MAY carry `heartbeat_hours` (integer 1–720, default null = off), settable at creation and via `PATCH /api/checks/{id}` (null clears it). The value SHALL be returned on the Check and shown on the dashboard row and detail page.
+
+#### Scenario: Set at creation
+- **WHEN** `POST /api/checks` carries `heartbeat_hours: 24`
+- **THEN** the created Check returns `heartbeat_hours: 24`
+
+#### Scenario: Cleared
+- **WHEN** `PATCH /api/checks/{id}` carries `heartbeat_hours: null`
+- **THEN** the Check returns `heartbeat_hours: null` and the ticker ignores it
+
+#### Scenario: Out of range
+- **WHEN** `heartbeat_hours` is 0 or 1000
+- **THEN** the request is rejected with HTTP 422
+
+### Requirement: Heartbeat runs are a distinct trigger
+Runs SHALL carry `trigger` values `webhook`, `manual`, `retry`, or `heartbeat`; heartbeat runs count as runs in history and on the timeline, but SHALL NOT serve as the anchor for the next heartbeat window.
+
+#### Scenario: Timeline shows the outage
+- **WHEN** a workflow stays silent for three windows
+- **THEN** three heartbeat FAIL runs appear on the timeline, one per window
+
+### Requirement: Alert channels are managed per Check
+A Check SHALL hold a list of alert channels, each `{id, kind: slack | discord | email, target}` with the target Fernet-encrypted at rest. `POST /api/checks/{id}/channels {kind, target}` SHALL add one and return `{id, kind, last4}`; `DELETE /api/checks/{id}/channels/{channel_id}` SHALL remove it. The sanitised Check SHALL list channels as `{id, kind, last4}` only. A legacy single Slack URL SHALL appear as channel id `legacy-slack`.
+
+#### Scenario: Add a Discord channel
+- **WHEN** the owner POSTs `{kind: "discord", target: "https://discord.com/api/webhooks/…/abcd"}`
+- **THEN** the response is `{id, kind: "discord", last4: "••••••••abcd"}` and the Check lists it
+
+#### Scenario: Email without a configured sender
+- **WHEN** `RESEND_API_KEY` or `ALERT_FROM` is unset and the owner POSTs `{kind: "email", target: "ops@example.com"}`
+- **THEN** the response is HTTP 400 "Email alerts are not configured on this host (set RESEND_API_KEY and ALERT_FROM)."
+
+#### Scenario: Remove a channel
+- **WHEN** the owner DELETEs a channel id
+- **THEN** it no longer appears on the Check and receives no further alerts
+
+### Requirement: Runs record delivery attempts
+After alert routing, a run SHALL carry `alerts_sent: [{kind, ok}]` — one entry per channel attempted — so the owner can see that an alert went out.
+
+#### Scenario: Two channels, one down
+- **WHEN** a fresh FAIL is delivered to Slack (2xx) and Discord (5xx)
+- **THEN** the run shows `alerts_sent: [{kind: "slack", ok: true}, {kind: "discord", ok: false}]`
+
+### Requirement: Sample storage is opt-in per Check
+A Check SHALL carry `store_samples` (boolean, default false), settable at creation and via PATCH. Only when true SHALL runs keep the newest record, the newest window and upstream error bodies, in a `run_samples` document that expires about 30 days after the run.
+
+#### Scenario: Default Check
+- **WHEN** a run completes on a Check with `store_samples: false`
+- **THEN** `GET /api/runs/{id}` has no `sample`, the fingerprint has `newest_hash` and `sample_stored: false`, and `error_details` is null
+
+#### Scenario: Opt-in Check
+- **WHEN** a run completes on a Check with `store_samples: true`
+- **THEN** `GET /api/runs/{id}` includes `sample.newest_record`, `sample.newest_window` and `sample.expires_at` roughly 30 days ahead
+
+### Requirement: Account deletion
+`DELETE /api/auth/me` SHALL delete the caller's samples, runs, Checks and user record; the token SHALL stop working immediately.
+
+#### Scenario: Delete account
+- **WHEN** an authenticated user calls `DELETE /api/auth/me`
+- **THEN** subsequent requests with the same token return 401 and none of the user's Checks resolve

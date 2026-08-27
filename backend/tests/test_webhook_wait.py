@@ -63,29 +63,27 @@ def test_wait_returns_the_verdict_and_records_exactly_one_run():
     assert len(runs) == 1 and runs[0]["id"] == body["run_id"]
 
 
-def test_wait_times_out_with_null_verdict_but_the_run_still_lands(slow_url):
+def test_slow_destination_means_a_slow_reply_not_a_null_verdict(slow_url):
     h = _user()
     c = _check(h, url=slow_url)
     t0 = time.time()
     r = requests.post(f"{API}/hook/{c['webhook_secret']}?wait=1")
     assert r.status_code == 200, r.text
-    assert time.time() - t0 < 3
+    # serverless-ready: the call is inline, so a slow destination means a slow reply, never a null verdict
+    assert time.time() - t0 >= 3
     body = r.json()
-    assert body["verdict"] is None and body["timed_out"] is True
-    deadline = time.time() + 15
-    while time.time() < deadline:
-        runs = requests.get(f"{API}/checks/{c['id']}/runs", headers=h).json()
-        if runs:
-            break
-        time.sleep(0.5)
-    assert runs and runs[0]["id"] == body["run_id"] and runs[0]["verdict"] == "PASS"
+    assert body["verdict"] == "PASS" and body["timed_out"] is False
+    runs = requests.get(f"{API}/checks/{c['id']}/runs", headers=h).json()
+    assert runs and runs[0]["id"] == body["run_id"]
 
 
-def test_no_wait_keeps_the_async_contract():
+def test_no_wait_also_returns_the_verdict_inline():
+    # serverless-ready (2026-08-28): every webhook call runs the check inline
     h = _user()
     c = _check(h)
     r = requests.post(f"{API}/hook/{c['webhook_secret']}")
-    assert r.json() == {"accepted": True, "run_id": r.json()["run_id"]}
+    body = r.json()
+    assert body["accepted"] is True and body["verdict"] == "PASS" and body["timed_out"] is False
 
 
 def test_wait_is_capped_at_60():

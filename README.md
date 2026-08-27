@@ -20,7 +20,7 @@ and the field `price` disappeared — it was present in the last 30 good runs.
    ```
 3. **Get verdicts** — every run is PASS or FAIL with a diff message. Slack, Discord and email channels get a message on the first FAIL and again on recovery; not on every red run.
 
-Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/zapier.md). Add `?wait=30` to the webhook URL to get the verdict back in the same request; the n8n community node ([`verifyruns-n8n`](https://github.com/farjad-hasan/verifyruns-n8n)) does that and fails the execution on FAIL.
+Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/zapier.md). The webhook returns the verdict in the same request; the n8n community node ([`verifyruns-n8n`](https://github.com/farjad-hasan/verifyruns-n8n)) does that and fails the execution on FAIL.
 
 ## Connectors
 
@@ -72,7 +72,7 @@ npm install --legacy-peer-deps
 PORT=3100 npm start          # or: npm run build
 ```
 
-Optional environment: `VR_ALLOW_PRIVATE_EGRESS=1` (needed for the local stack above — destinations must be public addresses by default), `RESEND_API_KEY` + `ALERT_FROM` (enables email alerts), `VR_RETRY_DELAY_SECONDS` (30), `VR_HEARTBEAT_TICK_SECONDS` (60), `VR_AIRTABLE_MAX_RECORDS` (10000), `VR_PG_COUNT_TIMEOUT_MS` (15000) — full list in [docs/self-hosting.md](docs/self-hosting.md).
+Optional environment: `VR_ALLOW_PRIVATE_EGRESS=1` (needed for the local stack above — destinations must be public addresses by default), `VR_TICK_SECRET` + `VR_INTERNAL_TICKER=0` (external scheduler drives heartbeats/retries on hosts that sleep — see [docs/deploy.md](docs/deploy.md) for the $0 Cloudflare Pages + Render layout), `RESEND_API_KEY` + `ALERT_FROM` (enables email alerts), `VR_RETRY_DELAY_SECONDS` (30), `VR_HEARTBEAT_TICK_SECONDS` (60), `VR_AIRTABLE_MAX_RECORDS` (10000), `VR_PG_COUNT_TIMEOUT_MS` (15000) — full list in [docs/self-hosting.md](docs/self-hosting.md).
 
 Tests run against a live backend plus pure-function suites:
 

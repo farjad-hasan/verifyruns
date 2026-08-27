@@ -3,7 +3,7 @@
 ### Requirement: Webhook trigger runs the Check asynchronously
 `POST /api/hook/{secret}` SHALL look up the Check by `webhook_secret`, queue `execute_check` as a background task with `trigger="webhook"`, and return `{accepted: true, run_id}` immediately. If the JSON body contains an integer under `wrote` (or `expected_new` / `count`), that value SHALL be passed to the run as `claimed_new`; any other body is ignored and noted on the run.
 
-#### Scenario: Valid secret, no body
+#### Scenario: Valid secret
 - **WHEN** a workflow POSTs to the webhook URL with no body
 - **THEN** a run is queued with `claimed_new = null` and behaves per `min_new_records`
 

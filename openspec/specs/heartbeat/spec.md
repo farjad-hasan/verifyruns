@@ -1,0 +1,28 @@
+# heartbeat Specification
+
+## Purpose
+Catching the workflow that never ran: a per-Check expected cadence, a synthetic FAIL run once per missed window, and the tick that drives it — in-process or from an external scheduler.
+
+## Requirements
+
+### Requirement: Missed heartbeat is a FAIL run
+When a Check has `heartbeat_hours` set, the system SHALL insert a synthetic FAIL run with `trigger="heartbeat"` once `now − last run timestamp` exceeds `heartbeat_hours`, at most once per missed window, with the message "No run in <elapsed> h — expected one every <heartbeat_hours> h."
+
+#### Scenario: Workflow never fired
+- **WHEN** `heartbeat_hours` is 24 and the last run was 26 h ago
+- **THEN** one heartbeat FAIL run is recorded and alert routing treats it as a fresh FAIL
+
+#### Scenario: Real run recovers
+- **WHEN** a webhook run PASSes after a heartbeat FAIL
+- **THEN** a Recovered alert is sent per the alerts rules
+
+### Requirement: Tick can be driven externally
+`POST /api/internal/tick` with header `X-Tick-Secret` equal to `VR_TICK_SECRET` SHALL run the heartbeat sweep and the retry drain and return `{heartbeats, retries}` counts. A wrong or missing header SHALL return 401; when `VR_TICK_SECRET` is unset the endpoint SHALL return 404. The in-process ticker SHALL run only when `VR_INTERNAL_TICKER` is `1` (default). Both drivers SHALL be idempotent within a window.
+
+#### Scenario: External scheduler
+- **WHEN** cron-job.org POSTs to the endpoint with the right secret every 5 minutes
+- **THEN** missed heartbeat windows and due retries are processed without any in-process timer
+
+#### Scenario: Wrong secret
+- **WHEN** the header is missing or wrong
+- **THEN** the response is 401 and nothing runs

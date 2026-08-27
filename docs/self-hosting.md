@@ -17,7 +17,9 @@ VerifyRuns is a single FastAPI process, a MongoDB database, and a static React b
 | `VR_ALLOW_PRIVATE_EGRESS` | no | `1` lets Checks point at private/loopback/link-local addresses (an internal database, a local dev stack). **Off by default**: destinations must resolve to public addresses, checked at save time and before every fetch |
 | `VR_MAX_RESPONSE_BYTES` | no | HTTP/JSON responses are streamed and abandoned past this size (5 MB) |
 | `VR_RATE_AUTH_PER_MIN` / `VR_RATE_HOOK_PER_MIN` / `VR_RATE_CREATE_PER_MIN` | no | per-minute limits for sign-up+login per client IP (120), webhook per secret (120), Check creation per user (60); excess gets HTTP 429 with `Retry-After` |
-| `VR_RETRY_DELAY_SECONDS` | no | seconds before the retry that precedes a fresh FAIL alert (30) |
+| `VR_TICK_SECRET` | on sleeping hosts | enables `POST /api/internal/tick` (header `X-Tick-Secret`) so an external scheduler can drive heartbeats and retries; unset = endpoint disabled |
+| `VR_INTERNAL_TICKER` | no | `1` (default) runs the tick loop inside the API process every `VR_HEARTBEAT_TICK_SECONDS`; set `0` on hosts that sleep and use the scheduler instead |
+| `VR_RETRY_DELAY_SECONDS` | no | how long after a fresh FAIL the retry becomes due (30); it runs on the next tick after that |
 | `VR_HEARTBEAT_TICK_SECONDS` | no | how often the in-process ticker looks for missed heartbeat windows (60) |
 | `VR_AIRTABLE_MAX_RECORDS` | no | Airtable paging ceiling (10000) |
 | `VR_AIRTABLE_FETCH_BUDGET_S` | no | total time allowed for Airtable paging (60) |
@@ -28,7 +30,7 @@ Frontend: `REACT_APP_BACKEND_URL` at build time, pointing at the API origin.
 
 ## Process model
 
-Checks run as FastAPI background tasks in the API process; the retry before a fresh FAIL alert is an `asyncio` sleep in the same process, and the heartbeat ticker is an `asyncio` loop started at startup. A restart drops in-flight runs and pending retries; heartbeats resume on the next tick. Run **one** API process, or two processes may both record a heartbeat FAIL in the same minute (harmless duplicates; alerts are still deduplicated). This is fine for small deployments; a worker/queue is on the roadmap (`openspec/changes/heartbeat-checks` carries the scheduler discussion).
+The API is stateless between requests (`serverless-ready`, 2026-08-28). A webhook call runs the check inside the request and returns the verdict. Everything time-based — missed heartbeats and retry-before-alert — happens in one idempotent **tick**, driven either by the in-process loop (`VR_INTERNAL_TICKER=1`, default, fine for a VM or container that stays up) or by an external scheduler calling `POST /api/internal/tick` (set `VR_TICK_SECRET`, and `VR_INTERNAL_TICKER=0` on hosts that sleep). Pending retries are stored on the Check, so a restart loses nothing. See `docs/deploy.md` for the $0 layout.
 
 ## Network
 

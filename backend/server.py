@@ -412,6 +412,7 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
     # Retry toggle (default True for older docs)
     doc["retry_before_alert"] = bool(doc.get("retry_before_alert", True))
     doc["heartbeat_hours"] = doc.get("heartbeat_hours")
+    doc["pending_retry_at"] = (doc.pop("pending_retry", None) or {}).get("due_at")
     doc["store_samples"] = bool(doc.get("store_samples", False))
     if not include_webhook_secret:
         doc.pop("webhook_secret", None)
@@ -655,7 +656,6 @@ async def run_check_now(check_id: str, bg: BackgroundTasks, user: dict = Depends
 
 # ---------- Webhook (async) ----------
 CLAIM_KEYS = ("wrote", "expected_new", "count")
-WEBHOOK_WAIT_MAX_SECONDS = 60
 
 
 def _parse_claimed(body: Any) -> tuple:
@@ -689,19 +689,13 @@ async def webhook(secret: str, request: Request, bg: BackgroundTasks, wait: int 
         body = None
     claimed_new, body_note = _parse_claimed(body)
     run_id = str(uuid.uuid4())
-    if wait and wait > 0:
-        # Integrators (the n8n node) want the verdict in the same request. Run inline,
-        # shielded so a timeout never cancels the run half-written; it lands in the background.
-        task = asyncio.create_task(execute_check(c["id"], "webhook", run_id, False, claimed_new, body_note))
-        try:
-            await asyncio.wait_for(asyncio.shield(task), timeout=min(int(wait), WEBHOOK_WAIT_MAX_SECONDS))
-        except asyncio.TimeoutError:
-            return {"accepted": True, "run_id": run_id, "verdict": None, "diff_message": None, "timed_out": True}
-        run = await db.check_runs.find_one({"id": run_id}, {"_id": 0, "verdict": 1, "diff_message": 1})
-        return {"accepted": True, "run_id": run_id, "verdict": (run or {}).get("verdict"),
-                "diff_message": (run or {}).get("diff_message"), "timed_out": False}
-    bg.add_task(execute_check, c["id"], "webhook", run_id, False, claimed_new, body_note)
-    return {"accepted": True, "run_id": run_id}
+    # serverless-ready (2026-08-28): always inline. Nothing may depend on this process
+    # surviving past the response, so the run is recorded before we answer. `wait` is
+    # accepted for older integrations and ignored.
+    await execute_check(c["id"], "webhook", run_id, False, claimed_new, body_note)
+    run = await db.check_runs.find_one({"id": run_id}, {"_id": 0, "verdict": 1, "diff_message": 1})
+    return {"accepted": True, "run_id": run_id, "verdict": (run or {}).get("verdict"),
+            "diff_message": (run or {}).get("diff_message"), "timed_out": False}
 
 # ---------- Check execution logic ----------
 def _get_records(payload: Any, json_path: Optional[str]) -> Optional[List[dict]]:
@@ -1047,8 +1041,9 @@ async def _fetch_records(kind: str, cfg: dict):
 
 
 async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool = False,
-                        claimed_new: Optional[int] = None, body_note: Optional[str] = None):
-    c = await db.checks.find_one({"id": check_id})
+                        claimed_new: Optional[int] = None, body_note: Optional[str] = None, database=None):
+    d = database if database is not None else db
+    c = await d.checks.find_one({"id": check_id})
     if not c:
         return
     kind = c.get("connector_kind", "http_json")
@@ -1070,7 +1065,7 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
         else:
             meta = fetched_meta or _meta(len(records))
             fp = _fingerprint(records, meta["total"], newest_defined=meta.get("newest_defined", True))
-            prev = await db.check_runs.find(
+            prev = await d.check_runs.find(
                 {"check_id": check_id, "verdict": "PASS"}, {"_id": 0}
             ).sort("timestamp", -1).limit(30).to_list(30)
             prev.reverse()
@@ -1102,9 +1097,9 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
         "claimed_new": claimed_new,
         "body_note": body_note,
     }
-    await db.check_runs.insert_one(run_doc)
+    await d.check_runs.insert_one(run_doc)
     if sample:
-        await db.run_samples.insert_one({
+        await d.run_samples.insert_one({
             "run_id": run_id, "check_id": check_id,
             **{k: v for k, v in sample.items() if k != "expires_at"},
             "expires_at": datetime.fromisoformat(sample["expires_at"]),  # BSON date for the TTL index
@@ -1117,21 +1112,34 @@ async def execute_check(check_id: str, trigger: str, run_id: str, is_retry: bool
         would_be_fresh_fail = (verdict == "FAIL" and last_alerted != "FAIL")
         retry_enabled = c.get("retry_before_alert", True)
         if (not is_retry) and would_be_fresh_fail and retry_enabled and not snoozed:
-            # Retry once before waking anyone — schedule a delayed re-run
-            asyncio.create_task(_schedule_retry(check_id, claimed_new))
+            # Retry once before waking anyone. Stored on the Check, drained by the next tick —
+            # never an in-process sleep, so it survives sleeping hosts and restarts.
+            due = datetime.now(timezone.utc) + timedelta(seconds=RETRY_DELAY_SECONDS)
+            await d.checks.update_one({"id": check_id}, {"$set": {"pending_retry": {"due_at": due.isoformat(), "claimed_new": claimed_new}}})
         else:
-            await _maybe_alert(c, run_doc, snoozed=snoozed)
+            await _maybe_alert(c, run_doc, snoozed=snoozed, database=d)
     except Exception:
         log.exception("post-run alert routing failed for run %s", run_id)
 
 
-async def _schedule_retry(check_id: str, claimed_new: Optional[int] = None):
-    try:
-        await asyncio.sleep(RETRY_DELAY_SECONDS)
-        # the retry re-checks the same workflow run, so it carries the same claim
-        await execute_check(check_id, "retry", str(uuid.uuid4()), is_retry=True, claimed_new=claimed_new)
-    except Exception:
-        log.exception("retry scheduling failed for check %s", check_id)
+async def _drain_retries(now: Optional[datetime] = None, database=None) -> int:
+    """Run every retry whose due_at has passed; clear it first so two ticks cannot both run it."""
+    now = now or datetime.now(timezone.utc)
+    d = database if database is not None else db
+    ran = 0
+    cursor = d.checks.find({"pending_retry.due_at": {"$lte": now.isoformat()}}, {"_id": 0, "id": 1, "pending_retry": 1})
+    async for c in cursor:
+        claimed = (c.get("pending_retry") or {}).get("claimed_new")
+        res = await d.checks.update_one({"id": c["id"], "pending_retry.due_at": c["pending_retry"]["due_at"]}, {"$unset": {"pending_retry": ""}})
+        if res.modified_count == 0:
+            continue  # another tick got there first
+        try:
+            # the retry re-checks the same workflow run, so it carries the same claim
+            await execute_check(c["id"], "retry", str(uuid.uuid4()), is_retry=True, claimed_new=claimed, database=d)
+            ran += 1
+        except Exception:
+            log.exception("retry failed for check %s", c["id"])
+    return ran
 
 
 def _channels(check_doc: dict) -> List[dict]:
@@ -1311,15 +1319,39 @@ async def _heartbeat_tick(now: Optional[datetime] = None, database=None) -> int:
     return fired
 
 
+INTERNAL_TICKER = os.environ.get("VR_INTERNAL_TICKER", "1").lower() in ("1", "true", "yes")
+TICK_SECRET = os.environ.get("VR_TICK_SECRET", "")
+
+
+async def _tick(now: Optional[datetime] = None, database=None) -> dict:
+    """Everything time-based, in one idempotent sweep: missed heartbeats, then due retries.
+    Driven by the in-process loop locally and by an external scheduler on sleeping hosts."""
+    now = now or datetime.now(timezone.utc)
+    heartbeats = await _heartbeat_tick(now=now, database=database)
+    retries = await _drain_retries(now=now, database=database)
+    return {"heartbeats": heartbeats, "retries": retries}
+
+
 async def _heartbeat_loop():
     while True:
         try:
-            fired = await _heartbeat_tick()
-            if fired:
-                log.info("heartbeat tick: %d missed-window run(s) recorded", fired)
+            res = await _tick()
+            if res["heartbeats"] or res["retries"]:
+                log.info("tick: %d missed-window run(s), %d retry run(s)", res["heartbeats"], res["retries"])
         except Exception:
-            log.exception("heartbeat tick failed")
+            log.exception("tick failed")
         await asyncio.sleep(HEARTBEAT_TICK_SECONDS)
+
+
+@api.post("/internal/tick")
+async def internal_tick(request: Request):
+    """External scheduler entry point (cron-job.org, GitHub Actions, Cloud Scheduler)."""
+    if not TICK_SECRET:
+        raise HTTPException(404, "Not found")
+    given = request.headers.get("x-tick-secret", "")
+    if not secrets.compare_digest(given, TICK_SECRET):
+        raise HTTPException(401, "Bad tick secret")
+    return await _tick()
 
 
 # ---------- Startup ----------
@@ -1334,7 +1366,8 @@ async def on_start():
     await db.check_runs.create_index([("check_id", 1), ("timestamp", -1)])
     await db.run_samples.create_index("run_id", unique=True)
     await db.run_samples.create_index("expires_at", expireAfterSeconds=0)
-    app.state.heartbeat_task = asyncio.create_task(_heartbeat_loop())
+    if INTERNAL_TICKER:
+        app.state.heartbeat_task = asyncio.create_task(_heartbeat_loop())
 
 @app.on_event("shutdown")
 async def on_stop():

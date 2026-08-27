@@ -1,0 +1,32 @@
+# Render Blueprint — the VerifyRuns API on a free web service.
+# Docs: docs/deploy.md. Secrets are `sync: false`: set them in the Render dashboard.
+services:
+  - type: web
+    name: verifyruns-api
+    runtime: python
+    plan: free
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn server:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /api/
+    envVars:
+      - key: PYTHON_VERSION
+        value: "3.12.6"
+      - key: MONGO_URL
+        sync: false            # MongoDB Atlas M0 connection string
+      - key: DB_NAME
+        value: verifyruns
+      - key: JWT_SECRET
+        generateValue: true
+      - key: FERNET_KEY
+        sync: false            # python -c "from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())"
+      - key: VR_TICK_SECRET
+        generateValue: true    # copy into the cron-job.org header X-Tick-Secret
+      - key: VR_INTERNAL_TICKER
+        value: "0"             # the scheduler drives ticks; the process sleeps between requests
+      - key: PUBLIC_APP_URL
+        sync: false            # https://<your-project>.pages.dev
+      - key: CORS_ORIGINS
+        sync: false            # same as PUBLIC_APP_URL (comma-separate more origins)
+      - key: VR_ALLOW_PRIVATE_EGRESS
+        value: "0"

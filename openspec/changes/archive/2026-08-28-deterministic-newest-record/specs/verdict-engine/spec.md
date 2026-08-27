@@ -3,6 +3,10 @@
 ### Requirement: Fingerprint a record set
 The system SHALL compute `record_count`, the sorted union of field names, `null_pct` per field (percentage of records where the value is None, blank string, or empty list/dict), and `newest_record` = the first element of the sample after connector-defined ordering (Airtable: `createdTime` desc; Postgres: the query's own ORDER BY; HTTP/JSON: max of `config.newest_key` when set, else the last element). The fingerprint SHALL also store `newest_window`, the first 5 ordered records, and `newest_defined: true|false`.
 
+#### Scenario: Mixed field set
+- **WHEN** records (newest-first) are `[{a:1,b:""},{a:2}]`
+- **THEN** fields are `[a,b]`, `null_pct` is `{a:0.0, b:100.0}`, `newest_record` is `{a:1,b:""}`
+
 #### Scenario: Airtable ordering
 - **WHEN** the sample contains records created at 09:00, 11:00 and 10:00
 - **THEN** `newest_record` is the 11:00 record

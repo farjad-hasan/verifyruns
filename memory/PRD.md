@@ -41,7 +41,8 @@ Tagline: "Your automation said Done. RunProof checks if that's true."
 - Slack FAIL / recovery alerts with **state-based dedup** (`last_alerted_verdict` on check) and **30s retry-before-alert** on fresh FAIL — no alert if the retry PASSes; snoozed checks skip alerting entirely
 - Public status page: `POST/DELETE /api/checks/{id}/public` + unauthenticated `GET /api/public/checks/{token}` — no config/secrets/fingerprint leaked; frontend route `/status/:token`
 - Snooze: `POST/DELETE /api/checks/{id}/snooze` with hours cap of 168; UI dropdown in detail header
-- Webhook wait (2026-08-27): `POST /api/hook/{secret}?wait=N` (≤60) runs inline under asyncio.shield and returns the verdict; timeout → `verdict: null, timed_out: true`, run still lands
+- Serverless-ready (2026-08-28, Farjad's call: $0 hosting — Cloudflare Pages + Render free + Atlas M0 + cron-job.org): webhook runs inline and always returns the verdict; `pending_retry` stored on the Check and drained by the tick; `POST /api/internal/tick` (X-Tick-Secret) = heartbeat sweep + retry drain; in-process loop gated by `VR_INTERNAL_TICKER`; `frontend/public/_redirects`; `render.yaml`; `docs/deploy.md`
+- Webhook wait (2026-08-27, superseded by serverless-ready — `?wait` accepted and ignored): `POST /api/hook/{secret}?wait=N` (≤60) runs inline under asyncio.shield and returns the verdict; timeout → `verdict: null, timed_out: true`, run still lands
 - Plans + interest (2026-08-27): `GET /api/plans` (early access, three tiers, planned prices), `POST /api/interest` (authenticated willingness-to-pay signal → `interest` collection); frontend `/pricing`, `/data`, landing rewritten with the diff message as hero
 - Egress lockdown (2026-08-27): destinations must resolve to public addresses (save time + fetch time; `VR_ALLOW_PRIVATE_EGRESS=1` to allow), HTTP/JSON reads streamed and capped at `VR_MAX_RESPONSE_BYTES`, in-memory rate limits on auth (per IP), webhook (per secret), Check creation (per user) → 429 + Retry-After
 - Data minimisation (2026-08-27): runs store `newest_hash` + `sample_stored` instead of rows; opt-in `store_samples` per Check keeps rows + error bodies in `run_samples` with a 30-day TTL index; `GET /api/runs/{id}` attaches `sample`; `DELETE /api/auth/me` purges everything
@@ -58,7 +59,7 @@ then publish". Run `openspec validate --all --strict` after editing specs.
 Done: `fix-record-cap-paging`, `postgres-detail-card`, `claimed-count-reconciliation`
 `deterministic-newest-record`, `readme-and-docs`, `heartbeat-checks`, `email-and-discord-alerts`, `data-minimisation`, `egress-lockdown`, `n8n-community-node` (webhook-wait + private node repo
 `farjad-hasan/verifyruns-n8n`), `landing-page-sell`, `pricing-tiers` (cheap version: /pricing + interest capture;
-billing deferred to `billing-paddle`) (all 2026-08-27; Farjad chose
+billing deferred to `billing-paddle`) (all 2026-08-27), `serverless-ready` (2026-08-28; Farjad chose
 to keep building before distribution, overriding the deferred triggers). Development is local since 2026-08-27 (Emergent credits
 exhausted): Docker Mongo :27017, Postgres :5434, uvicorn :8000, craco :3100.
 

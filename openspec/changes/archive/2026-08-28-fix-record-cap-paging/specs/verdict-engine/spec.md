@@ -7,6 +7,10 @@ The system SHALL compute `delta = record_count − last PASS record_count` and F
 - **WHEN** the last PASS had 40 records, this run has 40, and `min_new_records` is 1
 - **THEN** the verdict is FAIL with "the destination gained 0 records (expected at least 1)"
 
+#### Scenario: Count plateau from a connector cap
+- **WHEN** the table has grown past what a single connector page returns
+- **THEN** the connector's true count is used and there is no plateau; the growth rule sees the real delta
+
 #### Scenario: Large table keeps growing
 - **WHEN** the last PASS had 2,400 records and this run has 2,403
 - **THEN** the verdict is PASS with "Destination gained 3 record(s). All expectations met."
