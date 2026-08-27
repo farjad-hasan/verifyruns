@@ -163,7 +163,7 @@ export default function CheckDetail() {
           <div className="mono-block break-all" data-testid="curl-claim-example">{curlWithClaim}</div>
           <p className="text-xs text-zinc-500 mt-2">
             Send <code className="font-mono">{"{"}"wrote": N{"}"}</code> in the body and the verdict reconciles your workflow's own count against the destination.
-            n8n: <code className="font-mono">{"{{ $items().length }}"}</code> · Make: the bundle count · Zapier: the step's item count.
+            n8n: <code className="font-mono">{"{{ $input.all().length }}"}</code> · Make: the bundle count · Zapier: the step's item count.
           </p>
         </div>
 
