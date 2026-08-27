@@ -124,6 +124,10 @@ class Expectations(BaseModel):
     # claimed: every webhook run must carry {"wrote": N}; the destination must gain >= N
     growth_mode: Literal["growth", "steady", "claimed"] = "growth"
 
+class ChannelIn(BaseModel):
+    kind: Literal["slack", "discord", "email"]
+    target: str = Field(min_length=3, max_length=2000)  # webhook URL or email address
+
 class CheckCreate(BaseModel):
     name: str = Field(min_length=1, max_length=120)
     connector_kind: str = "http_json"
@@ -132,6 +136,7 @@ class CheckCreate(BaseModel):
     alert_slack_webhook: Optional[str] = None
     retry_before_alert: bool = True
     heartbeat_hours: Optional[int] = Field(default=None, ge=1, le=720)  # expect a run at least this often
+    alert_channels: List[ChannelIn] = []
 
 class CheckUpdate(BaseModel):
     name: Optional[str] = None
@@ -145,6 +150,7 @@ class CheckUpdate(BaseModel):
 
 class SnoozeIn(BaseModel):
     hours: int = Field(ge=1, le=168)  # cap at a week
+
 
 # ---------- Auth ----------
 @api.post("/auth/register")
@@ -272,11 +278,15 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
     doc["config"] = _sanitize_config(kind, doc.get("config") or {})
     # Alert channels: never leak Slack webhook URL
     slack_enc = doc.pop("alert_slack_webhook_encrypted", None)
+    channels = []
     if slack_enc:
         doc["has_alert_slack"] = True
         doc["alert_slack_last4"] = mask_token(decrypt_secret(slack_enc))
+        channels.append({"id": "legacy-slack", "kind": "slack", "last4": doc["alert_slack_last4"]})
     else:
         doc["has_alert_slack"] = False
+    channels.extend(_sanitize_channel(ch) for ch in (doc.pop("alert_channels", None) or []))
+    doc["alert_channels"] = channels
     # Public status: expose the token to the owner so they can share the URL
     doc["is_public"] = bool(doc.get("public_token"))
     # Snooze
@@ -307,6 +317,10 @@ async def create_check(payload: CheckCreate, user: dict = Depends(get_current_us
     }
     if payload.alert_slack_webhook:
         doc["alert_slack_webhook_encrypted"] = encrypt_secret(payload.alert_slack_webhook.strip())
+    if payload.alert_channels:
+        if any(ch.kind == "email" for ch in payload.alert_channels) and not _email_available():
+            raise HTTPException(400, EMAIL_NOT_CONFIGURED)
+        doc["alert_channels"] = [_new_channel(ch.kind, ch.target) for ch in payload.alert_channels]
     await db.checks.insert_one(doc)
     return _sanitize_check({**doc})
 
@@ -394,6 +408,34 @@ async def wake_check(check_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(404, "Check not found")
     await db.checks.update_one({"id": check_id}, {"$unset": {"snooze_until": ""}})
     return {"is_snoozed": False}
+
+@api.post("/checks/{check_id}/channels")
+async def add_channel(check_id: str, payload: ChannelIn, user: dict = Depends(get_current_user)):
+    c = await db.checks.find_one({"id": check_id, "user_id": user["id"]})
+    if not c:
+        raise HTTPException(404, "Check not found")
+    if payload.kind == "email" and not _email_available():
+        raise HTTPException(400, EMAIL_NOT_CONFIGURED)
+    ch = _new_channel(payload.kind, payload.target)
+    await db.checks.update_one({"id": check_id}, {"$push": {"alert_channels": ch}})
+    return _sanitize_channel(ch)
+
+@api.delete("/checks/{check_id}/channels/{channel_id}")
+async def delete_channel(check_id: str, channel_id: str, user: dict = Depends(get_current_user)):
+    c = await db.checks.find_one({"id": check_id, "user_id": user["id"]})
+    if not c:
+        raise HTTPException(404, "Check not found")
+    if channel_id == "legacy-slack":
+        await db.checks.update_one({"id": check_id}, {"$unset": {"alert_slack_webhook_encrypted": ""}})
+        return {"ok": True}
+    res = await db.checks.update_one({"id": check_id}, {"$pull": {"alert_channels": {"id": channel_id}}})
+    if res.modified_count == 0:
+        raise HTTPException(404, "Channel not found")
+    return {"ok": True}
+
+@api.get("/meta")
+async def meta():
+    return {"email_alerts": _email_available()}
 
 @api.post("/checks/{check_id}/public")
 async def enable_public(check_id: str, user: dict = Depends(get_current_user)):
@@ -874,11 +916,53 @@ async def _schedule_retry(check_id: str, claimed_new: Optional[int] = None):
         log.exception("retry scheduling failed for check %s", check_id)
 
 
+def _channels(check_doc: dict) -> List[dict]:
+    """Every alert channel on a Check, legacy Slack field first, targets decrypted."""
+    out: List[dict] = []
+    slack_enc = check_doc.get("alert_slack_webhook_encrypted")
+    if slack_enc:
+        target = decrypt_secret(slack_enc)
+        if target:
+            out.append({"id": "legacy-slack", "kind": "slack", "target": target})
+    for ch in check_doc.get("alert_channels") or []:
+        target = decrypt_secret(ch.get("target_encrypted", ""))
+        if target:
+            out.append({"id": ch["id"], "kind": ch["kind"], "target": target})
+    return out
+
+
+async def _deliver(kind: str, target: str, text: str, subject: str = "") -> bool:
+    """Send one alert to one channel. Returns True on a 2xx from the provider."""
+    try:
+        async with _http_client() as hc:
+            if kind == "slack":
+                resp = await hc.post(target, json={"text": text})
+            elif kind == "discord":
+                resp = await hc.post(target, json={"content": text[:DISCORD_MAX_CHARS]})
+            elif kind == "email":
+                if not _email_available():
+                    return False
+                resp = await hc.post(
+                    "https://api.resend.com/emails",
+                    headers={"Authorization": f"Bearer {RESEND_API_KEY}"},
+                    json={"from": ALERT_FROM, "to": [target], "subject": subject, "text": text},
+                )
+            else:
+                return False
+        if resp.status_code >= 400:
+            log.warning("%s alert non-2xx: %s %s", kind, resp.status_code, resp.text[:200])
+            return False
+        return True
+    except Exception:
+        log.exception("%s alert delivery failed", kind)
+        return False
+
+
 async def _maybe_alert(check_doc: dict, run: dict, snoozed: bool = False, database=None):
     """Alert on state transitions using last_alerted_verdict tracked on the check."""
     d = database if database is not None else db
-    slack_enc = check_doc.get("alert_slack_webhook_encrypted")
-    if not slack_enc:
+    channels = _channels(check_doc)
+    if not channels:
         return
     if snoozed:
         log.info("alerts snoozed for check %s until %s", check_doc.get("id"), check_doc.get("snooze_until"))
@@ -900,26 +984,42 @@ async def _maybe_alert(check_doc: dict, run: dict, snoozed: bool = False, databa
     else:
         return
 
-    slack_url = decrypt_secret(slack_enc)
-    if not slack_url:
-        return
     app_url = os.environ.get("PUBLIC_APP_URL", "").rstrip("/")
     detail_link = f"{app_url}/checks/{check_doc['id']}" if app_url else ""
     text = f"{header}\n{run['diff_message']}\n_At {run['timestamp']}_"
-    if detail_link:
-        text += f"\n<{detail_link}|Open in VerifyRuns>"
-    try:
-        async with httpx.AsyncClient(timeout=8.0) as hc:
-            resp = await hc.post(slack_url, json={"text": text})
-        if resp.status_code >= 400:
-            log.warning("Slack alert non-2xx: %s %s", resp.status_code, resp.text[:200])
-    except Exception:
-        log.exception("Slack alert POST failed")
-    # Persist state only after a delivery attempt so we never dedup a truly un-sent alert
+    plain_header = header.replace("*", "").split(" ", 1)[-1]  # e.g. "FAIL — orders-sync"
+    subject = f"VerifyRuns: {plain_header}"
+    sent: List[dict] = []
+    for ch in channels:
+        body = text
+        if ch["kind"] == "slack" and detail_link:
+            body += f"\n<{detail_link}|Open in VerifyRuns>"
+        elif ch["kind"] in ("discord", "email") and detail_link:
+            body += f"\n{detail_link}"
+        ok = await _deliver(ch["kind"], ch["target"], body, subject=subject)
+        sent.append({"kind": ch["kind"], "ok": ok})
+    # Persist state only after delivery attempts so we never dedup a truly un-sent alert
     await d.checks.update_one({"id": check_doc["id"]}, {"$set": {"last_alerted_verdict": new_last_alerted}})
+    await d.check_runs.update_one({"id": run["id"]}, {"$set": {"alerts_sent": sent}})
 
 # ---------- Heartbeat ("did it run at all?") ----------
 HEARTBEAT_TICK_SECONDS = int(os.environ.get("VR_HEARTBEAT_TICK_SECONDS", "60"))
+RESEND_API_KEY = os.environ.get("RESEND_API_KEY", "")
+ALERT_FROM = os.environ.get("ALERT_FROM", "")
+DISCORD_MAX_CHARS = 2000
+EMAIL_NOT_CONFIGURED = "Email alerts are not configured on this host (set RESEND_API_KEY and ALERT_FROM)."
+
+
+def _email_available() -> bool:
+    return bool(RESEND_API_KEY and ALERT_FROM)
+
+
+def _new_channel(kind: str, target: str) -> dict:
+    return {"id": str(uuid.uuid4()), "kind": kind, "target_encrypted": encrypt_secret(target.strip()), "created_at": now_iso()}
+
+
+def _sanitize_channel(ch: dict) -> dict:
+    return {"id": ch["id"], "kind": ch["kind"], "last4": mask_token(decrypt_secret(ch.get("target_encrypted", "")))}
 
 
 def _parse_ts(value: str) -> datetime:

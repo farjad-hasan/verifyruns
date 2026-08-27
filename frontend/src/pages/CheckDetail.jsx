@@ -209,7 +209,7 @@ export default function CheckDetail() {
         </div>
 
         {/* Alert channel */}
-        <AlertChannel check={check} onSaved={load} />
+        <AlertChannelsCard check={check} onSaved={load} />
 
         {/* Public status card */}
         <PublicStatusCard check={check} onSaved={load} />
@@ -301,6 +301,11 @@ function RunPanel({ run, previousPassFingerprint, onClose }) {
             {formatDate(run.timestamp)} · {run.trigger}
             {typeof run.claimed_new === "number" && <span className="text-zinc-500"> · workflow claimed {run.claimed_new}</span>}
           </p>
+          {Array.isArray(run.alerts_sent) && run.alerts_sent.length > 0 && (
+            <p className="text-xs font-mono text-zinc-500 -mt-6 mb-8" data-testid="run-alerts-sent">
+              alerted: {run.alerts_sent.map((a) => `${a.kind} ${a.ok ? "✓" : "✗"}`).join(" · ")}
+            </p>
+          )}
           {run.body_note && (
             <p className="text-xs text-amber-400 -mt-6 mb-8 font-mono" data-testid="run-body-note">{run.body_note}</p>
           )}
@@ -370,105 +375,99 @@ function RunPanel({ run, previousPassFingerprint, onClose }) {
 }
 
 
-function AlertChannel({ check, onSaved }) {
-  const [slack, setSlack] = useState("");
-  const [editing, setEditing] = useState(false);
+function AlertChannelsCard({ check, onSaved }) {
+  const [kind, setKind] = useState("slack");
+  const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
+  const [emailAvailable, setEmailAvailable] = useState(null);
 
-  const save = async () => {
+  useEffect(() => {
+    api.get("/meta").then(({ data }) => setEmailAvailable(!!data.email_alerts)).catch(() => setEmailAvailable(false));
+  }, []);
+
+  const placeholder = {
+    slack: "https://hooks.slack.com/services/…",
+    discord: "https://discord.com/api/webhooks/…",
+    email: "ops@example.com",
+  }[kind];
+
+  const add = async () => {
+    if (!target.trim()) return;
     setBusy(true);
     try {
-      await api.patch(`/checks/${check.id}`, { alert_slack_webhook: slack.trim() });
-      toast.success("Slack alerts enabled");
-      setSlack("");
-      setEditing(false);
+      await api.post(`/checks/${check.id}/channels`, { kind, target: target.trim() });
+      toast.success("Channel added");
+      setTarget("");
       await onSaved();
-    } catch {
-      toast.error("Could not save Slack webhook");
+    } catch (e) {
+      toast.error(e?.response?.data?.detail || "Could not add channel");
     } finally {
       setBusy(false);
     }
   };
 
-  const remove = async () => {
-    if (!window.confirm("Remove Slack alerts for this check?")) return;
-    setBusy(true);
+  const remove = async (ch) => {
+    if (!window.confirm(`Remove the ${ch.kind} channel ending ${ch.last4.slice(-4)}?`)) return;
     try {
-      await api.patch(`/checks/${check.id}`, { clear_alert_slack: true });
-      toast.success("Slack alerts removed");
+      await api.delete(`/checks/${check.id}/channels/${ch.id}`);
+      toast.success("Channel removed");
       await onSaved();
     } catch {
-      toast.error("Could not remove Slack webhook");
-    } finally {
-      setBusy(false);
+      toast.error("Could not remove channel");
     }
   };
 
+  const channels = check.alert_channels || [];
   return (
-    <div className="rp-card p-6 sm:p-8 mt-6" data-testid="alert-channel-card">
-      <div className="flex items-center justify-between mb-2">
-        <div className="flex items-center gap-2">
-          {check.has_alert_slack ? (
-            <Bell size={16} className="text-emerald-400" />
-          ) : (
-            <BellOff size={16} className="text-zinc-500" />
-          )}
-          <p className="font-display text-lg">Slack alerts</p>
-        </div>
-        {check.has_alert_slack && !editing && (
-          <button className="rp-btn-danger" onClick={remove} disabled={busy} data-testid="remove-slack-btn">
-            Remove
-          </button>
-        )}
+    <div className="rp-card p-6 sm:p-8" data-testid="alert-channels-card">
+      <div className="flex items-center gap-2 mb-2">
+        {channels.length ? <Bell size={18} className="text-emerald-400" /> : <BellOff size={18} className="text-zinc-500" />}
+        <p className="font-display text-lg">Alert channels</p>
       </div>
+      <p className="text-sm text-zinc-500 mb-4">
+        Every channel gets one message on the first FAIL and one when the check recovers — never one per red run.
+      </p>
 
-      {check.has_alert_slack && !editing && (
-        <>
-          <p className="text-sm text-zinc-400 mb-3">
-            Sending FAIL and recovery messages to your Slack workspace.
-          </p>
-          <p className="text-xs text-zinc-500 font-mono" data-testid="slack-masked">
-            Webhook: {check.alert_slack_last4}
-          </p>
-          <button
-            className="rp-btn-ghost mt-4 !py-1.5 !px-3 !text-xs"
-            onClick={() => setEditing(true)}
-            data-testid="replace-slack-btn"
-          >
-            Replace
-          </button>
-        </>
-      )}
-
-      {(!check.has_alert_slack || editing) && (
-        <>
-          <p className="text-sm text-zinc-500 mb-3">
-            Paste your Slack incoming webhook URL. VerifyRuns will post a message when a run FAILs and again when it recovers.
-          </p>
-          <div className="flex gap-2">
-            <input
-              type="url"
-              className="rp-input font-mono"
-              placeholder="https://hooks.slack.com/services/..."
-              value={slack}
-              onChange={(e) => setSlack(e.target.value)}
-              data-testid="alert-slack-input"
-            />
-            <button className="rp-btn-primary" onClick={save} disabled={busy || !slack.trim()} data-testid="save-slack-btn">
-              <Save size={14} /> Save
-            </button>
-            {editing && (
-              <button className="rp-btn-ghost" onClick={() => { setEditing(false); setSlack(""); }} data-testid="cancel-slack-btn">
-                Cancel
+      {channels.length > 0 && (
+        <ul className="space-y-2 mb-5" data-testid="alert-channel-list">
+          {channels.map((ch) => (
+            <li key={ch.id} className="flex items-center justify-between rounded-lg border border-[#27272A] px-3 py-2 text-sm">
+              <span className="font-mono text-zinc-300">
+                <span className="text-[10px] uppercase tracking-widest text-zinc-500 mr-3">{ch.kind}</span>
+                {ch.last4}
+              </span>
+              <button className="rp-link text-xs text-zinc-500 hover:text-red-400" onClick={() => remove(ch)} data-testid={`remove-channel-${ch.id}`}>
+                Remove
               </button>
-            )}
-          </div>
-        </>
+            </li>
+          ))}
+        </ul>
       )}
+
+      <div className="grid sm:grid-cols-[140px_1fr_auto] gap-2 items-center">
+        <select className="rp-input font-mono" value={kind} onChange={(e) => setKind(e.target.value)} data-testid="channel-kind-select">
+          <option value="slack">Slack</option>
+          <option value="discord">Discord</option>
+          <option value="email" disabled={emailAvailable === false}>
+            {emailAvailable === false ? "Email (not configured on this host)" : "Email"}
+          </option>
+        </select>
+        <input
+          type={kind === "email" ? "email" : "url"}
+          className="rp-input font-mono"
+          placeholder={placeholder}
+          value={target}
+          onChange={(e) => setTarget(e.target.value)}
+          data-testid="channel-target-input"
+        />
+        <button className="rp-btn-primary" onClick={add} disabled={busy || !target.trim()} data-testid="add-channel-btn">
+          <Save size={14} /> {busy ? "Adding…" : "Add"}
+        </button>
+      </div>
+      <p className="text-xs text-zinc-500 mt-2">Stored encrypted; only the last 4 characters are shown afterwards.</p>
     </div>
   );
 }
-
 
 function ExpectationsCard({ check, onSaved }) {
   const [editing, setEditing] = useState(false);

@@ -18,7 +18,7 @@ and the field `price` disappeared — it was present in the last 30 good runs.
    curl -X POST "https://<your-host>/api/hook/<secret>" \
         -H "content-type: application/json" -d '{"wrote": 3}'
    ```
-3. **Get verdicts** — every run is PASS or FAIL with a diff message. Slack gets a message on the first FAIL and again on recovery; not on every red run.
+3. **Get verdicts** — every run is PASS or FAIL with a diff message. Slack, Discord and email channels get a message on the first FAIL and again on recovery; not on every red run.
 
 Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/zapier.md).
 
@@ -71,7 +71,7 @@ npm install --legacy-peer-deps
 PORT=3100 npm start          # or: npm run build
 ```
 
-Optional environment: `VR_RETRY_DELAY_SECONDS` (30), `VR_HEARTBEAT_TICK_SECONDS` (60), `VR_AIRTABLE_MAX_RECORDS` (10000), `VR_PG_COUNT_TIMEOUT_MS` (15000) — full list in [docs/self-hosting.md](docs/self-hosting.md).
+Optional environment: `RESEND_API_KEY` + `ALERT_FROM` (enables email alerts), `VR_RETRY_DELAY_SECONDS` (30), `VR_HEARTBEAT_TICK_SECONDS` (60), `VR_AIRTABLE_MAX_RECORDS` (10000), `VR_PG_COUNT_TIMEOUT_MS` (15000) — full list in [docs/self-hosting.md](docs/self-hosting.md).
 
 Tests run against a live backend plus pure-function suites:
 

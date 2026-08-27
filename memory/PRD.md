@@ -37,6 +37,7 @@ Tagline: "Your automation said Done. RunProof checks if that's true."
 - Manual `POST /api/checks/{id}/run` (async)
 - Fingerprint + verdict logic (record delta, required fields, disappeared fields, non-empty); growth modes `growth` / `steady` / `claimed`; the webhook body may carry `{"wrote": N}` and the verdict reconciles it against real growth (2026-08-27)
 - Server-side fetch via httpx; secrets (bearer tokens, Airtable PATs, Slack webhooks) Fernet-encrypted, only last 4 shown
+- Alert channels per Check (2026-08-27): Slack, Discord, email (Resend; gated on `RESEND_API_KEY`+`ALERT_FROM`, `GET /api/meta` reports availability); `POST/DELETE /api/checks/{id}/channels`; legacy Slack field read as channel `legacy-slack`; runs record `alerts_sent: [{kind, ok}]`
 - Slack FAIL / recovery alerts with **state-based dedup** (`last_alerted_verdict` on check) and **30s retry-before-alert** on fresh FAIL — no alert if the retry PASSes; snoozed checks skip alerting entirely
 - Public status page: `POST/DELETE /api/checks/{id}/public` + unauthenticated `GET /api/public/checks/{token}` — no config/secrets/fingerprint leaked; frontend route `/status/:token`
 - Snooze: `POST/DELETE /api/checks/{id}/snooze` with hours cap of 168; UI dropdown in detail header
@@ -51,7 +52,7 @@ Before implementing anything, read the matching change's `tasks.md` and work
 through its checkboxes in order; the last group is always "verify on preview,
 then publish". Run `openspec validate --all --strict` after editing specs.
 Done: `fix-record-cap-paging`, `postgres-detail-card`, `claimed-count-reconciliation`
-`deterministic-newest-record`, `readme-and-docs`, `heartbeat-checks` (all 2026-08-27; Farjad chose
+`deterministic-newest-record`, `readme-and-docs`, `heartbeat-checks`, `email-and-discord-alerts` (all 2026-08-27; Farjad chose
 to keep building before distribution, overriding the deferred triggers). Development is local since 2026-08-27 (Emergent credits
 exhausted): Docker Mongo :27017, Postgres :5434, uvicorn :8000, craco :3100.
 

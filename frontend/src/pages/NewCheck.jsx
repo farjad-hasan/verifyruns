@@ -28,6 +28,7 @@ export default function NewCheck() {
   const [required, setRequired] = useState("");
   const [nonEmpty, setNonEmpty] = useState("");
   const [slackWebhook, setSlackWebhook] = useState("");
+  const [alertKind, setAlertKind] = useState("slack");
   const [retryBeforeAlert, setRetryBeforeAlert] = useState(true);
   const [heartbeatHours, setHeartbeatHours] = useState("");
   const [busy, setBusy] = useState(false);
@@ -69,7 +70,7 @@ export default function NewCheck() {
           required_fields: required.split(",").map((s) => s.trim()).filter(Boolean),
           non_empty_fields: nonEmpty.split(",").map((s) => s.trim()).filter(Boolean),
         },
-        alert_slack_webhook: slackWebhook.trim() || null,
+        alert_channels: slackWebhook.trim() ? [{ kind: alertKind, target: slackWebhook.trim() }] : [],
         retry_before_alert: retryBeforeAlert,
         heartbeat_hours: heartbeatHours === "" ? null : Number(heartbeatHours),
       };
@@ -198,14 +199,21 @@ export default function NewCheck() {
           </Section>
 
           <Section title="Alert channel" subtitle="Optional. VerifyRuns will POST a message here when a run FAILs and again when it recovers.">
-            <input
-              type="url"
-              className="rp-input font-mono"
-              placeholder="Slack incoming webhook URL (https://hooks.slack.com/services/...)"
-              value={slackWebhook}
-              onChange={(e) => setSlackWebhook(e.target.value)}
-              data-testid="check-slack-input"
-            />
+            <div className="grid sm:grid-cols-[140px_1fr] gap-2">
+              <select className="rp-input font-mono" value={alertKind} onChange={(e) => setAlertKind(e.target.value)} data-testid="check-alert-kind">
+                <option value="slack">Slack</option>
+                <option value="discord">Discord</option>
+              </select>
+              <input
+                type="url"
+                className="rp-input font-mono"
+                placeholder={alertKind === "discord" ? "Discord webhook URL (https://discord.com/api/webhooks/...)" : "Slack incoming webhook URL (https://hooks.slack.com/services/...)"}
+                value={slackWebhook}
+                onChange={(e) => setSlackWebhook(e.target.value)}
+                data-testid="check-slack-input"
+              />
+            </div>
+            <p className="text-xs text-zinc-500 mt-2">Email and more channels can be added from the check page.</p>
             <p className="text-xs text-zinc-500 leading-relaxed mt-2">
               Stored encrypted; only the last 4 characters are shown afterwards.
             </p>

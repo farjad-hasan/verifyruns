@@ -12,6 +12,8 @@ VerifyRuns is a single FastAPI process, a MongoDB database, and a static React b
 | `FERNET_KEY` | yes | encrypts connector secrets and Slack URLs at rest — **losing it makes every stored secret unreadable** |
 | `PUBLIC_APP_URL` | no | used for the "Open in VerifyRuns" link in Slack alerts |
 | `CORS_ORIGINS` | no | comma-separated origins allowed to call the API (default `*`) |
+| `RESEND_API_KEY` | no | enables email alert channels via [Resend](https://resend.com); without it, adding an email channel is refused with a clear message |
+| `ALERT_FROM` | no | sender for email alerts, e.g. `VerifyRuns <alerts@yourdomain>` — must be a domain verified in Resend |
 | `VR_RETRY_DELAY_SECONDS` | no | seconds before the retry that precedes a fresh FAIL alert (30) |
 | `VR_HEARTBEAT_TICK_SECONDS` | no | how often the in-process ticker looks for missed heartbeat windows (60) |
 | `VR_AIRTABLE_MAX_RECORDS` | no | Airtable paging ceiling (10000) |

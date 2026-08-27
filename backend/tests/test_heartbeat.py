@@ -102,6 +102,7 @@ def test_heartbeat_hours_round_trips_and_validates():
     assert r.json()["heartbeat_hours"] == 24
     cid = r.json()["id"]
     assert requests.patch(f"{API}/checks/{cid}", headers=h, json={"heartbeat_hours": None}).json()["heartbeat_hours"] is None
+    requests.delete(f"{API}/checks/{cid}", headers=h)
     for bad in (0, 1000):
         r = requests.post(f"{API}/checks", headers=h, json={
             "name": "bad", "connector_kind": "http_json", "config": {"url": DEST_URL}, "heartbeat_hours": bad})
@@ -139,3 +140,4 @@ def test_missed_window_produces_one_heartbeat_fail_then_recovers():
     # re-anchored on the real run: not due one minute later
     _tick(datetime.now(timezone.utc) + timedelta(minutes=1))
     assert len(_runs(cid, h)) == 3
+    requests.delete(f"{API}/checks/{cid}", headers=h)  # don't leave a 1-hour heartbeat firing in the dev DB
