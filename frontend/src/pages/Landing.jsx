@@ -75,7 +75,7 @@ export default function Landing() {
               <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
               Destination watchdog for n8n, Make and Zapier
             </div>
-            <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.05] tracking-tight rp-fade" style={{ animationDelay: "60ms" }}>
+            <h1 className="font-display text-4xl sm:text-5xl font-semibold leading-[1.05] tracking-tight rp-fade" style={{ animationDelay: "60ms" }}>
               Your automation said <span className="text-zinc-500 line-through decoration-2 decoration-red-500/60">Done</span>.
               <br />
               VerifyRuns checks if that&apos;s true.
