@@ -1,6 +1,65 @@
+import { useState } from "react";
 import { Link } from "react-router-dom";
 import Nav from "../components/Nav";
 import { ArrowRight, ShieldCheck, Zap, Eye } from "lucide-react";
+
+const HOOK = "https://<your-host>/api/hook/<secret>";
+
+const SNIPPETS = {
+  n8n: {
+    label: "n8n",
+    lines: [
+      "HTTP Request node — last step of the workflow",
+      "Method: POST",
+      `URL: ${HOOK}?wait=30`,
+      "Body (JSON): { \"wrote\": {{ $input.all().length }} }",
+    ],
+    note: "Or install the VerifyRuns community node: one drag, and a FAIL turns the execution red.",
+  },
+  make: {
+    label: "Make",
+    lines: [
+      "HTTP → Make a request — last module in the scenario",
+      "Method: POST · Body type: Raw · Content type: JSON",
+      `URL: ${HOOK}`,
+      "Request content: { \"wrote\": 1 }",
+    ],
+    note: "Writing several rows per run? Put an Array aggregator before it and send its length.",
+  },
+  zapier: {
+    label: "Zapier",
+    lines: [
+      "Webhooks by Zapier → POST — last action of the Zap",
+      `URL: ${HOOK}`,
+      "Payload type: json",
+      "Data: wrote = 1",
+    ],
+    note: "Zapier alerts tell you when a Zap errors. This tells you when it succeeds and lands nothing.",
+  },
+};
+
+function SetupTabs() {
+  const [tab, setTab] = useState("n8n");
+  const s = SNIPPETS[tab];
+  return (
+    <div className="rp-card p-6 sm:p-8" data-testid="setup-tabs">
+      <div className="flex gap-2 mb-6">
+        {Object.entries(SNIPPETS).map(([k, v]) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className={`px-3 py-1.5 rounded-md text-sm font-medium border ${tab === k ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-300" : "border-[#27272A] text-zinc-400 hover:text-zinc-200"}`}
+            data-testid={`setup-tab-${k}`}
+          >
+            {v.label}
+          </button>
+        ))}
+      </div>
+      <div className="mono-block whitespace-pre-wrap break-words text-xs sm:text-sm">{s.lines.join("\n")}</div>
+      <p className="text-sm text-zinc-500 mt-4">{s.note}</p>
+    </div>
+  );
+}
 
 export default function Landing() {
   return (
@@ -10,60 +69,65 @@ export default function Landing() {
       {/* Hero */}
       <section className="relative overflow-hidden">
         <div className="absolute inset-0 rp-grid opacity-70 pointer-events-none" />
-        <div className="max-w-5xl mx-auto px-6 lg:px-10 pt-24 pb-24 relative">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-xs font-medium mb-8 rp-fade">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
-            Silent-failure watchdog for no-code automations
-          </div>
-          <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.05] tracking-tight rp-fade" style={{ animationDelay: "60ms" }}>
-            Your automation said <span className="text-zinc-500 line-through decoration-2 decoration-red-500/60">Done</span>.
-            <br />
-            VerifyRuns checks if that&apos;s true.
-          </h1>
-          <p className="mt-8 text-lg text-zinc-400 max-w-2xl leading-relaxed rp-fade" style={{ animationDelay: "140ms" }}>
-            n8n, Make and Zapier finish green while silently writing nothing — or the wrong thing —
-            to your destination. VerifyRuns re-reads the destination itself after every run and tells you
-            when a &ldquo;successful&rdquo; workflow didn&apos;t actually land.
-          </p>
-          <div className="mt-10 flex items-center gap-3 rp-fade" style={{ animationDelay: "220ms" }}>
-            <Link to="/signup" className="rp-btn-primary" data-testid="hero-signup-btn">
-              Start free <ArrowRight size={16} />
-            </Link>
-            <Link to="/login" className="rp-btn-ghost" data-testid="hero-login-btn">
-              I have an account
-            </Link>
+        <div className="max-w-6xl mx-auto px-6 lg:px-10 pt-20 pb-20 relative grid lg:grid-cols-[1.1fr_1fr] gap-12 items-center">
+          <div>
+            <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full border border-emerald-500/20 bg-emerald-500/5 text-emerald-400 text-xs font-medium mb-8 rp-fade">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse" />
+              Destination watchdog for n8n, Make and Zapier
+            </div>
+            <h1 className="font-display text-4xl sm:text-5xl lg:text-6xl font-semibold leading-[1.05] tracking-tight rp-fade" style={{ animationDelay: "60ms" }}>
+              Your automation said <span className="text-zinc-500 line-through decoration-2 decoration-red-500/60">Done</span>.
+              <br />
+              VerifyRuns checks if that&apos;s true.
+            </h1>
+            <p className="mt-8 text-lg text-zinc-400 max-w-xl leading-relaxed rp-fade" style={{ animationDelay: "140ms" }}>
+              Workflows finish green while writing nothing — or the wrong thing — to the destination. Every monitor watches the run.
+              VerifyRuns re-reads the destination after each one and says, in a sentence, what actually landed.
+            </p>
+            <div className="mt-10 flex items-center gap-3 rp-fade" style={{ animationDelay: "220ms" }}>
+              <Link to="/signup" className="rp-btn-primary" data-testid="hero-signup-btn">
+                Start free <ArrowRight size={16} />
+              </Link>
+              <Link to="/login" className="rp-btn-ghost" data-testid="hero-login-btn">
+                I have an account
+              </Link>
+            </div>
+            <p className="mt-4 text-xs text-zinc-500 font-mono">Early access · everything free · no card</p>
           </div>
 
-          {/* Timeline demo */}
-          <div className="mt-20 rp-card p-6 sm:p-8 rp-fade" style={{ animationDelay: "300ms" }}>
-            <div className="flex items-center justify-between mb-4">
-              <div>
-                <p className="text-xs uppercase tracking-widest text-zinc-500 mb-1">Last 30 runs</p>
-                <p className="font-display text-xl">airtable-orders-sync</p>
+          {/* The product is the sentence, so the sentence is the hero */}
+          <div className="rp-fade" style={{ animationDelay: "300ms" }} data-testid="hero-fail-card">
+            <div className="rp-card p-6 sm:p-7 border-red-500/30">
+              <div className="flex items-center justify-between mb-4">
+                <span className="badge-fail">Fail</span>
+                <span className="font-mono text-xs text-zinc-500">airtable-orders-sync · webhook</span>
               </div>
-              <span className="badge-pass">Pass</span>
+              <p className="text-zinc-100 leading-relaxed">
+                Run reported success, but your workflow said it wrote 3 records; the destination gained 0, and the field{" "}
+                <code className="font-mono text-emerald-300">price</code> disappeared — it was present in the last 30 good runs.
+              </p>
+              <div className="flex items-center gap-1 mt-6 tl-hero">
+                {Array.from({ length: 30 }).map((_, i) => (
+                  <div key={i} className={`tl-square ${i === 29 ? "fail" : "pass"}`} />
+                ))}
+              </div>
+              <p className="mt-3 text-xs text-zinc-500 font-mono">alerted: slack ✓ · discord ✓</p>
             </div>
-            <div className="flex items-center gap-1 tl-hero">
-              {Array.from({ length: 30 }).map((_, i) => {
-                const fail = [7, 18, 24].includes(i);
-                return <div key={i} className={`tl-square ${fail ? "fail" : "pass"}`} />;
-              })}
-            </div>
-            <p className="mt-5 text-sm text-zinc-500 font-mono">newest &rarr;</p>
+            <p className="mt-3 text-xs text-zinc-500">A real verdict, word for word. No score, no model — deterministic checks you can read.</p>
           </div>
         </div>
       </section>
 
       {/* Problem */}
       <section className="border-t border-[#18181B]">
-        <div className="max-w-5xl mx-auto px-6 lg:px-10 py-24">
+        <div className="max-w-5xl mx-auto px-6 lg:px-10 py-20">
           <p className="text-xs uppercase tracking-widest text-red-400 mb-3">The silent failure</p>
           <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-6 max-w-3xl">
             Every monitoring tool watches the run.
             <br />
             <span className="text-zinc-500">Nobody watches the destination.</span>
           </h2>
-          <div className="grid md:grid-cols-3 gap-5 mt-12">
+          <div className="grid md:grid-cols-3 gap-5 mt-10">
             {[
               { title: "Zapier says ✓", body: "Task completed. 200 OK. All nodes green.", tag: "Reality" },
               { title: "Airtable says …", body: "Zero new rows. The upsert matched an existing record and silently no-op'd.", tag: "Truth" },
@@ -79,49 +143,92 @@ export default function Landing() {
         </div>
       </section>
 
-      {/* How it works */}
+      {/* Who it's for */}
       <section className="border-t border-[#18181B] bg-[#0C0C0E]">
-        <div className="max-w-5xl mx-auto px-6 lg:px-10 py-24">
+        <div className="max-w-5xl mx-auto px-6 lg:px-10 py-20 grid md:grid-cols-2 gap-10">
+          <div>
+            <p className="text-xs uppercase tracking-widest text-emerald-400 mb-3">Who this is for</p>
+            <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">Agencies at client #21.<br /><span className="text-zinc-500">Operators whose syncs touch money.</span></h2>
+          </div>
+          <div className="space-y-5 text-zinc-400 leading-relaxed">
+            <p>
+              If you run automations for other people, "it ran" is not an answer you can give a client. VerifyRuns gives you the sentence and a public status page you can hand over.
+            </p>
+            <p>
+              If your own workflow moves orders, invoices or CRM records, a green run that wrote nothing costs real money before anyone notices. One HTTP call at the end of the workflow, and it can't happen quietly.
+            </p>
+          </div>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section className="border-t border-[#18181B]">
+        <div className="max-w-5xl mx-auto px-6 lg:px-10 py-20">
           <p className="text-xs uppercase tracking-widest text-emerald-400 mb-3">How it works</p>
-          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-14">Three steps. About four minutes.</h2>
+          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-12">Three steps. About four minutes.</h2>
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              { icon: <ShieldCheck size={20} />, step: "01", title: "Create a Check", body: "Point VerifyRuns at your destination — the GET url that returns your records. Add expectations like &ldquo;at least 1 new record per run&rdquo;." },
-              { icon: <Zap size={20} />, step: "02", title: "Paste the webhook", body: "Add one HTTP Request node at the end of your workflow that POSTs to the VerifyRuns webhook. That's the whole integration." },
-              { icon: <Eye size={20} />, step: "03", title: "Get verdicts", body: "After every run, VerifyRuns re-reads the destination, fingerprints it, and posts a PASS or FAIL with a human-readable diff." },
+              { icon: <ShieldCheck size={20} />, title: "Create a Check", body: "Point VerifyRuns at your destination — an HTTP endpoint, an Airtable table, a read-only Postgres query. Say what a good run looks like: growth, required fields, a heartbeat." },
+              { icon: <Zap size={20} />, title: "Paste the webhook", body: "One HTTP Request node at the end of your workflow. Optionally send {\"wrote\": N} and the verdict reconciles your count against the destination." },
+              { icon: <Eye size={20} />, title: "Get verdicts", body: "PASS or FAIL with a sentence. Slack, Discord or email on the first FAIL and again on recovery — never one message per red run." },
             ].map((s) => (
-              <div key={s.step} className="rp-card p-8">
+              <div key={s.title} className="rp-card p-8">
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 mb-6">
                   {s.icon}
                 </div>
-                <p className="font-mono text-xs text-zinc-500 mb-2">{s.step}</p>
                 <p className="font-display text-xl mb-3">{s.title}</p>
-                <p className="text-sm text-zinc-400 leading-relaxed" dangerouslySetInnerHTML={{ __html: s.body }} />
+                <p className="text-sm text-zinc-400 leading-relaxed">{s.body}</p>
               </div>
             ))}
           </div>
         </div>
       </section>
 
+      {/* Set up in your tool */}
+      <section className="border-t border-[#18181B] bg-[#0C0C0E]">
+        <div className="max-w-5xl mx-auto px-6 lg:px-10 py-20">
+          <p className="text-xs uppercase tracking-widest text-emerald-400 mb-3">Set up in your tool</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-10">One node. Copy, paste, done.</h2>
+          <SetupTabs />
+        </div>
+      </section>
+
+      {/* Receipts */}
+      <section className="border-t border-[#18181B]">
+        <div className="max-w-3xl mx-auto px-6 lg:px-10 py-20">
+          <p className="text-xs uppercase tracking-widest text-zinc-500 mb-3">Why this exists</p>
+          <p className="font-display text-2xl sm:text-3xl leading-snug tracking-tight">
+            One of my own scheduled jobs hit a lock, exited 0, and recorded nothing. The only evidence was a single line in a log I wasn't reading. The scheduler was happy. The output was missing.
+          </p>
+          <p className="mt-6 text-zinc-400 leading-relaxed">
+            I built the check my own agents needed: read the thing that was supposed to change, and say whether it did. Then I made it work for everyone else's workflows.
+          </p>
+          <p className="mt-3 text-sm text-zinc-500 font-mono">— Farjad Hasan</p>
+        </div>
+      </section>
+
       {/* CTA */}
       <section className="border-t border-[#18181B]">
-        <div className="max-w-3xl mx-auto px-6 lg:px-10 py-24 text-center">
-          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">
-            Stop trusting the green checkmark.
-          </h2>
-          <p className="mt-4 text-zinc-400 text-lg">Sign up free. Add your first check in under five minutes.</p>
-          <div className="mt-10">
+        <div className="max-w-3xl mx-auto px-6 lg:px-10 py-20 text-center">
+          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">Stop trusting the green checkmark.</h2>
+          <p className="mt-4 text-zinc-400 text-lg">Free during early access. First check in under five minutes.</p>
+          <div className="mt-10 flex items-center justify-center gap-3">
             <Link to="/signup" className="rp-btn-primary" data-testid="cta-signup-btn">
               Create your first check <ArrowRight size={16} />
             </Link>
+            <Link to="/pricing" className="rp-btn-ghost" data-testid="cta-pricing-link">Pricing</Link>
           </div>
         </div>
       </section>
 
       <footer className="border-t border-[#18181B]">
-        <div className="max-w-6xl mx-auto px-6 lg:px-10 py-8 text-sm text-zinc-500 flex justify-between">
+        <div className="max-w-6xl mx-auto px-6 lg:px-10 py-8 text-sm text-zinc-500 flex flex-wrap items-center justify-between gap-4">
           <span>VerifyRuns</span>
-          <span className="font-mono">v0.1</span>
+          <div className="flex items-center gap-5">
+            <Link to="/pricing" className="hover:text-zinc-300" data-testid="footer-pricing">Pricing</Link>
+            <Link to="/data" className="hover:text-zinc-300" data-testid="footer-data">What we store</Link>
+            <span className="font-mono">v0.2</span>
+          </div>
         </div>
       </footer>
     </div>

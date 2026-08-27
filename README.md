@@ -20,7 +20,7 @@ and the field `price` disappeared — it was present in the last 30 good runs.
    ```
 3. **Get verdicts** — every run is PASS or FAIL with a diff message. Slack, Discord and email channels get a message on the first FAIL and again on recovery; not on every red run.
 
-Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/zapier.md).
+Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/zapier.md). Add `?wait=30` to the webhook URL to get the verdict back in the same request; the n8n community node ([`verifyruns-n8n`](https://github.com/farjad-hasan/verifyruns-n8n)) does that and fails the execution on FAIL.
 
 ## Connectors
 

@@ -129,6 +129,10 @@ class Expectations(BaseModel):
     # claimed: every webhook run must carry {"wrote": N}; the destination must gain >= N
     growth_mode: Literal["growth", "steady", "claimed"] = "growth"
 
+class InterestIn(BaseModel):
+    plan: Literal["free", "pro", "agency"]
+    note: Optional[str] = Field(default=None, max_length=500)
+
 class ChannelIn(BaseModel):
     kind: Literal["slack", "discord", "email"]
     target: str = Field(min_length=3, max_length=2000)  # webhook URL or email address
@@ -556,6 +560,33 @@ async def delete_channel(check_id: str, channel_id: str, user: dict = Depends(ge
 async def meta():
     return {"email_alerts": _email_available()}
 
+# ---------- Plans (early access: everything is free; prices are the working hypothesis) ----------
+EARLY_ACCESS = os.environ.get("VR_EARLY_ACCESS", "1").lower() in ("1", "true", "yes")
+PLANS = [
+    {"id": "free", "name": "Free", "planned_price": "$0",
+     "limits": {"checks": 3, "history": "30 runs", "connectors": ["HTTP / JSON", "Airtable"], "channels": ["Slack", "Discord"]},
+     "for": "One or two workflows you can't afford to trust blindly."},
+    {"id": "pro", "name": "Pro", "planned_price": "$19–29 / month",
+     "limits": {"checks": "unlimited", "history": "90 days", "connectors": ["HTTP / JSON", "Airtable", "Postgres"], "channels": ["Slack", "Discord", "Email"], "extras": ["Heartbeats", "Claimed-count reconciliation"]},
+     "for": "Operators running revenue-touching syncs — orders, invoices, CRM."},
+    {"id": "agency", "name": "Agency", "planned_price": "$79–99 / month",
+     "limits": {"checks": "unlimited", "history": "90 days", "connectors": ["all"], "channels": ["all"], "extras": ["Client grouping", "Branded public status pages", "Priority alerts"]},
+     "for": "Agencies at client #21 who need proof, not promises."},
+]
+
+@api.get("/plans")
+async def plans():
+    return {"early_access": EARLY_ACCESS, "plans": PLANS}
+
+@api.post("/interest")
+async def record_interest(payload: InterestIn, user: dict = Depends(get_current_user)):
+    """Cheap willingness-to-pay signal: who clicked Upgrade, for which plan, and what they said."""
+    await db.interest.insert_one({
+        "id": str(uuid.uuid4()), "user_id": user["id"], "email": user["email"],
+        "plan": payload.plan, "note": (payload.note or "").strip() or None, "created_at": now_iso(),
+    })
+    return {"ok": True, "plan": payload.plan}
+
 @api.post("/checks/{check_id}/public")
 async def enable_public(check_id: str, user: dict = Depends(get_current_user)):
     c = await db.checks.find_one({"id": check_id, "user_id": user["id"]})
@@ -624,6 +655,7 @@ async def run_check_now(check_id: str, bg: BackgroundTasks, user: dict = Depends
 
 # ---------- Webhook (async) ----------
 CLAIM_KEYS = ("wrote", "expected_new", "count")
+WEBHOOK_WAIT_MAX_SECONDS = 60
 
 
 def _parse_claimed(body: Any) -> tuple:
@@ -643,7 +675,7 @@ def _parse_claimed(body: Any) -> tuple:
 
 
 @api.post("/hook/{secret}")
-async def webhook(secret: str, request: Request, bg: BackgroundTasks):
+async def webhook(secret: str, request: Request, bg: BackgroundTasks, wait: int = 0):
     _enforce(HOOK_LIMITER, secret)
     c = await db.checks.find_one({"webhook_secret": secret})
     if not c:
@@ -657,6 +689,17 @@ async def webhook(secret: str, request: Request, bg: BackgroundTasks):
         body = None
     claimed_new, body_note = _parse_claimed(body)
     run_id = str(uuid.uuid4())
+    if wait and wait > 0:
+        # Integrators (the n8n node) want the verdict in the same request. Run inline,
+        # shielded so a timeout never cancels the run half-written; it lands in the background.
+        task = asyncio.create_task(execute_check(c["id"], "webhook", run_id, False, claimed_new, body_note))
+        try:
+            await asyncio.wait_for(asyncio.shield(task), timeout=min(int(wait), WEBHOOK_WAIT_MAX_SECONDS))
+        except asyncio.TimeoutError:
+            return {"accepted": True, "run_id": run_id, "verdict": None, "diff_message": None, "timed_out": True}
+        run = await db.check_runs.find_one({"id": run_id}, {"_id": 0, "verdict": 1, "diff_message": 1})
+        return {"accepted": True, "run_id": run_id, "verdict": (run or {}).get("verdict"),
+                "diff_message": (run or {}).get("diff_message"), "timed_out": False}
     bg.add_task(execute_check, c["id"], "webhook", run_id, False, claimed_new, body_note)
     return {"accepted": True, "run_id": run_id}
 

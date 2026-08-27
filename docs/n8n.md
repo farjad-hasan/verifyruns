@@ -21,7 +21,15 @@ Leave the body empty if you only want VerifyRuns to check growth against the Che
 
 ## Making the n8n execution fail too
 
-Not yet — the webhook returns immediately and the verdict arrives seconds later. A synchronous `?wait=` option and an n8n community node are tracked as `openspec/changes/n8n-community-node`.
+Add `?wait=30` to the webhook URL. VerifyRuns then runs the check inside the request (up to 60 s) and answers with the verdict:
+
+```json
+{"accepted": true, "run_id": "…", "verdict": "FAIL", "diff_message": "Run reported success, but …", "timed_out": false}
+```
+
+Put an **IF** node after the HTTP Request on `{{ $json.verdict === "FAIL" }}` and route it to a **Stop and Error** node with `{{ $json.diff_message }}` — the execution goes red with VerifyRuns' sentence. If the destination is slow, `verdict` is `null` and `timed_out` is `true`; the run still completes in the background.
+
+The **VerifyRuns community node** (`n8n-nodes-verifyruns`, private repo for now) does all of this in one node: it sends the item count as `wrote`, waits for the verdict, and throws on FAIL.
 
 ## Note
 
