@@ -14,6 +14,9 @@ VerifyRuns is a single FastAPI process, a MongoDB database, and a static React b
 | `CORS_ORIGINS` | no | comma-separated origins allowed to call the API (default `*`) |
 | `RESEND_API_KEY` | no | enables email alert channels via [Resend](https://resend.com); without it, adding an email channel is refused with a clear message |
 | `ALERT_FROM` | no | sender for email alerts, e.g. `VerifyRuns <alerts@yourdomain>` — must be a domain verified in Resend |
+| `VR_ALLOW_PRIVATE_EGRESS` | no | `1` lets Checks point at private/loopback/link-local addresses (an internal database, a local dev stack). **Off by default**: destinations must resolve to public addresses, checked at save time and before every fetch |
+| `VR_MAX_RESPONSE_BYTES` | no | HTTP/JSON responses are streamed and abandoned past this size (5 MB) |
+| `VR_RATE_AUTH_PER_MIN` / `VR_RATE_HOOK_PER_MIN` / `VR_RATE_CREATE_PER_MIN` | no | per-minute limits for sign-up+login per client IP (120), webhook per secret (120), Check creation per user (60); excess gets HTTP 429 with `Retry-After` |
 | `VR_RETRY_DELAY_SECONDS` | no | seconds before the retry that precedes a fresh FAIL alert (30) |
 | `VR_HEARTBEAT_TICK_SECONDS` | no | how often the in-process ticker looks for missed heartbeat windows (60) |
 | `VR_AIRTABLE_MAX_RECORDS` | no | Airtable paging ceiling (10000) |
@@ -29,7 +32,7 @@ Checks run as FastAPI background tasks in the API process; the retry before a fr
 
 ## Network
 
-The API makes outbound requests to whatever destinations users configure. On a shared or cloud host, restrict egress to public addresses until `openspec/changes/egress-lockdown` lands — today the server will happily fetch a private IP a user pastes in.
+The API makes outbound requests to the destinations users configure. By default it refuses anything that resolves to a private, loopback, link-local, multicast or cloud-metadata address — at save time (a clear 400) and again before every fetch — and never follows redirects. Set `VR_ALLOW_PRIVATE_EGRESS=1` only on an instance whose network you control. Residual risk: DNS can change between the save-time check and a later fetch; the fetch-time check narrows that window but does not pin the resolved address. Rate limits are in memory, per process, and reset on restart.
 
 ## Backups
 

@@ -61,6 +61,7 @@ JWT_SECRET=$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))')
 FERNET_KEY=$(.venv/bin/python -c 'from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())')
 PUBLIC_APP_URL=http://localhost:3100
 CORS_ORIGINS=http://localhost:3100
+VR_ALLOW_PRIVATE_EGRESS=1
 EOF
 .venv/bin/uvicorn server:app --port 8000
 
@@ -71,7 +72,7 @@ npm install --legacy-peer-deps
 PORT=3100 npm start          # or: npm run build
 ```
 
-Optional environment: `RESEND_API_KEY` + `ALERT_FROM` (enables email alerts), `VR_RETRY_DELAY_SECONDS` (30), `VR_HEARTBEAT_TICK_SECONDS` (60), `VR_AIRTABLE_MAX_RECORDS` (10000), `VR_PG_COUNT_TIMEOUT_MS` (15000) — full list in [docs/self-hosting.md](docs/self-hosting.md).
+Optional environment: `VR_ALLOW_PRIVATE_EGRESS=1` (needed for the local stack above — destinations must be public addresses by default), `RESEND_API_KEY` + `ALERT_FROM` (enables email alerts), `VR_RETRY_DELAY_SECONDS` (30), `VR_HEARTBEAT_TICK_SECONDS` (60), `VR_AIRTABLE_MAX_RECORDS` (10000), `VR_PG_COUNT_TIMEOUT_MS` (15000) — full list in [docs/self-hosting.md](docs/self-hosting.md).
 
 Tests run against a live backend plus pure-function suites:
 

@@ -13,6 +13,10 @@ import secrets
 import logging
 import asyncio
 import time
+import socket
+import ipaddress
+from collections import defaultdict, deque
+from urllib.parse import urlsplit
 from datetime import datetime, timezone, timedelta
 from typing import Optional, List, Any, Literal
 
@@ -157,7 +161,8 @@ class SnoozeIn(BaseModel):
 
 # ---------- Auth ----------
 @api.post("/auth/register")
-async def register(payload: RegisterIn):
+async def register(payload: RegisterIn, request: Request):
+    _enforce(AUTH_LIMITER, _client_ip(request))
     email = payload.email.lower().strip()
     if await db.users.find_one({"email": email}):
         raise HTTPException(status_code=400, detail="Email already registered")
@@ -173,7 +178,8 @@ async def register(payload: RegisterIn):
     return {"token": token, "user": {"id": user_id, "email": email}}
 
 @api.post("/auth/login")
-async def login(payload: LoginIn):
+async def login(payload: LoginIn, request: Request):
+    _enforce(AUTH_LIMITER, _client_ip(request))
     email = payload.email.lower().strip()
     user = await db.users.find_one({"email": email})
     if not user or not verify_password(payload.password, user["password_hash"]):
@@ -207,8 +213,95 @@ PG_SAMPLE_TIMEOUT_MS = int(os.environ.get("VR_PG_SAMPLE_TIMEOUT_MS", "15000"))
 
 
 def _http_client() -> httpx.AsyncClient:
-    """Single place to build the outbound client (tests swap the transport)."""
+    """Single place to build the outbound client (tests swap the transport).
+    Redirects are not followed, so a public host cannot bounce us into a private range."""
     return httpx.AsyncClient(timeout=20.0)
+
+
+# ---------- Egress policy ----------
+EGRESS_ALLOW_PRIVATE = os.environ.get("VR_ALLOW_PRIVATE_EGRESS", "0").lower() in ("1", "true", "yes")
+MAX_RESPONSE_BYTES = int(os.environ.get("VR_MAX_RESPONSE_BYTES", str(5 * 1024 * 1024)))
+METADATA_ADDRESSES = {"169.254.169.254", "fd00:ec2::254", "100.100.100.200", "metadata.google.internal"}
+
+
+def _egress_violation(target: str, allow_private: Optional[bool] = None) -> Optional[str]:
+    """Return a human message when `target` (URL or Postgres DSN) points anywhere that is
+    not a public address, else None. Resolves the host; any non-global answer is a violation."""
+    if allow_private is None:
+        allow_private = EGRESS_ALLOW_PRIVATE
+    try:
+        parts = urlsplit(target if "://" in target else "http://" + target)
+        host = parts.hostname
+    except ValueError:
+        host = None
+    if not host:
+        return "Destination must be a public address (the URL has no host)."
+    if allow_private:
+        return None
+    if host in METADATA_ADDRESSES:
+        return f"Destination must be a public address ({host} is private). Set VR_ALLOW_PRIVATE_EGRESS=1 on a self-hosted instance to allow it."
+    try:
+        infos = socket.getaddrinfo(host, None)
+    except socket.gaierror:
+        return f"Destination host {host} could not be resolved."
+    for info in infos:
+        raw = info[4][0].split("%")[0]
+        try:
+            ip = ipaddress.ip_address(raw)
+        except ValueError:
+            continue
+        if (str(ip) in METADATA_ADDRESSES or ip.is_private or ip.is_loopback or ip.is_link_local
+                or ip.is_multicast or ip.is_reserved or ip.is_unspecified or not ip.is_global):
+            return f"Destination must be a public address ({ip} is private). Set VR_ALLOW_PRIVATE_EGRESS=1 on a self-hosted instance to allow it."
+    return None
+
+
+class _RateLimiter:
+    """Sliding-window counter per key, in memory, per process."""
+
+    def __init__(self, limit: int, window_seconds: float = 60.0, clock=time.monotonic):
+        self.limit = limit
+        self.window = window_seconds
+        self.clock = clock
+        self.hits: dict = defaultdict(deque)
+
+    def _prune(self, key: str, now: float) -> deque:
+        dq = self.hits[key]
+        while dq and dq[0] <= now - self.window:
+            dq.popleft()
+        return dq
+
+    def allow(self, key: str) -> bool:
+        now = self.clock()
+        dq = self._prune(key, now)
+        if len(dq) >= self.limit:
+            return False
+        dq.append(now)
+        return True
+
+    def retry_after(self, key: str) -> int:
+        now = self.clock()
+        dq = self._prune(key, now)
+        if not dq:
+            return 0
+        return max(0, int(dq[0] + self.window - now) + 1)
+
+
+AUTH_LIMITER = _RateLimiter(int(os.environ.get("VR_RATE_AUTH_PER_MIN", "120")))
+HOOK_LIMITER = _RateLimiter(int(os.environ.get("VR_RATE_HOOK_PER_MIN", "120")))
+CREATE_LIMITER = _RateLimiter(int(os.environ.get("VR_RATE_CREATE_PER_MIN", "60")))
+
+
+def _client_ip(request: Request) -> str:
+    fwd = request.headers.get("x-forwarded-for")
+    if fwd:
+        return fwd.split(",")[0].strip()
+    return request.client.host if request.client else "unknown"
+
+
+def _enforce(limiter: _RateLimiter, key: str) -> None:
+    if not limiter.allow(key):
+        raise HTTPException(429, "Too many requests", headers={"Retry-After": str(limiter.retry_after(key))})
 
 def _prepare_config_for_storage(kind: str, cfg_in: dict, existing_cfg: Optional[dict] = None) -> dict:
     """Validate + normalise a config dict per connector, encrypting secrets and
@@ -218,6 +311,9 @@ def _prepare_config_for_storage(kind: str, cfg_in: dict, existing_cfg: Optional[
         url = (cfg_in or {}).get("url")
         if not isinstance(url, str) or not url.strip():
             raise HTTPException(400, "config.url is required for http_json")
+        violation = _egress_violation(url.strip())
+        if violation:
+            raise HTTPException(400, violation)
         out: dict = {"url": url.strip(), "json_path": (cfg_in.get("json_path") or None),
                      "newest_key": ((cfg_in.get("newest_key") or "").strip() or None)}
         plain = cfg_in.get("bearer_token")
@@ -259,6 +355,9 @@ def _prepare_config_for_storage(kind: str, cfg_in: dict, existing_cfg: Optional[
         if plain_dsn:
             if not isinstance(plain_dsn, str) or not plain_dsn.strip():
                 raise HTTPException(400, "config.dsn is required for postgres")
+            violation = _egress_violation(plain_dsn.strip())
+            if violation:
+                raise HTTPException(400, violation)
             out["dsn_encrypted"] = encrypt_secret(plain_dsn.strip())
         elif existing_cfg.get("dsn_encrypted"):
             out["dsn_encrypted"] = existing_cfg["dsn_encrypted"]
@@ -316,6 +415,7 @@ def _sanitize_check(doc: dict, include_webhook_secret: bool = True) -> dict:
 
 @api.post("/checks")
 async def create_check(payload: CheckCreate, user: dict = Depends(get_current_user)):
+    _enforce(CREATE_LIMITER, user["id"])
     cid = str(uuid.uuid4())
     cfg = _prepare_config_for_storage(payload.connector_kind, payload.config)
     doc = {
@@ -544,6 +644,7 @@ def _parse_claimed(body: Any) -> tuple:
 
 @api.post("/hook/{secret}")
 async def webhook(secret: str, request: Request, bg: BackgroundTasks):
+    _enforce(HOOK_LIMITER, secret)
     c = await db.checks.find_one({"webhook_secret": secret})
     if not c:
         raise HTTPException(404, "Unknown webhook")
@@ -772,12 +873,23 @@ async def _fetch_records(kind: str, cfg: dict):
             if plain:
                 headers["Authorization"] = f"Bearer {plain}"
         json_path = cfg.get("json_path") or None
+        violation = _egress_violation(url or "")
+        if violation:
+            return None, None, violation, None
         async with _http_client() as hc:
-            resp = await hc.get(url, headers=headers)
-        if resp.status_code >= 400:
-            return None, None, f"Destination fetch failed with HTTP {resp.status_code}.", resp.text[:500]
+            async with hc.stream("GET", url, headers=headers) as resp:
+                if resp.status_code >= 400:
+                    err_body = (await resp.aread())[:500].decode("utf-8", errors="replace")
+                    return None, None, f"Destination fetch failed with HTTP {resp.status_code}.", err_body
+                chunks: List[bytes] = []
+                size = 0
+                async for chunk in resp.aiter_bytes():
+                    size += len(chunk)
+                    if size > MAX_RESPONSE_BYTES:
+                        return None, None, f"Destination response exceeded {MAX_RESPONSE_BYTES // (1024 * 1024)} MB.", None
+                    chunks.append(chunk)
         try:
-            body = resp.json()
+            body = json.loads(b"".join(chunks))
         except Exception:
             return None, None, "Destination did not return valid JSON.", None
         records = _get_records(body, json_path)
@@ -846,6 +958,9 @@ async def _fetch_records(kind: str, cfg: dict):
         if not dsn_enc or not query:
             return None, None, "Postgres config is missing DSN or query.", None
         dsn = decrypt_secret(dsn_enc)
+        violation = _egress_violation(dsn)
+        if violation:
+            return None, None, violation, None
         conn = None
         total: Optional[int] = None
         count_estimated = False

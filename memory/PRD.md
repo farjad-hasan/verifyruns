@@ -41,6 +41,7 @@ Tagline: "Your automation said Done. RunProof checks if that's true."
 - Slack FAIL / recovery alerts with **state-based dedup** (`last_alerted_verdict` on check) and **30s retry-before-alert** on fresh FAIL — no alert if the retry PASSes; snoozed checks skip alerting entirely
 - Public status page: `POST/DELETE /api/checks/{id}/public` + unauthenticated `GET /api/public/checks/{token}` — no config/secrets/fingerprint leaked; frontend route `/status/:token`
 - Snooze: `POST/DELETE /api/checks/{id}/snooze` with hours cap of 168; UI dropdown in detail header
+- Egress lockdown (2026-08-27): destinations must resolve to public addresses (save time + fetch time; `VR_ALLOW_PRIVATE_EGRESS=1` to allow), HTTP/JSON reads streamed and capped at `VR_MAX_RESPONSE_BYTES`, in-memory rate limits on auth (per IP), webhook (per secret), Check creation (per user) → 429 + Retry-After
 - Data minimisation (2026-08-27): runs store `newest_hash` + `sample_stored` instead of rows; opt-in `store_samples` per Check keeps rows + error bodies in `run_samples` with a 30-day TTL index; `GET /api/runs/{id}` attaches `sample`; `DELETE /api/auth/me` purges everything
 - Heartbeat (2026-08-27): `heartbeat_hours` per Check; in-process ticker records a `trigger="heartbeat"` FAIL run once per missed window (anchored on the last real run), straight to alert routing; next real PASS recovers
 
@@ -53,7 +54,7 @@ Before implementing anything, read the matching change's `tasks.md` and work
 through its checkboxes in order; the last group is always "verify on preview,
 then publish". Run `openspec validate --all --strict` after editing specs.
 Done: `fix-record-cap-paging`, `postgres-detail-card`, `claimed-count-reconciliation`
-`deterministic-newest-record`, `readme-and-docs`, `heartbeat-checks`, `email-and-discord-alerts`, `data-minimisation` (all 2026-08-27; Farjad chose
+`deterministic-newest-record`, `readme-and-docs`, `heartbeat-checks`, `email-and-discord-alerts`, `data-minimisation`, `egress-lockdown` (all 2026-08-27; Farjad chose
 to keep building before distribution, overriding the deferred triggers). Development is local since 2026-08-27 (Emergent credits
 exhausted): Docker Mongo :27017, Postgres :5434, uvicorn :8000, craco :3100.
 
