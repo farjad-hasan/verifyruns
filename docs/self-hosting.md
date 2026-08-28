@@ -1,5 +1,7 @@
 # Self-hosting VerifyRuns
 
+**Two implementations, one API contract.** `worker/` is the Cloudflare Worker + D1 build (the deployed one; see `docs/deploy.md` — secrets `JWT_SECRET`, `ENC_KEY`, `VR_TICK_SECRET`, optional `RESEND_API_KEY`/`ALERT_FROM`; everything else in `wrangler.toml [vars]`). The rest of this page describes `backend/`, the Python build, for anyone running a VM or container.
+
 VerifyRuns is a single FastAPI process, a MongoDB database, and a static React build. It runs anywhere those three do.
 
 ## Environment

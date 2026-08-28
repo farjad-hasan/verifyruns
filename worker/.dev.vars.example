@@ -1,0 +1,6 @@
+JWT_SECRET=replace-with-openssl-rand-base64-48
+ENC_KEY=replace-with-openssl-rand-base64-32
+VR_TICK_SECRET=replace-with-openssl-rand-base64-24
+VR_ALLOW_PRIVATE_EGRESS=1
+PUBLIC_APP_URL=http://localhost:3100
+CORS_ORIGINS=http://localhost:3100

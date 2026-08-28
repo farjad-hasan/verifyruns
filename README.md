@@ -45,7 +45,7 @@ The engine is deterministic code — no model, no score you cannot inspect. Ever
 
 ## Run it yourself
 
-Backend: FastAPI + Motor (MongoDB). Frontend: React 19 + Tailwind + shadcn/ui.
+API: a Cloudflare Worker with D1 (`worker/`, TypeScript) — the original FastAPI + MongoDB implementation (`backend/`) is kept as a fallback with the same HTTP contract. Frontend: React 19 + Tailwind + shadcn/ui. Deployment: [docs/deploy.md](docs/deploy.md) — Workers + D1 + Pages, $0.
 
 ```bash
 # MongoDB
