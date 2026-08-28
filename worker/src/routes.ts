@@ -314,3 +314,40 @@ export async function interest(env: Env, request: Request): Promise<Response> {
   await env.DB.prepare("INSERT INTO interest (id, user_id, email, plan, note, created_at) VALUES (?, ?, ?, ?, ?, ?)").bind(uuid(), user.id, user.email, body.plan, note, nowIso()).run();
   return json({ ok: true, plan: body.plan });
 }
+
+// ---------- webhook + manual run ----------
+import { executeCheck } from "./execute";
+import { parseClaimed } from "./engine";
+import { getCheck } from "./checks";
+
+export async function webhook(env: Env, request: Request, ctx: ExecutionContext, secret: string): Promise<Response> {
+  enforce(limiter(env, "hook"), secret);
+  const row = await env.DB.prepare("SELECT id FROM checks WHERE webhook_secret = ?").bind(secret).first<{ id: string }>();
+  if (!row) throw new HttpError(404, "Unknown webhook");
+  let body: unknown = null;
+  try {
+    const text = await request.text();
+    body = text ? JSON.parse(text) : null;
+  } catch {
+    body = null;
+  }
+  const [claimedNew, bodyNote] = parseClaimed(body);
+  const runId = uuid();
+  const wait = new URL(request.url).searchParams.get("wait");
+  if (wait !== null && Number(wait) === 0) {
+    const c = await getCheck(env, row.id);
+    const pending = [...(c?.pending_runs || []), { run_id: runId, claimed_new: claimedNew, body_note: bodyNote, queued_at: nowIso() }];
+    await updateCheck(env, row.id, { pending_runs: pending });
+    return json({ accepted: true, run_id: runId, queued: true }, 202);
+  }
+  const run = await executeCheck(env, row.id, "webhook", runId, false, claimedNew, bodyNote);
+  return json({ accepted: true, run_id: runId, verdict: run?.verdict ?? null, diff_message: run?.diff_message ?? null, timed_out: false });
+}
+
+export async function runNow(env: Env, request: Request, ctx: ExecutionContext, id: string): Promise<Response> {
+  const user = await currentUser(env, request);
+  await getCheckForUser(env, id, user.id);
+  const runId = uuid();
+  ctx.waitUntil(executeCheck(env, id, "manual", runId).catch((e) => console.error("manual run failed", e)));
+  return json({ run_id: runId, status: "queued" });
+}
