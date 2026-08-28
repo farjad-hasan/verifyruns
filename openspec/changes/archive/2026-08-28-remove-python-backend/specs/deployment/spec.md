@@ -1,9 +1,4 @@
-# deployment Specification
-
-## Purpose
-The $0 hosting shape — Cloudflare Pages for the static frontend, a sleeping/scale-to-zero API host driven by an external tick, MongoDB Atlas M0 — and the operational contract that makes it safe: nothing depends on the API process surviving past a response.
-
-## Requirements
+## MODIFIED Requirements
 
 ### Requirement: Runs at zero cost on sleeping hosts
 The frontend SHALL be deployable to Cloudflare Pages as a static build with client-side routes served by `public/_redirects` (`/* /index.html 200`) and the API origin supplied at build time by `REACT_APP_BACKEND_URL`. The API SHALL be deployable as a Cloudflare Worker (`worker/`, `wrangler deploy`) backed by a D1 database and its own cron trigger, needing nothing outside the Cloudflare account. There SHALL be exactly one API implementation, the Worker; the former Python API is retrievable only from git history (tag `python-backend-final`).

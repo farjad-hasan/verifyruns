@@ -2,7 +2,7 @@
 
 **Live since 2026-08-28:** API `https://verifyruns-api.farjad-developer.workers.dev` (D1 `verifyruns`, cron every minute), frontend `https://verifyruns.pages.dev` (Pages project `verifyruns`, direct upload). Secrets are set; copies live in `~/.verifyruns-secrets.env` on the Mac (owner-only). Redeploy the API with `cd worker && npm run deploy`; redeploy the frontend with `cd frontend && REACT_APP_BACKEND_URL=https://verifyruns-api.farjad-developer.workers.dev npm run build && cd ../worker && npx wrangler pages deploy ../frontend/build --project-name verifyruns --branch main`.
 
-API on **Cloudflare Workers** with **D1**, frontend on **Cloudflare Pages**, scheduling by the Worker's own **cron trigger**. One free account, no card. (The earlier Render + MongoDB Atlas layout is kept at the end as a fallback.)
+API on **Cloudflare Workers** with **D1**, frontend on **Cloudflare Pages**, scheduling by the Worker's own **cron trigger**. One free account, no card.
 
 Everything below is driven by **Wrangler**, Cloudflare's CLI (`npm i -g wrangler`, then `wrangler login` once — it opens a browser to approve access to your account).
 
@@ -81,7 +81,3 @@ npm test                         # vitest inside workerd with a real D1
 ```
 
 Frontend: `REACT_APP_BACKEND_URL=http://localhost:8787` in `frontend/.env`, then `PORT=3100 npm start`.
-
-## Fallback: Render + Atlas
-
-`backend/` is the original Python API. `render.yaml` deploys it to Render's free web service (which now requires a card on file) with MongoDB Atlas M0 (project `VerifyRuns`, cluster `verifyruns`, Singapore — created 2026-08-28 and unused by the Cloudflare layout) and `deploy/cloudflare-tick-worker/` as the external scheduler. Same API contract; the full guide is in git history before 2026-08-28.

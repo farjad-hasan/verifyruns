@@ -19,6 +19,5 @@ Email **farjad.developer@gmail.com** with "VerifyRuns security" in the subject. 
 
 - No email verification, password reset, or account lockout.
 - Rate limits are per isolate; a determined caller can exceed them across isolates.
-- The original Python API in `backend/` is kept as a deployment fallback and is not receiving security fixes; do not run it on a shared host.
 
 Self-hosters: `VR_ALLOW_PRIVATE_EGRESS=1` disables the address checks — only set it on a host where every user is trusted.

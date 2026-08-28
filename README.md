@@ -43,45 +43,34 @@ Secrets are Fernet-encrypted at rest and only ever shown masked to their last fo
 - **Non-empty fields** — FAIL only when the newest record is empty *and* so is the majority of the five newest, so one odd row cannot flip a verdict.
 - **Heartbeat** — "expect a run every N hours": if no run arrives in the window, VerifyRuns records a FAIL ("No run in 26 h — expected one every 24 h.") and alerts; the next real run recovers it. This catches the workflow that never fired, not just the one that fired and wrote nothing.
 
-The engine is deterministic code — no model, no score you cannot inspect. Every rule is a pure function with tests in `backend/tests/`.
+The engine is deterministic code — no model, no score you cannot inspect. Every rule is a pure function with tests in `worker/test/`.
 
 ## Run it yourself
 
-API: a Cloudflare Worker with D1 (`worker/`, TypeScript) — the original FastAPI + MongoDB implementation (`backend/`) is kept as a fallback with the same HTTP contract. Frontend: React 19 + Tailwind + shadcn/ui. Deployment: [docs/deploy.md](docs/deploy.md) — Workers + D1 + Pages, $0.
+API: a Cloudflare Worker with D1 (`worker/`, TypeScript); the original FastAPI + MongoDB build lives in git history (tag `python-backend-final`). Frontend: React 19 + Tailwind + shadcn/ui. Deployment: [docs/deploy.md](docs/deploy.md) — Workers + D1 + Pages, $0.
 
 ```bash
 # MongoDB
 docker run -d --name verifyruns-mongo -p 27017:27017 mongo:7
 
-# Backend
-cd backend
-uv venv --python 3.12 .venv && uv pip install --python .venv/bin/python -r requirements.txt
-cat > .env <<EOF
-MONGO_URL=mongodb://localhost:27017
-DB_NAME=verifyruns
-JWT_SECRET=$(python3 -c 'import secrets;print(secrets.token_urlsafe(48))')
-FERNET_KEY=$(.venv/bin/python -c 'from cryptography.fernet import Fernet;print(Fernet.generate_key().decode())')
-PUBLIC_APP_URL=http://localhost:3100
-CORS_ORIGINS=http://localhost:3100
-VR_ALLOW_PRIVATE_EGRESS=1
-EOF
-.venv/bin/uvicorn server:app --port 8000
+# API (Cloudflare Worker, runs locally in workerd)
+cd worker && npm install
+cp .dev.vars.example .dev.vars      # replace the three placeholder secrets
+npm run migrate:local
+npm run dev                         # http://localhost:8787
 
 # Frontend
-cd ../frontend
-echo 'REACT_APP_BACKEND_URL=http://localhost:8000' > .env
-npm install --legacy-peer-deps
-PORT=3100 npm start          # or: npm run build
+cd ../frontend && npm install --legacy-peer-deps
+echo 'REACT_APP_BACKEND_URL=http://localhost:8787' > .env
+PORT=3100 npm start
 ```
 
-Optional environment: `VR_ALLOW_PRIVATE_EGRESS=1` (needed for the local stack above — destinations must be public addresses by default), `VR_TICK_SECRET` + `VR_INTERNAL_TICKER=0` (external scheduler drives heartbeats/retries on hosts that sleep — see [docs/deploy.md](docs/deploy.md) for the $0 Cloudflare Pages + Render layout), `RESEND_API_KEY` + `ALERT_FROM` (enables email alerts), `VR_RETRY_DELAY_SECONDS` (30), `VR_HEARTBEAT_TICK_SECONDS` (60), `VR_AIRTABLE_MAX_RECORDS` (10000), `VR_PG_COUNT_TIMEOUT_MS` (15000) — full list in [docs/self-hosting.md](docs/self-hosting.md).
-
-Tests run against a live backend plus pure-function suites:
+## Tests
 
 ```bash
-cd backend
-REACT_APP_BACKEND_URL=http://localhost:8000 .venv/bin/pytest tests -q
-# add VR_TEST_PG_DSN=postgresql://... to run the Postgres end-to-end tests
+cd worker
+npm test                            # vitest inside workerd with a real D1; Postgres tests use Docker pg on 127.0.0.1:5434 and skip when it is absent
+npm run typecheck
 ```
 
 By default a run stores counts, field names and a hash of the newest row — never the rows themselves; raw samples are an opt-in with a 30-day expiry. Details in [docs/what-we-store.md](docs/what-we-store.md).
