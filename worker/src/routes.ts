@@ -85,6 +85,8 @@ export async function deleteMe(env: Env, request: Request): Promise<Response> {
     stmts.push(env.DB.prepare("DELETE FROM check_runs WHERE check_id = ?").bind(id));
   }
   stmts.push(env.DB.prepare("DELETE FROM checks WHERE user_id = ?").bind(user.id));
+  stmts.push(env.DB.prepare("DELETE FROM interest WHERE user_id = ? OR email = ?").bind(user.id, user.email));
+  stmts.push(env.DB.prepare("DELETE FROM password_resets WHERE user_id = ?").bind(user.id));
   stmts.push(env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id));
   await env.DB.batch(stmts);
   return json({ ok: true, deleted_checks: ids.length });

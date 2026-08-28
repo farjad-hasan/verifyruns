@@ -5,6 +5,7 @@ import { maybeAlert } from "./alerts";
 import { uuid } from "./crypto";
 import { Env, nowIso, num } from "./env";
 import { executeCheck } from "./execute";
+import { expireResetTokens } from "./reset";
 
 export function heartbeatDue(heartbeatHours: number | null, anchorTs: string, lastHeartbeatTs: string | null, now: Date): boolean {
   if (!heartbeatHours) return false;
@@ -85,8 +86,10 @@ export async function drainPendingRuns(env: Env): Promise<number> {
   return ran;
 }
 
+/** Expired samples and spent/expired password-reset tokens leave in the same sweep. */
 export async function expireSamples(env: Env, now: Date): Promise<number> {
   const res = await env.DB.prepare("DELETE FROM run_samples WHERE expires_at < ?").bind(now.toISOString()).run();
+  await expireResetTokens(env, now);
   return res.meta.changes || 0;
 }
 

@@ -1,10 +1,10 @@
 # What VerifyRuns stores
 
-True as of 2026-08-27 (`data-minimisation` shipped).
+True as of 2026-08-29 (`deletion-purges-everything` shipped). The privacy policy is `privacy.md`; the terms are `terms.md`.
 
 ## Per Check
 
-- Name, connector kind, and connector config. Bearer tokens, Airtable PATs, Postgres connection strings and alert-channel targets (Slack/Discord webhook URLs, email addresses) are **Fernet-encrypted at rest** and only ever returned masked to the last four characters.
+- Name, connector kind, and connector config. Bearer tokens, Airtable PATs, Postgres connection strings and alert-channel targets (Slack/Discord webhook URLs, email addresses) are **encrypted at rest with AES-256-GCM** and only ever returned masked to the last four characters.
 - Expectations, heartbeat cadence, the webhook secret, snooze state, and the last alerted verdict.
 
 ## Per run
@@ -21,7 +21,7 @@ A separate `run_samples` record keeps, per run, the newest record, the five newe
 ## Deletion
 
 - Deleting a Check deletes its runs and samples.
-- **Delete account** (the bin icon next to Sign out) deletes samples, runs, Checks and the user record immediately.
+- **Delete account** (the bin icon next to Sign out) deletes samples, runs, Checks, pricing-interest rows, password-reset tokens and the user record immediately, in one batch.
 
 ## What is never stored
 

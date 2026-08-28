@@ -9,7 +9,7 @@ export default function Nav() {
   const nav = useNavigate();
   const onLogout = () => { nav("/", { replace: true }); logout(); };
   const onDeleteAccount = async () => {
-    if (!window.confirm("Delete your account? This removes every Check, run and stored sample. There is no undo.")) return;
+    if (!window.confirm("Delete your account? This removes every Check, run, stored sample and pricing note. There is no undo.")) return;
     try {
       await api.delete("/auth/me");
       toast.success("Account deleted");

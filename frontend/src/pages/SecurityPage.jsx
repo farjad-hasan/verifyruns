@@ -2,7 +2,7 @@ import { Link } from "react-router-dom";
 import Nav from "../components/Nav";
 
 const POSTURE = [
-  { title: "Passwords and sessions", body: "Passwords are hashed with PBKDF2-SHA256 (100,000 iterations, per-user salt). Sessions are signed JWTs that expire after 7 days; there is no refresh token." },
+  { title: "Passwords and sessions", body: "Passwords are hashed with PBKDF2-SHA256 (100,000 iterations, per-user salt). Sessions are signed JWTs that expire after 7 days; there is no refresh token. Password reset sends a one-time link that works for an hour; only a SHA-256 of the token is stored, and a newer request cancels older links." },
   { title: "Secrets at rest", body: "Bearer tokens, Airtable tokens, Postgres connection strings and alert-channel targets are encrypted with AES-256-GCM under a key that lives only in the server's secret store. The API never returns them beyond their last four characters." },
   { title: "Where the server will connect", body: "Destinations must be public addresses — loopback, private, link-local and cloud-metadata addresses are refused when a Check is saved and again before every read. Redirects are not followed; responses are capped at 5 MB and 20 s. Postgres connections use TLS unless the connection string says sslmode=disable, and never downgrade on their own. On the hosted build the database's certificate must be publicly trusted." },
   { title: "Read-only by construction", body: "The Postgres connector accepts a single SELECT or WITH statement, wraps it as a subquery, and sets the session read-only before running it. Use a read-only database role anyway." },
@@ -11,7 +11,7 @@ const POSTURE = [
 ];
 
 const GAPS = [
-  "No email verification, password reset or account lockout yet.",
+  "No email verification or account lockout yet.",
   "Rate limits are per instance, not global.",
   "Email alerts are off until the operator configures a sending provider.",
 ];

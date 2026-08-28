@@ -1,0 +1,59 @@
+import { Link } from "react-router-dom";
+import LegalPage from "./LegalPage";
+
+const MAIL = <a className="underline underline-offset-4 hover:text-zinc-300" href="mailto:farjad.developer@gmail.com?subject=VerifyRuns%20privacy">farjad.developer@gmail.com</a>;
+
+const SECTIONS = [
+  { title: "Who runs VerifyRuns", paras: [<>VerifyRuns is operated by Farjad Hasan, an individual developer, from Pakistan. Questions and requests about your data go to {MAIL}.</>] },
+  {
+    title: "What we collect and why",
+    paras: ["Everything below exists to do one job: re-read a destination your automation wrote to and tell you whether it really changed."],
+    list: [
+      <><strong className="text-zinc-300">Account:</strong> your email address and a salted PBKDF2 hash of your password, so you can log in. We never see the password itself.</>,
+      <><strong className="text-zinc-300">Checks:</strong> the name, destination and expectations you configure. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets (Slack/Discord webhook URLs, email addresses) are encrypted with AES-256-GCM before they are stored and are only ever shown back masked to the last four characters. They are used solely to read the destination and to deliver your alerts.</>,
+      <><strong className="text-zinc-300">Runs:</strong> per run, a timestamp, the verdict, the diff sentence, the count your workflow claimed, and a fingerprint of the destination — record count, field names, per-field empty rates and a SHA-256 hash of the newest record. Not the rows. See <Link className="underline underline-offset-4" to="/data">What we store</Link> for the exact list.</>,
+      <><strong className="text-zinc-300">Raw samples, only if you turn them on:</strong> the five newest records and up to 500 characters of an upstream error, kept about 30 days and then deleted automatically.</>,
+      <><strong className="text-zinc-300">Pricing interest:</strong> if you click a plan on the pricing page, the plan and any note you type, with your email.</>,
+      <><strong className="text-zinc-300">Password resets:</strong> a hash of the one-time token, for one hour.</>,
+      <><strong className="text-zinc-300">Not stored:</strong> IP addresses are counted in memory for rate limiting and never written down. There are no analytics or advertising trackers and no cookies; your session token lives in your browser's local storage.</>,
+    ],
+  },
+  {
+    title: "Your destinations",
+    paras: ["When a Check runs, VerifyRuns connects to the destination you configured — an HTTP endpoint, an Airtable base or a Postgres database — using the credentials you gave it, reads enough to count records and look at the newest ones, and keeps only the fingerprint described above. Postgres sessions are opened read-only. Destinations must be publicly reachable; the service refuses private and internal addresses."],
+  },
+  {
+    title: "Who else touches the data",
+    paras: ["Two providers, and nothing is sold or shared for advertising."],
+    list: [
+      <><strong className="text-zinc-300">Cloudflare</strong> hosts the application, the API and the database (Workers, Pages and D1), primarily in the Asia-Pacific region, and keeps short-lived operational logs of requests and errors.</>,
+      <><strong className="text-zinc-300">Resend</strong> sends password-reset emails and email alerts, and therefore sees the recipient address and the alert text.</>,
+    ],
+  },
+  {
+    title: "How long we keep it",
+    list: [
+      "Account, Checks and runs: until you delete the Check or the account.",
+      "Raw samples: about 30 days from the run.",
+      "Password-reset tokens: one hour, or until used.",
+      "Operational logs at Cloudflare: a few days, on Cloudflare's schedule.",
+    ],
+    paras: [],
+  },
+  {
+    title: "Deleting and exporting",
+    paras: [<>Delete account (the bin icon next to Sign out) removes your Checks, runs, samples, pricing interest, reset tokens and the account itself immediately — no soft delete, no retention window. Deleting a Check removes its runs and samples. For a copy of what we hold about you, email {MAIL} from the account address.</>],
+  },
+  {
+    title: "If something goes wrong",
+    paras: [<>If we learn that stored credentials or account data were exposed, we will email affected accounts within 72 hours with what happened and what to rotate. Security details and the disclosure address are on the <Link className="underline underline-offset-4" to="/security">Security</Link> page.</>],
+  },
+  {
+    title: "Changes",
+    paras: ["This policy changes when the product does. The date at the top moves and material changes are announced by email to account holders before they take effect."],
+  },
+];
+
+export default function PrivacyPage() {
+  return <LegalPage eyebrow="Privacy" title="Privacy policy." intro="Short, because the product stores little. This page says what VerifyRuns keeps about you and your destinations, who else touches it, and how to make it go away." updated="2026-08-29" sections={SECTIONS} />;
+}

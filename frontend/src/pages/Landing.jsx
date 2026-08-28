@@ -228,6 +228,8 @@ export default function Landing() {
             <Link to="/pricing" className="hover:text-zinc-300" data-testid="footer-pricing">Pricing</Link>
             <Link to="/data" className="hover:text-zinc-300" data-testid="footer-data">What we store</Link>
             <Link to="/security" className="hover:text-zinc-300" data-testid="footer-security">Security</Link>
+            <Link to="/privacy" className="hover:text-zinc-300" data-testid="footer-privacy">Privacy</Link>
+            <Link to="/terms" className="hover:text-zinc-300" data-testid="footer-terms">Terms</Link>
             <span className="font-mono">v0.2</span>
           </div>
         </div>

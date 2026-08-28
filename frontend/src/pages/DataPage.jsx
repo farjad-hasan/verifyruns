@@ -4,7 +4,7 @@ import Nav from "../components/Nav";
 const SECTIONS = [
   {
     title: "Per Check",
-    body: "Name, connector kind and config. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets are encrypted at rest and only ever shown masked to their last four characters. Expectations, heartbeat cadence, the webhook secret, snooze state.",
+    body: "Name, connector kind and config. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets are encrypted at rest (AES-256-GCM) and only ever shown masked to their last four characters. Expectations, heartbeat cadence, the webhook secret, snooze state.",
   },
   {
     title: "Per run",
@@ -20,7 +20,7 @@ const SECTIONS = [
   },
   {
     title: "Deleting",
-    body: "Deleting a Check deletes its runs and samples. Delete account (the bin icon next to Sign out) removes everything immediately — no soft delete, no retention.",
+    body: "Deleting a Check deletes its runs and samples. Delete account (the bin icon next to Sign out) removes your Checks, runs, samples, pricing interest, password-reset tokens and the account itself immediately — no soft delete, no retention.",
   },
   {
     title: "Public status pages",
@@ -47,7 +47,7 @@ export default function DataPage() {
           ))}
         </div>
         <p className="text-sm text-zinc-500 mt-12">
-          Self-hosting? Every environment variable and the network policy are documented in the repository's <code className="font-mono">docs/self-hosting.md</code>. <Link to="/pricing" className="underline underline-offset-4 hover:text-zinc-300">Pricing</Link> · <Link to="/security" className="underline underline-offset-4 hover:text-zinc-300">Security</Link>.
+          Self-hosting? Every environment variable and the network policy are documented in the repository's <code className="font-mono">docs/self-hosting.md</code>. <Link to="/pricing" className="underline underline-offset-4 hover:text-zinc-300">Pricing</Link> · <Link to="/security" className="underline underline-offset-4 hover:text-zinc-300">Security</Link> · <Link to="/privacy" className="underline underline-offset-4 hover:text-zinc-300">Privacy</Link> · <Link to="/terms" className="underline underline-offset-4 hover:text-zinc-300">Terms</Link>.
         </p>
       </div>
     </div>

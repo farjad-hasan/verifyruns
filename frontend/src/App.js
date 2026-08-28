@@ -11,6 +11,10 @@ import PublicStatus from "@/pages/PublicStatus";
 import Pricing from "@/pages/Pricing";
 import DataPage from "@/pages/DataPage";
 import SecurityPage from "@/pages/SecurityPage";
+import ForgotPage from "@/pages/ForgotPage";
+import ResetPage from "@/pages/ResetPage";
+import TermsPage from "@/pages/TermsPage";
+import PrivacyPage from "@/pages/PrivacyPage";
 
 function Protected({ children }) {
   const { user, ready } = useAuth();
@@ -41,6 +45,10 @@ export default function App() {
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/data" element={<DataPage />} />
           <Route path="/security" element={<SecurityPage />} />
+          <Route path="/forgot" element={<PublicOnly><ForgotPage /></PublicOnly>} />
+          <Route path="/reset" element={<ResetPage />} />
+          <Route path="/terms" element={<TermsPage />} />
+          <Route path="/privacy" element={<PrivacyPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

@@ -7,6 +7,7 @@ Email **farjad.developer@gmail.com** with "VerifyRuns security" in the subject. 
 ## Current posture (2026-08-28, Cloudflare Workers build)
 
 - Passwords: PBKDF2-SHA256 via WebCrypto, 100,000 iterations, per-user 16-byte salt. Sessions: HS256 JWT, 7-day expiry, no refresh.
+- Password reset: `POST /api/auth/forgot` always answers 200 (no account enumeration) and, for a real account, emails a one-time link via Resend. Only the SHA-256 of the 32-byte token is stored; it expires after one hour, a newer request cancels older links, and a used token is refused. The reset endpoint shares the auth rate limiter. On a host without `RESEND_API_KEY`/`ALERT_FROM` the endpoint answers 503 and the page says so.
 - Secrets at rest (bearer tokens, Airtable PATs, Postgres connection strings, alert-channel targets): AES-256-GCM under a single `ENC_KEY` held as a Worker secret; never returned to clients beyond the last four characters.
 - Webhook secrets: 32 random bytes, URL-safe; public status tokens: 24.
 - Egress (`egress-lockdown`, shipped): destinations whose host is a literal loopback, private, link-local, unspecified or cloud-metadata address (or `localhost`) are refused at save time and again before every fetch unless the self-host switch `VR_ALLOW_PRIVATE_EGRESS=1` is set; redirects are not followed; responses are capped at 5 MB and requests at 20 s. DNS names are not resolved on Workers — for named hosts the guarantee is the platform's own network, which cannot reach private ranges.
@@ -17,7 +18,7 @@ Email **farjad.developer@gmail.com** with "VerifyRuns security" in the subject. 
 
 ## Known gaps, tracked
 
-- No email verification, password reset, or account lockout.
+- No email verification or account lockout.
 - Rate limits are per isolate; a determined caller can exceed them across isolates.
 
 Self-hosters: `VR_ALLOW_PRIVATE_EGRESS=1` disables the address checks — only set it on a host where every user is trusted.

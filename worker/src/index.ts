@@ -3,6 +3,7 @@ import { HttpError, json } from "./http";
 import * as r from "./routes";
 import { claimLazyTick, tick, tickSafely } from "./tick";
 import { timingSafeEqual } from "./crypto";
+import { forgot, resetPassword } from "./reset";
 
 type Handler = (env: Env, request: Request, ctx: ExecutionContext, params: Record<string, string>) => Promise<Response> | Response;
 
@@ -16,6 +17,8 @@ function route(method: string, path: string, handler: Handler) {
 route("GET", "/api", () => json({ app: "VerifyRuns", ok: true }));
 route("POST", "/api/auth/register", (env, req) => r.register(env, req));
 route("POST", "/api/auth/login", (env, req) => r.login(env, req));
+route("POST", "/api/auth/forgot", (env, req) => forgot(env, req));
+route("POST", "/api/auth/reset", (env, req) => resetPassword(env, req));
 route("GET", "/api/auth/me", (env, req) => r.me(env, req));
 route("DELETE", "/api/auth/me", (env, req) => r.deleteMe(env, req));
 route("POST", "/api/checks", (env, req) => r.createCheck(env, req));

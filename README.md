@@ -81,4 +81,4 @@ Planned work is tracked with [OpenSpec](https://github.com/Fission-AI/OpenSpec) 
 
 ## Status
 
-Built for the Emergent Builder Fest (August 2026); developed locally since 2026-08-27. Alpha — the API and data model may change. Security disclosures: [docs/security.md](docs/security.md).
+Built for the Emergent Builder Fest (August 2026); developed locally since 2026-08-27. Alpha — the API and data model may change. Security disclosures: [docs/security.md](docs/security.md). Terms: [docs/terms.md](docs/terms.md); privacy: [docs/privacy.md](docs/privacy.md).
