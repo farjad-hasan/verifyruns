@@ -25,7 +25,7 @@ The system SHALL GET `config.url` with an optional `Authorization: Bearer` heade
 - **THEN** the run FAILs with "Destination fetch failed with HTTP <code>" and the first 500 chars of the body are stored in `error_details`
 
 ### Requirement: Airtable connector reads at most 100 records
-The system SHALL GET `https://api.airtable.com/v0/{base_id}/{table}` with `pageSize=100` (plus `&view=` when set) and the PAT as bearer, follow the `offset` cursor until the response has none or `VR_AIRTABLE_MAX_RECORDS` (default 10,000) is reached, and report the true number of records as the count. Page one SHALL be fetched with all fields and is the sample; later pages SHALL request a single field (`fields[]` = the first field seen on page one) so counting stays cheap. The newest record SHALL be chosen by `createdTime` across all pages and, when it is not on page one, fetched individually so it heads the sample. When the ceiling is hit the run message SHALL say so.
+The system SHALL GET `https://api.airtable.com/v0/{base_id}/{table}` with `pageSize=100` (plus `&view=` when set) and the PAT as bearer, follow the `offset` cursor until the response has none or `VR_AIRTABLE_MAX_PAGES` (default 40, i.e. 4,000 records — sized to the Workers free plan's 50 subrequests per request) is reached, and report the true number of records fetched as the count. Page one SHALL be fetched with all fields and is the sample; later pages SHALL request a single field (`fields[]` = the first field seen on page one) so counting stays cheap. The newest record SHALL be chosen by `createdTime` across all pages and, when it is not on page one, fetched individually so it heads the sample. When the ceiling is hit the run SHALL be marked `count_capped` and the message SHALL say so.
 
 #### Scenario: Table larger than 100 rows
 - **WHEN** the table holds 250 records
@@ -36,7 +36,7 @@ The system SHALL GET `https://api.airtable.com/v0/{base_id}/{table}` with `pageS
 - **THEN** it is fetched by id and is `newest_record`
 
 #### Scenario: Ceiling reached
-- **WHEN** the table holds more than `VR_AIRTABLE_MAX_RECORDS` records
+- **WHEN** the table holds more than `VR_AIRTABLE_MAX_PAGES × 100` records
 - **THEN** `record_count` equals the ceiling and the diff message notes "count capped at <ceiling>"
 
 #### Scenario: Missing records array
@@ -44,7 +44,7 @@ The system SHALL GET `https://api.airtable.com/v0/{base_id}/{table}` with `pageS
 - **THEN** the run FAILs with "Airtable response is missing the `records` array."
 
 ### Requirement: Postgres connector runs a guarded read-only query capped at 100 rows
-The system SHALL accept a single `SELECT`/`WITH` statement with no semicolons and none of the banned keywords (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, GRANT, REVOKE, CREATE, COMMENT), connect with the encrypted DSN (15 s timeout), set `default_transaction_read_only = on` and `statement_timeout = 15000`, execute `SELECT COUNT(*) FROM (<query>) AS _vr` for the count and `SELECT * FROM (<query>) AS _vr LIMIT 100` for the sample. `record_count` SHALL be the COUNT result; `sample_size` the sample length. Non-JSON values are coerced to strings.
+The system SHALL accept a single `SELECT`/`WITH` statement with no semicolons and none of the banned keywords (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, GRANT, REVOKE, CREATE, COMMENT), connect with the encrypted DSN over the platform's TCP sockets (15 s timeout), set `default_transaction_read_only = on` and `statement_timeout = 15000`, execute `SELECT COUNT(*) FROM (<query>) AS _vr` for the count and `SELECT * FROM (<query>) AS _vr LIMIT 100` for the sample. `record_count` SHALL be the COUNT result; `sample_size` the sample length. Non-JSON values are coerced to strings. If the platform cannot open the connection the run SHALL FAIL with a message naming the cause rather than hang.
 
 #### Scenario: Query returns 5,000 rows
 - **WHEN** the query matches 5,000 rows
@@ -60,7 +60,7 @@ The system SHALL accept a single `SELECT`/`WITH` statement with no semicolons an
 
 #### Scenario: Connection failure
 - **WHEN** the DSN cannot connect
-- **THEN** the run FAILs with "Postgres connection error: <ExceptionType>."
+- **THEN** the run FAILs with "Postgres connection error: <reason>."
 
 ### Requirement: Destinations are fetched from the server with no egress restrictions
 The system SHALL perform all destination reads server-side and SHALL refuse, both when a Check is saved and again before every fetch, any destination whose host resolves to a loopback, private, link-local, multicast, reserved, unspecified or cloud-metadata address, unless `VR_ALLOW_PRIVATE_EGRESS=1`. Redirects SHALL NOT be followed. HTTP/JSON responses SHALL be read in a stream and abandoned past `VR_MAX_RESPONSE_BYTES` (default 5 MB).

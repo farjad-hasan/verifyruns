@@ -14,7 +14,7 @@ Tagline: "Your automation said Done. RunProof checks if that's true."
 - **Ops/eng manager**: wants a dashboard-level view of workflow reliability.
 
 ## Architecture
-- **2026-08-28: ported to Cloudflare Workers + D1 (`worker/`, TypeScript)** — same API contract; the Python `backend/` stays as a fallback. Cron trigger runs the tick every minute; AES-GCM secrets under `ENC_KEY`; PBKDF2 passwords; HS256 JWT. 72 vitest tests in workerd. Deploy: `docs/deploy.md`.
+- **2026-08-28: ported to Cloudflare Workers + D1 (`worker/`, TypeScript)** — same API contract; the Python `backend/` stays as a fallback. Cron trigger runs the tick every minute; AES-GCM secrets under `ENC_KEY`; PBKDF2 passwords; HS256 JWT. 72 vitest tests in workerd. Deploy: `docs/deploy.md`. **LIVE 2026-08-28:** API https://verifyruns-api.farjad-developer.workers.dev, app https://verifyruns.pages.dev.
 - **Backend**: FastAPI + Motor (MongoDB). Single `server.py`. All routes under `/api`.
 - **Auth**: JWT (HS256) via Bearer tokens; bcrypt password hashing.
 - **Encryption at rest**: Fernet (`FERNET_KEY` in `.env`) for connector bearer tokens.

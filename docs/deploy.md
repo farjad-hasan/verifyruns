@@ -1,5 +1,7 @@
 # Deploying VerifyRuns for $0 — all on Cloudflare
 
+**Live since 2026-08-28:** API `https://verifyruns-api.farjad-developer.workers.dev` (D1 `verifyruns`, cron every minute), frontend `https://verifyruns.pages.dev` (Pages project `verifyruns`, direct upload). Secrets are set; copies live in `~/.verifyruns-secrets.env` on the Mac (owner-only). Redeploy the API with `cd worker && npm run deploy`; redeploy the frontend with `cd frontend && REACT_APP_BACKEND_URL=https://verifyruns-api.farjad-developer.workers.dev npm run build && cd ../worker && npx wrangler pages deploy ../frontend/build --project-name verifyruns --branch main`.
+
 API on **Cloudflare Workers** with **D1**, frontend on **Cloudflare Pages**, scheduling by the Worker's own **cron trigger**. One free account, no card. (The earlier Render + MongoDB Atlas layout is kept at the end as a fallback.)
 
 Everything below is driven by **Wrangler**, Cloudflare's CLI (`npm i -g wrangler`, then `wrangler login` once — it opens a browser to approve access to your account).
@@ -42,7 +44,7 @@ The cron trigger (`* * * * *` in `wrangler.toml`) starts with the deploy: every 
 
 ## 4. Frontend (Pages)
 
-Workers & Pages → Create → Pages → connect `farjad-hasan/verifyruns`:
+Either direct upload (what is live now — see the top of this page) or Git integration: Workers & Pages → Create → Pages → connect `farjad-hasan/verifyruns`:
 
 - Root directory: `frontend`
 - Build command: `npm install --legacy-peer-deps && npm run build`

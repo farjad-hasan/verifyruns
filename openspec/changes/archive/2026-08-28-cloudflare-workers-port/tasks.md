@@ -32,7 +32,7 @@
 
 ## 7. Deploy (needs Farjad's `wrangler login`)
 
-- [ ] 7.1 `wrangler d1 create verifyruns` → id into wrangler.toml; `migrate:remote`
-- [ ] 7.2 `wrangler secret put` JWT_SECRET, ENC_KEY, VR_TICK_SECRET; `wrangler deploy`; `GET /api/` live
-- [ ] 7.3 Pages project from the repo with `REACT_APP_BACKEND_URL` = Worker URL; update `PUBLIC_APP_URL`/`CORS_ORIGINS`
-- [ ] 7.4 End-to-end on the live URL: sign up, Check, webhook, tick
+- [x] 7.1 `wrangler d1 create verifyruns` → id into wrangler.toml; `migrate:remote`
+- [x] 7.2 `wrangler secret put` JWT_SECRET, ENC_KEY, VR_TICK_SECRET; `wrangler deploy`; `GET /api/` live
+- [x] 7.3 Pages project from the repo with `REACT_APP_BACKEND_URL` = Worker URL; update `PUBLIC_APP_URL`/`CORS_ORIGINS`
+- [x] 7.4 End-to-end on the live URL: sign up, Check, webhook, tick
