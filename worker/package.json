@@ -1,0 +1,25 @@
+{
+  "name": "verifyruns-worker",
+  "version": "0.1.0",
+  "private": true,
+  "description": "VerifyRuns API on Cloudflare Workers + D1",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit",
+    "migrate:local": "wrangler d1 migrations apply verifyruns --local",
+    "migrate:remote": "wrangler d1 migrations apply verifyruns --remote"
+  },
+  "devDependencies": {
+    "@cloudflare/vitest-pool-workers": "^0.22.0",
+    "@cloudflare/workers-types": "^5.20260826.1",
+    "typescript": "^5.5.0",
+    "vitest": "^4.1.0",
+    "wrangler": "^4.127.0"
+  },
+  "dependencies": {
+    "postgres": "^3.4.5"
+  },
+  "type": "module"
+}

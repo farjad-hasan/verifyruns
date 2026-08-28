@@ -1,0 +1,32 @@
+# VerifyRuns API on Cloudflare Workers + D1. Docs: ../docs/deploy.md
+name = "verifyruns-api"
+main = "src/index.ts"
+compatibility_date = "2026-08-01"
+compatibility_flags = ["nodejs_compat"]
+
+[vars]
+DB_NAME = "verifyruns"
+VR_EARLY_ACCESS = "1"
+VR_ALLOW_PRIVATE_EGRESS = "0"
+VR_RETRY_DELAY_SECONDS = "30"
+VR_LAZY_TICK_SECONDS = "60"
+VR_AIRTABLE_MAX_PAGES = "40"
+VR_MAX_RESPONSE_BYTES = "5242880"
+VR_PBKDF2_ITERATIONS = "100000"
+PUBLIC_APP_URL = "https://verifyruns.pages.dev"     # set to the Pages URL / custom domain
+CORS_ORIGINS = "https://verifyruns.pages.dev"
+
+# Secrets (wrangler secret put): JWT_SECRET, ENC_KEY (32 random bytes, base64), VR_TICK_SECRET,
+# optional RESEND_API_KEY + ALERT_FROM for email alerts.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "verifyruns"
+database_id = "REPLACE_WITH_ID_FROM_wrangler_d1_create"
+migrations_dir = "migrations"
+
+[triggers]
+crons = ["* * * * *"]
+
+[observability]
+enabled = true
