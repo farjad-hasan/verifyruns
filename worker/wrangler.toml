@@ -22,7 +22,7 @@ CORS_ORIGINS = "https://verifyruns.pages.dev"
 [[d1_databases]]
 binding = "DB"
 database_name = "verifyruns"
-database_id = "REPLACE_WITH_ID_FROM_wrangler_d1_create"
+database_id = "de208863-2ce5-4338-9708-ecba16eca95a"
 migrations_dir = "migrations"
 
 [triggers]
