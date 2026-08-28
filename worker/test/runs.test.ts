@@ -118,13 +118,13 @@ describe("webhook + runs (parity with test_serverless / test_claimed_api / test_
     const f2 = await api(`/hook/${c.webhook_secret}`, { method: "POST" });
     expect(f2.data.verdict).toBe("FAIL");
     expect(posts.length).toBe(1);
-    expect(posts[0].body.content.startsWith(":rotating_light: *FAIL*")).toBe(true);
+    expect(posts[0].body.content.startsWith("🚨 **FAIL**")).toBe(true);
     expect((await api(`/runs/${f1.data.run_id}`, { token: u.token })).data.alerts_sent).toEqual([{ kind: "discord", ok: true }]);
     n = 203;
     const ok = await api(`/hook/${c.webhook_secret}`, { method: "POST" });
     expect(ok.data.verdict).toBe("PASS");
     expect(posts.length).toBe(2);
-    expect(posts[1].body.content.startsWith(":white_check_mark: *Recovered*")).toBe(true);
+    expect(posts[1].body.content.startsWith("✅ **Recovered**")).toBe(true);
   });
 
   it("fresh FAIL with retry on records pending_retry instead of alerting", async () => {

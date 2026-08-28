@@ -61,26 +61,37 @@ export async function maybeAlert(env: Env, c: CheckDoc, run: { id: string; verdi
   if (snoozed) return;
   const fresh = await env.DB.prepare("SELECT last_alerted_verdict FROM checks WHERE id = ?").bind(c.id).first<{ last_alerted_verdict: string | null }>();
   const last = fresh?.last_alerted_verdict ?? null;
-  let header = "";
   let next = last;
-  if (run.verdict === "FAIL" && last !== "FAIL") {
-    header = `:rotating_light: *FAIL* — ${c.name}`;
-    next = "FAIL";
-  } else if (run.verdict === "PASS" && last === "FAIL") {
-    header = `:white_check_mark: *Recovered* — ${c.name}`;
-    next = "PASS";
-  } else return;
+  if (run.verdict === "FAIL" && last !== "FAIL") next = "FAIL";
+  else if (run.verdict === "PASS" && last === "FAIL") next = "PASS";
+  else return;
   const appUrl = (env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
   const link = appUrl ? `${appUrl}/checks/${c.id}` : "";
-  const text = `${header}\n${run.diff_message}\n_At ${run.timestamp}_`;
-  const subject = `VerifyRuns: ${header.replace(/\*/g, "").split(" ").slice(1).join(" ")}`;
+  const state: AlertState = next === "FAIL" ? "FAIL" : "Recovered";
+  const subject = `VerifyRuns: ${state} — ${c.name}`;
   const sent: { kind: string; ok: boolean; error?: string }[] = [];
   for (const ch of chans) {
-    let body = text;
-    if (link) body += ch.kind === "slack" ? `\n<${link}|Open in VerifyRuns>` : `\n${link}`;
+    const body = formatAlert(ch.kind, { state, name: c.name, message: run.diff_message, timestamp: run.timestamp, link });
     const r = await deliver(env, ch.kind, ch.target, body, subject);
     sent.push(r.ok ? { kind: ch.kind, ok: true } : { kind: ch.kind, ok: false, error: r.error });
   }
   await updateCheck(env, c.id, { last_alerted_verdict: next });
   await env.DB.prepare("UPDATE check_runs SET alerts_sent = ? WHERE id = ?").bind(JSON.stringify(sent), run.id).run();
+}
+
+export type AlertState = "FAIL" | "Recovered";
+export interface AlertEvent { state: AlertState; name: string; message: string; timestamp: string; link: string }
+
+/** One message per channel dialect: Slack mrkdwn, Discord markdown, plain text for email. */
+export function formatAlert(kind: string, ev: AlertEvent): string {
+  if (kind === "slack") {
+    const icon = ev.state === "FAIL" ? ":rotating_light:" : ":white_check_mark:";
+    return [`${icon} *${ev.state}* — ${ev.name}`, ev.message, `_At ${ev.timestamp}_`, ev.link ? `<${ev.link}|Open in VerifyRuns>` : ""].filter(Boolean).join("\n");
+  }
+  if (kind === "discord") {
+    const icon = ev.state === "FAIL" ? "🚨" : "✅";
+    return [`${icon} **${ev.state}** — ${ev.name}`, ev.message, `At ${ev.timestamp}`, ev.link].filter(Boolean).join("\n");
+  }
+  const when = ev.timestamp.replace("T", " ").replace(/:\d\d(\.\d+)?Z$/, " UTC");
+  return [`${ev.state} — ${ev.name}`, "", ev.message, "", `At ${when}`, ev.link ? `Open in VerifyRuns: ${ev.link}` : ""].filter((l, i, a) => l !== "" || a[i - 1] !== "").join("\n").trimEnd();
 }
