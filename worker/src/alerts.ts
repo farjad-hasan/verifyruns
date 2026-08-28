@@ -25,7 +25,9 @@ export async function channels(env: Env, c: CheckDoc): Promise<LiveChannel[]> {
   return out;
 }
 
-export async function deliver(env: Env, kind: string, target: string, text: string, subject = ""): Promise<boolean> {
+export type DeliveryResult = { ok: true } | { ok: false; error: string };
+
+export async function deliver(env: Env, kind: string, target: string, text: string, subject = ""): Promise<DeliveryResult> {
   try {
     let resp: Response;
     const init = (body: unknown, headers: Record<string, string> = {}): RequestInit => ({
@@ -37,17 +39,18 @@ export async function deliver(env: Env, kind: string, target: string, text: stri
     if (kind === "slack") resp = await httpFetch(target, init({ text }));
     else if (kind === "discord") resp = await httpFetch(target, init({ content: text.slice(0, DISCORD_MAX_CHARS) }));
     else if (kind === "email") {
-      if (!emailAvailable(env)) return false;
+      if (!emailAvailable(env)) return { ok: false, error: "email alerts need RESEND_API_KEY and ALERT_FROM on the server" };
       resp = await httpFetch("https://api.resend.com/emails", init({ from: env.ALERT_FROM, to: [target], subject, text }, { authorization: `Bearer ${env.RESEND_API_KEY}` }));
-    } else return false;
+    } else return { ok: false, error: `unknown channel kind ${kind}` };
     if (resp.status >= 400) {
-      console.warn(`${kind} alert non-2xx: ${resp.status}`);
-      return false;
+      const body = (await resp.text().catch(() => "")).slice(0, 300);
+      console.warn(`${kind} alert non-2xx: ${resp.status} ${body}`);
+      return { ok: false, error: `${resp.status} ${body}`.trim() };
     }
-    return true;
-  } catch (e) {
+    return { ok: true };
+  } catch (e: any) {
     console.error(`${kind} alert delivery failed`, e);
-    return false;
+    return { ok: false, error: String(e?.message || e).slice(0, 300) };
   }
 }
 
@@ -71,11 +74,12 @@ export async function maybeAlert(env: Env, c: CheckDoc, run: { id: string; verdi
   const link = appUrl ? `${appUrl}/checks/${c.id}` : "";
   const text = `${header}\n${run.diff_message}\n_At ${run.timestamp}_`;
   const subject = `VerifyRuns: ${header.replace(/\*/g, "").split(" ").slice(1).join(" ")}`;
-  const sent: { kind: string; ok: boolean }[] = [];
+  const sent: { kind: string; ok: boolean; error?: string }[] = [];
   for (const ch of chans) {
     let body = text;
     if (link) body += ch.kind === "slack" ? `\n<${link}|Open in VerifyRuns>` : `\n${link}`;
-    sent.push({ kind: ch.kind, ok: await deliver(env, ch.kind, ch.target, body, subject) });
+    const r = await deliver(env, ch.kind, ch.target, body, subject);
+    sent.push(r.ok ? { kind: ch.kind, ok: true } : { kind: ch.kind, ok: false, error: r.error });
   }
   await updateCheck(env, c.id, { last_alerted_verdict: next });
   await env.DB.prepare("UPDATE check_runs SET alerts_sent = ? WHERE id = ?").bind(JSON.stringify(sent), run.id).run();
