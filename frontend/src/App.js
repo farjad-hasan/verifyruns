@@ -10,6 +10,7 @@ import CheckDetail from "@/pages/CheckDetail";
 import PublicStatus from "@/pages/PublicStatus";
 import Pricing from "@/pages/Pricing";
 import DataPage from "@/pages/DataPage";
+import SecurityPage from "@/pages/SecurityPage";
 
 function Protected({ children }) {
   const { user, ready } = useAuth();
@@ -39,6 +40,7 @@ export default function App() {
           <Route path="/status/:token" element={<PublicStatus />} />
           <Route path="/pricing" element={<Pricing />} />
           <Route path="/data" element={<DataPage />} />
+          <Route path="/security" element={<SecurityPage />} />
           <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
       </BrowserRouter>

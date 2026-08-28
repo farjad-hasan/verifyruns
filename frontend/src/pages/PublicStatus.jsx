@@ -84,9 +84,9 @@ export default function PublicStatus() {
           ) : (
             <ul className="rp-card divide-y divide-[#27272A]">
               {data.runs.map((r) => (
-                <li key={r.id} className="p-5 flex items-center gap-5" data-testid={`public-run-${r.id}`}>
+                <li key={r.id} className="p-5 flex items-start gap-5" data-testid={`public-run-${r.id}`}>
                   <span className={r.verdict === "PASS" ? "badge-pass" : "badge-fail"}>{r.verdict}</span>
-                  <span className="text-sm text-zinc-300 flex-1 truncate">{r.diff_message}</span>
+                  <span className="text-sm text-zinc-300 flex-1 break-words">{r.diff_message}</span>
                   <span className="text-xs text-zinc-500 font-mono whitespace-nowrap">{new Date(r.timestamp).toLocaleString()}</span>
                 </li>
               ))}

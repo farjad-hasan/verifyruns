@@ -47,7 +47,7 @@ export default function DataPage() {
           ))}
         </div>
         <p className="text-sm text-zinc-500 mt-12">
-          Self-hosting? Every environment variable and the network policy are documented in the repository's <code className="font-mono">docs/self-hosting.md</code>. <Link to="/pricing" className="underline underline-offset-4 hover:text-zinc-300">Pricing</Link>.
+          Self-hosting? Every environment variable and the network policy are documented in the repository's <code className="font-mono">docs/self-hosting.md</code>. <Link to="/pricing" className="underline underline-offset-4 hover:text-zinc-300">Pricing</Link> · <Link to="/security" className="underline underline-offset-4 hover:text-zinc-300">Security</Link>.
         </p>
       </div>
     </div>

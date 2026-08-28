@@ -227,6 +227,7 @@ export default function Landing() {
           <div className="flex items-center gap-5">
             <Link to="/pricing" className="hover:text-zinc-300" data-testid="footer-pricing">Pricing</Link>
             <Link to="/data" className="hover:text-zinc-300" data-testid="footer-data">What we store</Link>
+            <Link to="/security" className="hover:text-zinc-300" data-testid="footer-security">Security</Link>
             <span className="font-mono">v0.2</span>
           </div>
         </div>

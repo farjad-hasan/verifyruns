@@ -10,6 +10,8 @@ Run reported success, but your workflow said it wrote 3 records; the destination
 and the field `price` disappeared — it was present in the last 30 good runs.
 ```
 
+![A public status page flipping from PASS to FAIL: "Run reported success, but your workflow said it wrote 3 records; the destination gained 0."](docs/media/forced-fail.gif)
+
 ## How it works
 
 1. **Create a Check** — point VerifyRuns at your destination (an HTTP/JSON endpoint, an Airtable table, or a read-only Postgres query) and set expectations: growth per run, required fields, fields that must be non-empty.

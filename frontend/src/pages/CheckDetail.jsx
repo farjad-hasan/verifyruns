@@ -236,7 +236,7 @@ export default function CheckDetail() {
                     data-testid={`run-row-${r.id}`}
                   >
                     <span className={r.verdict === "PASS" ? "badge-pass" : "badge-fail"}>{r.verdict}</span>
-                    <span className="text-sm text-zinc-300 flex-1 truncate">{r.diff_message}</span>
+                    <span className="text-sm text-zinc-300 flex-1 break-words">{r.diff_message}</span>
                     <span className="text-xs text-zinc-500 font-mono whitespace-nowrap">{formatDate(r.timestamp)}</span>
                     <span className="text-[10px] text-zinc-600 font-mono uppercase">{r.trigger}</span>
                   </button>

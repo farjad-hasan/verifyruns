@@ -5,13 +5,13 @@
 - [x] 1.3 "Set up in your tool": n8n / Make / Zapier tabs with copy-paste steps (n8n mentions `?wait=30` and the community node)
 - [x] 1.4 Receipts: first-person incident in publishable form (no job names, no repo names)
 - [x] 1.5 Footer links to Pricing and What we store; CTA links to Pricing
-- [ ] 1.6 20-second GIF of a forced FAIL — deferred (needs a deployed URL worth recording)
+- [x] 1.6 GIF of a forced FAIL — `docs/media/forced-fail.gif`, recorded 2026-08-28 on a live public status page (PASS → `{"wrote":3}` → FAIL sentence); the verdict sentence no longer truncates on status/detail pages
 
 ## 2. Pages
 
 - [x] 2.1 `/pricing` — see `pricing-tiers` (cheap version)
 - [x] 2.2 `/data` — "What we store", the same facts as `docs/what-we-store.md`
-- [ ] 2.3 Security page — deferred on Farjad's call (2026-08-27) until he wants `docs/security.md` back
+- [x] 2.3 `/security` page (posture, known gaps, disclosure contact) — live 2026-08-28, linked from the landing footer and /data
 
 ## 3. Verify locally, then push
 
