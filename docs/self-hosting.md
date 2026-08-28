@@ -28,6 +28,8 @@ VerifyRuns is a single FastAPI process, a MongoDB database, and a static React b
 | `VR_AIRTABLE_FETCH_BUDGET_S` | no | total time allowed for Airtable paging (60) |
 | `VR_PG_COUNT_TIMEOUT_MS` | no | Postgres `COUNT(*)` timeout before falling back to the sample length (15000) |
 | `VR_PG_SAMPLE_TIMEOUT_MS` | no | Postgres sample query timeout (15000) |
+| `VR_PG_CONNECT_TIMEOUT_MS` | no | Postgres connection budget, one attempt, no reconnects (15000). TLS is used unless the DSN says `sslmode=disable`; see the certificate note in `deploy.md` |
+| `VR_PG_CONNECT_TIMEOUT_MS` | no | Postgres connection budget, one attempt, no reconnects (15000). TLS is used unless the DSN says `sslmode=disable`; see the certificate note in `deploy.md` |
 
 Frontend: `REACT_APP_BACKEND_URL` at build time, pointing at the API origin.
 

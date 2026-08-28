@@ -68,6 +68,7 @@ Then point the API at the Pages origin: edit `PUBLIC_APP_URL` and `CORS_ORIGINS`
 - **10 ms CPU per request** by default: the engine is light; PBKDF2 sign-up/login is the heaviest step. If sign-ups ever time out, lower `VR_PBKDF2_ITERATIONS` or raise `limits.cpu_ms` in `wrangler.toml`.
 - **100,000 requests/day**, 5 GB D1 — far above early-access needs.
 - Rate limits are per isolate (best effort).
+- **Postgres destinations need a publicly trusted TLS certificate.** Workers' TCP sockets verify server certificates against public CAs only, with no way to add a private CA. Tested 2026-08-28: a Supabase pooler (certificate signed by "Supabase Intermediate 2021 CA") accepts the TLS request and then the handshake is rejected; the run fails within a second with "Postgres connection error: TLS handshake failed." and an explanation. RDS and Cloud SQL sign with private CAs too (not tested). Options: a database with a publicly trusted certificate, `sslmode=disable` in the connection string (cleartext — only over a network you trust), or self-hosting VerifyRuns next to the database. Hyperdrive (free plan, 10 configurations per account) can front a self-hoster's own database but is not a per-Check mechanism. Plain-TCP connections to the same pooler work from the edge.
 
 ## Local development
 

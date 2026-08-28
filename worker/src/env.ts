@@ -19,6 +19,7 @@ export interface Env {
   VR_RATE_CREATE_PER_MIN?: string;
   VR_PG_COUNT_TIMEOUT_MS?: string;
   VR_PG_SAMPLE_TIMEOUT_MS?: string;
+  VR_PG_CONNECT_TIMEOUT_MS?: string;
   VR_SAMPLE_TTL_DAYS?: string;
   VR_TEST_PG_DSN?: string;
 }

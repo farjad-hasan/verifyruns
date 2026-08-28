@@ -4,6 +4,7 @@ import { egressViolation } from "./egress";
 import { FetchMeta, hasOrderBy, sortDesc } from "./engine";
 import { Env, flag, num } from "./env";
 import { httpFetch } from "./net";
+import pg from "./vendor/pg.mjs";
 
 export interface FetchResult {
   records: Record<string, any>[] | null;
@@ -170,34 +171,50 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
     const query: string = cfg.query;
     const countTimeout = num(env.VR_PG_COUNT_TIMEOUT_MS, 15000);
     const sampleTimeout = num(env.VR_PG_SAMPLE_TIMEOUT_MS, 15000);
-    let sql: any;
+    const connectTimeout = num(env.VR_PG_CONNECT_TIMEOUT_MS, 15000);
+    const tls = !/[?&]sslmode=disable(&|$)/.test(dsn);
+    // One attempt, no reconnects: pg-cloudflare's socket fails in under a second when workerd rejects
+    // the TLS handshake, whereas a reconnecting driver burns the subrequest budget first.
+    const client = new pg.Client({ connectionString: dsn, ssl: tls ? { rejectUnauthorized: true } : false, connectionTimeoutMillis: connectTimeout });
+    // pg's own connectionTimeoutMillis does not fire through the Workers socket when the peer never
+    // answers (refused port, black hole), so the attempt is raced against the same budget here.
+    let timer: ReturnType<typeof setTimeout> | undefined;
     try {
-      const mod: any = await import("postgres");
-      sql = mod.default(dsn, { max: 1, connect_timeout: 15, prepare: false, ssl: dsn.includes("sslmode=disable") ? false : "prefer" });
+      await Promise.race([
+        client.connect(),
+        new Promise<never>((_, rej) => {
+          timer = setTimeout(() => rej(Object.assign(new Error(`no answer from the database within ${Math.round(connectTimeout / 1000)} s`), { code: "TIMEOUT" })), connectTimeout);
+        }),
+      ]);
     } catch (e: any) {
-      return fail(`Postgres connection error: ${e?.name || "Error"}.`, String(e?.message || e).slice(0, 500));
+      client.end().catch(() => {});
+      const d = describePgError(e, tls);
+      return fail(d.error, d.details);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
     let total: number | null = null;
     let countEstimated = false;
     let rows: any[];
     try {
-      await sql.unsafe("SET default_transaction_read_only = on");
-      await sql.unsafe(`SET statement_timeout = ${Math.floor(countTimeout)}`);
+      await client.query("SET default_transaction_read_only = on");
+      await client.query(`SET statement_timeout = ${Math.floor(countTimeout)}`);
       try {
-        const c = await sql.unsafe(`SELECT COUNT(*) AS n FROM (${query}) AS _vr`);
-        total = Number(c[0]?.n ?? 0);
+        const c = await client.query(`SELECT COUNT(*) AS n FROM (${query}) AS _vr`);
+        total = Number(c.rows[0]?.n ?? 0);
       } catch (e: any) {
         if (String(e?.code) === "57014") countEstimated = true;
         else throw e;
       }
-      await sql.unsafe(`SET statement_timeout = ${Math.floor(sampleTimeout)}`);
-      rows = await sql.unsafe(`SELECT * FROM (${query}) AS _vr LIMIT ${PG_SAMPLE_LIMIT}`);
+      await client.query(`SET statement_timeout = ${Math.floor(sampleTimeout)}`);
+      rows = (await client.query(`SELECT * FROM (${query}) AS _vr LIMIT ${PG_SAMPLE_LIMIT}`)).rows;
     } catch (e: any) {
-      await sql.end({ timeout: 1 }).catch(() => {});
-      const name = e?.code ? `PostgresError ${e.code}` : e?.name || "Error";
-      return fail(e?.code ? `Postgres query failed: ${name}.` : `Postgres connection error: ${name}.`, String(e?.message || e).slice(0, 500));
+      await client.end().catch(() => {});
+      if (e?.code) return fail(`Postgres query failed: PostgresError ${e.code}.`, String(e?.message || e).slice(0, 500));
+      const d = describePgError(e, tls);
+      return fail(d.error, d.details);
     }
-    await sql.end({ timeout: 1 }).catch(() => {});
+    await client.end().catch(() => {});
     const flat = rows.map((r: any) => {
       const row: Record<string, any> = {};
       for (const [k, v] of Object.entries(r)) row[k] = v === null || ["string", "number", "boolean"].includes(typeof v) ? v : String(v);
@@ -208,4 +225,26 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
   }
 
   return fail(`Unknown connector kind: ${kind}`);
+}
+
+/** Map a driver/socket error to the run message. Pure, so the wording is testable without a database. */
+export function describePgError(e: any, tls: boolean): { error: string; details: string } {
+  const msg = String(e?.message || e).slice(0, 500);
+  if (/does not support SSL/i.test(msg)) {
+    return {
+      error: "Postgres connection error: the server does not support TLS.",
+      details: "VerifyRuns connects with TLS unless the connection string says sslmode=disable. Add sslmode=disable to connect unencrypted — the password and every row then travel in cleartext, so only do this over a network you trust.",
+    };
+  }
+  if (tls && (/terminated unexpectedly/i.test(msg) || /^internal error/i.test(msg))) {
+    return {
+      error: "Postgres connection error: TLS handshake failed.",
+      details: `The server accepted TLS but the handshake did not complete (${msg}). On the hosted build (Cloudflare Workers) the server certificate must be publicly trusted; Supabase, and providers like RDS and Cloud SQL, sign with private CAs that the platform will not accept. Options: a publicly trusted certificate on the database, sslmode=disable to connect unencrypted (cleartext), or self-host VerifyRuns next to the database.`,
+    };
+  }
+  if (/terminated unexpectedly/i.test(msg) || /^internal error/i.test(msg) || /cannot connect to the specified address/i.test(msg)) {
+    return { error: "Postgres connection error: the database refused or dropped the connection.", details: `${msg}. Check the host, port and firewall; on the hosted build the database must be reachable from the public internet.` };
+  }
+  if (e?.code === "TIMEOUT") return { error: `Postgres connection error: ${msg}.`, details: "Check the host, port and firewall; on the hosted build the database must be reachable from the public internet." };
+  return { error: `Postgres connection error: ${e?.code || e?.name || "Error"}.`, details: msg };
 }

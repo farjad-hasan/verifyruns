@@ -44,7 +44,7 @@ The system SHALL GET `https://api.airtable.com/v0/{base_id}/{table}` with `pageS
 - **THEN** the run FAILs with "Airtable response is missing the `records` array."
 
 ### Requirement: Postgres connector runs a guarded read-only query capped at 100 rows
-The system SHALL accept a single `SELECT`/`WITH` statement with no semicolons and none of the banned keywords (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, GRANT, REVOKE, CREATE, COMMENT), connect with the encrypted DSN over the platform's TCP sockets (15 s timeout), set `default_transaction_read_only = on` and `statement_timeout = 15000`, execute `SELECT COUNT(*) FROM (<query>) AS _vr` for the count and `SELECT * FROM (<query>) AS _vr LIMIT 100` for the sample. `record_count` SHALL be the COUNT result; `sample_size` the sample length. Non-JSON values are coerced to strings. If the platform cannot open the connection the run SHALL FAIL with a message naming the cause rather than hang.
+The system SHALL accept a single `SELECT`/`WITH` statement with no semicolons and none of the banned keywords (INSERT, UPDATE, DELETE, DROP, ALTER, TRUNCATE, GRANT, REVOKE, CREATE, COMMENT), connect with the encrypted DSN over the platform's TCP sockets in a single attempt (`VR_PG_CONNECT_TIMEOUT_MS`, default 15 s, no reconnects), set `default_transaction_read_only = on` and `statement_timeout = 15000`, execute `SELECT COUNT(*) FROM (<query>) AS _vr` for the count and `SELECT * FROM (<query>) AS _vr LIMIT 100` for the sample. `record_count` SHALL be the COUNT result; `sample_size` the sample length. Non-JSON values are coerced to strings. TLS SHALL be used unless the DSN contains `sslmode=disable`; the system SHALL NOT fall back to cleartext on its own. If the connection cannot be established the run SHALL FAIL within one attempt with a message naming the cause rather than hang, and a TLS failure SHALL say that on the hosted build the server certificate must be publicly trusted and name the alternatives.
 
 #### Scenario: Query returns 5,000 rows
 - **WHEN** the query matches 5,000 rows
@@ -60,7 +60,15 @@ The system SHALL accept a single `SELECT`/`WITH` statement with no semicolons an
 
 #### Scenario: Connection failure
 - **WHEN** the DSN cannot connect
-- **THEN** the run FAILs with "Postgres connection error: <reason>."
+- **THEN** the run FAILs with "Postgres connection error: <reason>." after a single attempt
+
+#### Scenario: Server certificate not publicly trusted
+- **WHEN** the server accepts SSLRequest but the TLS handshake fails (for example a Supabase pooler, whose certificate is signed by a private CA)
+- **THEN** the run FAILs within one attempt with "Postgres connection error: TLS handshake failed." and details explaining that on the hosted build the certificate must be publicly trusted, that `sslmode=disable` connects unencrypted, and that self-hosting is the other option
+
+#### Scenario: Server does not offer TLS
+- **WHEN** the server answers `N` to SSLRequest and the DSN does not say `sslmode=disable`
+- **THEN** the run FAILs with "Postgres connection error: the server does not support TLS." and details naming `sslmode=disable` as the explicit, cleartext opt-in
 
 ### Requirement: Destinations are fetched from the server with no egress restrictions
 The system SHALL perform all destination reads server-side and SHALL refuse, both when a Check is saved and again before every fetch, any destination whose host resolves to a loopback, private, link-local, multicast, reserved, unspecified or cloud-metadata address, unless `VR_ALLOW_PRIVATE_EGRESS=1`. Redirects SHALL NOT be followed. HTTP/JSON responses SHALL be read in a stream and abandoned past `VR_MAX_RESPONSE_BYTES` (default 5 MB).

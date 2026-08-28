@@ -9,17 +9,18 @@
     "test": "vitest run",
     "typecheck": "tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply verifyruns --local",
-    "migrate:remote": "wrangler d1 migrations apply verifyruns --remote"
+    "migrate:remote": "wrangler d1 migrations apply verifyruns --remote",
+    "bundle:pg": "esbuild node_modules/pg/lib/index.js --bundle --format=esm --platform=node --target=es2022 --conditions=workerd --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr('file:///');\" --outfile=src/vendor/pg.mjs"
   },
   "devDependencies": {
     "@cloudflare/vitest-pool-workers": "^0.22.0",
     "@cloudflare/workers-types": "^5.20260826.1",
+    "@types/pg": "^8.23.1",
+    "esbuild": "^0.28.1",
+    "pg": "^8.23.0",
     "typescript": "^5.5.0",
     "vitest": "^4.1.0",
     "wrangler": "^4.127.0"
-  },
-  "dependencies": {
-    "postgres": "^3.4.5"
   },
   "type": "module"
 }

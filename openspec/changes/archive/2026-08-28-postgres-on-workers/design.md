@@ -1,0 +1,5 @@
+# Design
+
+- `pg` cannot be imported by vitest-pool-workers directly (CJS + node builtins defeat the optimizer), while wrangler bundles it fine. One pre-bundled ESM file (`npm run bundle:pg` → `src/vendor/pg.mjs`, esbuild `--platform=node --conditions=workerd`, `createRequire` banner for builtins) is imported by both the Worker and the tests. The file is generated and committed; regenerate when bumping `pg`.
+- `describePgError(err, tls)` is a pure function mapping driver errors to the run message, unit-tested without a network: "server does not support SSL" → tell the user to add `sslmode=disable`; TLS handshake death ("Connection terminated unexpectedly" / workerd "internal error" while TLS is on) → the public-CA explanation; anything else → `Postgres connection error: <code or name>.` with details.
+- End-to-end tests run against Docker Postgres on `127.0.0.1:5434` (`TEST_PG_DSN` binding in `vitest.config.ts`) and skip themselves when it is unreachable, so the suite stays green on a machine without Docker.

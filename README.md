@@ -28,7 +28,7 @@ Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/
 |---|---|---|---|
 | HTTP / JSON | GET URL, optional bearer token, optional JSON path to the array, optional `newest_key` | length of the array | max of `newest_key`, else the last element |
 | Airtable | base id, table, optional view, personal access token | true count via `offset` paging (ceiling 10,000) | newest `createdTime` |
-| Postgres | connection string, a single read-only `SELECT`/`WITH` | `COUNT(*)` of the query | the query's own `ORDER BY … DESC`; without one, newest-record rules are skipped and the run says so |
+| Postgres | connection string (TLS unless `sslmode=disable`; on the hosted build the certificate must be publicly trusted — see `docs/deploy.md`), a single read-only `SELECT`/`WITH` | `COUNT(*)` of the query | the query's own `ORDER BY … DESC`; without one, newest-record rules are skipped and the run says so |
 
 Secrets are Fernet-encrypted at rest and only ever shown masked to their last four characters. All destination reads happen server-side.
 
