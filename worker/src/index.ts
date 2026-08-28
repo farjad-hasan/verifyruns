@@ -1,6 +1,8 @@
 import { Env } from "./env";
 import { HttpError, json } from "./http";
 import * as r from "./routes";
+import { claimLazyTick, tick, tickSafely } from "./tick";
+import { timingSafeEqual } from "./crypto";
 
 type Handler = (env: Env, request: Request, ctx: ExecutionContext, params: Record<string, string>) => Promise<Response> | Response;
 
@@ -32,6 +34,12 @@ route("GET", "/api/checks/{id}/runs", (env, req, _c, p) => r.listRuns(env, req, 
 route("GET", "/api/runs/{runId}", (env, req, _c, p) => r.getRun(env, req, p.runId));
 route("POST", "/api/hook/{secret}", (env, req, ctx, p) => r.webhook(env, req, ctx, p.secret));
 route("POST", "/api/checks/{id}/run", (env, req, ctx, p) => r.runNow(env, req, ctx, p.id));
+route("POST", "/api/internal/tick", async (env, req) => {
+  if (!env.VR_TICK_SECRET) throw new HttpError(404, "Not found");
+  const given = req.headers.get("x-tick-secret") || "";
+  if (!timingSafeEqual(given, env.VR_TICK_SECRET)) throw new HttpError(401, "Bad tick secret");
+  return json(await tick(env));
+});
 route("GET", "/api/meta", (env) => r.meta(env));
 route("GET", "/api/plans", (env) => r.plans(env));
 route("POST", "/api/interest", (env, req) => r.interest(env, req));
@@ -84,10 +92,14 @@ export default {
     }
     const headers = new Headers(res.headers);
     for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+    // Lazy tick on traffic: one winner per window, runs after the response
+    if (!new URL(request.url).pathname.endsWith("/internal/tick")) {
+      ctx.waitUntil(claimLazyTick(env).then((won) => (won ? tickSafely(env) : undefined)).catch((e) => console.error("lazy tick claim failed", e)));
+    }
     return new Response(res.body, { status: res.status, headers });
   },
 
-  async scheduled(_controller: ScheduledController, _env: Env, _ctx: ExecutionContext): Promise<void> {
-    // Stage C wires the tick here.
+  async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(tickSafely(env));
   },
 } satisfies ExportedHandler<Env>;
