@@ -142,13 +142,30 @@ export async function createCheck(env: Env, request: Request): Promise<Response>
 export async function listChecks(env: Env, request: Request): Promise<Response> {
   const user = await currentUser(env, request);
   const rows = (await env.DB.prepare("SELECT * FROM checks WHERE user_id = ? ORDER BY created_at DESC LIMIT 500").bind(user.id).all()).results;
+  const checks = rows.map(rowToCheck);
+  // One statement for every check's last 30 runs (window function), instead of one per check.
+  const runsByCheck = new Map<string, any[]>();
+  if (checks.length) {
+    const marks = checks.map(() => "?").join(",");
+    const runRows = (
+      await env.DB.prepare(
+        `SELECT id, check_id, verdict, timestamp, diff_message FROM (
+           SELECT id, check_id, verdict, timestamp, diff_message, row_number() OVER (PARTITION BY check_id ORDER BY timestamp DESC) AS rn
+           FROM check_runs WHERE check_id IN (${marks})
+         ) WHERE rn <= 30 ORDER BY check_id, timestamp ASC`,
+      ).bind(...checks.map((c) => c.id)).all<any>()
+    ).results;
+    for (const { check_id, ...run } of runRows) {
+      if (!runsByCheck.has(check_id)) runsByCheck.set(check_id, []);
+      runsByCheck.get(check_id)!.push(run);
+    }
+  }
   const out = [];
-  for (const row of rows) {
-    const c = rowToCheck(row);
-    const runs = (await env.DB.prepare("SELECT id, verdict, timestamp, diff_message FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results.reverse();
+  for (const c of checks) {
+    const runs = runsByCheck.get(c.id) || [];
     const s = await sanitizeCheck(env, c, false);
     s.recent_runs = runs;
-    s.last_verdict = runs.length ? (runs[runs.length - 1] as any).verdict : null;
+    s.last_verdict = runs.length ? runs[runs.length - 1].verdict : null;
     out.push(s);
   }
   return json(out);
