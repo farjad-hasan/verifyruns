@@ -1,0 +1,323 @@
+{
+  "schemaVersion": 2,
+  "generatedAt": "2026-08-29T06:00:00+05:00",
+  "title": "Design System: VerifyRuns",
+  "extensions": {
+    "colorMeta": {
+      "verdict-pass": {
+        "role": "primary",
+        "displayName": "Verdict Emerald",
+        "canonical": "#10B981",
+        "tonalRamp": [
+          "#022C22",
+          "#064E3B",
+          "#065F46",
+          "#047857",
+          "#059669",
+          "#10B981",
+          "#34D399",
+          "#A7F3D0"
+        ]
+      },
+      "verdict-fail": {
+        "role": "primary",
+        "displayName": "Verdict Red",
+        "canonical": "#EF4444",
+        "tonalRamp": [
+          "#450A0A",
+          "#7F1D1D",
+          "#991B1B",
+          "#B91C1C",
+          "#DC2626",
+          "#EF4444",
+          "#F87171",
+          "#FECACA"
+        ]
+      },
+      "ink-black": {
+        "role": "neutral",
+        "displayName": "Ink Black",
+        "canonical": "#0A0A0A",
+        "tonalRamp": [
+          "#000000",
+          "#0A0A0A",
+          "#0C0C0E",
+          "#121214",
+          "#18181B",
+          "#27272A",
+          "#3F3F46",
+          "#52525B"
+        ]
+      },
+      "text-primary": {
+        "role": "neutral",
+        "displayName": "Paper White",
+        "canonical": "#FAFAFA",
+        "tonalRamp": [
+          "#52525B",
+          "#71717A",
+          "#A1A1AA",
+          "#D4D4D8",
+          "#E4E4E7",
+          "#F4F4F5",
+          "#FAFAFA",
+          "#FFFFFF"
+        ]
+      },
+      "snoozed-amber": {
+        "role": "tertiary",
+        "displayName": "Snoozed Amber",
+        "canonical": "#FBBF24",
+        "tonalRamp": [
+          "#451A03",
+          "#78350F",
+          "#92400E",
+          "#B45309",
+          "#D97706",
+          "#F59E0B",
+          "#FBBF24",
+          "#FDE68A"
+        ]
+      },
+      "timeline-empty": {
+        "role": "neutral",
+        "displayName": "Timeline Ghost",
+        "canonical": "#1C1C1F",
+        "tonalRamp": [
+          "#0A0A0A",
+          "#121214",
+          "#1C1C1F",
+          "#27272A",
+          "#3F3F46",
+          "#52525B",
+          "#71717A",
+          "#A1A1AA"
+        ]
+      }
+    },
+    "typographyMeta": {
+      "display": {
+        "displayName": "Display",
+        "purpose": "Landing hero and pricing H1 only; one size step down so three lines fit on desktop."
+      },
+      "headline": {
+        "displayName": "Headline",
+        "purpose": "Page titles and section H2s; second clause in muted grey."
+      },
+      "title": {
+        "displayName": "Title",
+        "purpose": "Card titles, check names, step titles. Outfit at regular weight."
+      },
+      "body": {
+        "displayName": "Body",
+        "purpose": "All prose and UI copy, secondary grey on black."
+      },
+      "label": {
+        "displayName": "Label",
+        "purpose": "Uppercase eyebrows and panel captions."
+      },
+      "badge": {
+        "displayName": "Badge",
+        "purpose": "PASS / FAIL pills."
+      },
+      "mono": {
+        "displayName": "Evidence (mono)",
+        "purpose": "Anything the system observed: timestamps, counts, URLs, field names, snippets."
+      }
+    },
+    "shadows": [
+      {
+        "name": "pass-glow",
+        "value": "0 0 12px rgba(16,185,129,0.5)",
+        "purpose": "Hovered PASS timeline square."
+      },
+      {
+        "name": "fail-glow",
+        "value": "0 0 12px rgba(239,68,68,0.5)",
+        "purpose": "Hovered FAIL timeline square."
+      },
+      {
+        "name": "ambient",
+        "value": "0 4px 20px -2px rgba(0,0,0,0.5)",
+        "purpose": "Modal and sheet surfaces only."
+      },
+      {
+        "name": "focus",
+        "value": "0 0 0 3px rgba(255,255,255,0.03)",
+        "purpose": "Input focus ring, paired with border #52525B."
+      }
+    ],
+    "motion": [
+      {
+        "name": "state",
+        "value": "160ms ease",
+        "purpose": "background-color / border-color on buttons, inputs, links."
+      },
+      {
+        "name": "square",
+        "value": "140ms ease",
+        "purpose": "transform + box-shadow on timeline squares."
+      },
+      {
+        "name": "fade-up",
+        "value": "500ms ease-out both (translateY 8px \u2192 0)",
+        "purpose": "Entrance on landing hero blocks, staggered 60\u2013300ms."
+      }
+    ],
+    "breakpoints": [
+      {
+        "name": "sm",
+        "value": "640px"
+      },
+      {
+        "name": "md",
+        "value": "768px"
+      },
+      {
+        "name": "lg",
+        "value": "1024px"
+      }
+    ]
+  },
+  "components": [
+    {
+      "name": "Primary Button",
+      "kind": "button",
+      "refersTo": "button-primary",
+      "description": "White-on-black call to action; the only filled button.",
+      "html": "<button class=\"ds-btn-primary\">Start free <svg width=\"16\" height=\"16\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M5 12h14\"/><path d=\"m12 5 7 7-7 7\"/></svg></button>",
+      "css": ".ds-btn-primary{background:#FAFAFA;color:#0A0A0A;border:none;border-radius:8px;padding:10px 18px;font:600 14px Manrope,system-ui,sans-serif;display:inline-flex;align-items:center;gap:8px;cursor:pointer;transition:background-color 160ms ease,transform 160ms ease}.ds-btn-primary:hover{background:#E4E4E7}.ds-btn-primary:active{transform:translateY(1px)}.ds-btn-primary:focus-visible{outline:2px solid #52525B;outline-offset:2px}"
+    },
+    {
+      "name": "Ghost Button",
+      "kind": "button",
+      "refersTo": "button-ghost",
+      "description": "Secondary action; hairline border that fills on hover.",
+      "html": "<button class=\"ds-btn-ghost\">I have an account</button>",
+      "css": ".ds-btn-ghost{background:transparent;color:#FAFAFA;border:1px solid #27272A;border-radius:8px;padding:10px 18px;font:500 14px Manrope,system-ui,sans-serif;display:inline-flex;align-items:center;gap:8px;cursor:pointer;transition:background-color 160ms ease,border-color 160ms ease}.ds-btn-ghost:hover{background:#18181B;border-color:#3F3F46}.ds-btn-ghost:focus-visible{outline:2px solid #52525B;outline-offset:2px}"
+    },
+    {
+      "name": "Danger Button",
+      "kind": "button",
+      "refersTo": "button-danger",
+      "description": "Destructive action as a red-edged ghost so filled red stays reserved for FAIL.",
+      "html": "<button class=\"ds-btn-danger\">Delete check</button>",
+      "css": ".ds-btn-danger{background:transparent;color:#FCA5A5;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:8px 14px;font:500 13px Manrope,system-ui,sans-serif;cursor:pointer;transition:background-color 160ms ease}.ds-btn-danger:hover{background:rgba(239,68,68,0.1)}"
+    },
+    {
+      "name": "Input",
+      "kind": "input",
+      "refersTo": "input",
+      "description": "Ink-black field with a hairline that brightens on focus.",
+      "html": "<input class=\"ds-input\" placeholder=\"https://api.example.com/orders\" />",
+      "css": ".ds-input{background:#0A0A0A;border:1px solid #27272A;color:#FAFAFA;border-radius:8px;padding:10px 12px;width:100%;font:400 14px Manrope,system-ui,sans-serif;transition:border-color 160ms ease,box-shadow 160ms ease}.ds-input::placeholder{color:#52525B}.ds-input:focus{outline:none;border-color:#52525B;box-shadow:0 0 0 3px rgba(255,255,255,0.03)}"
+    },
+    {
+      "name": "Verdict Badges",
+      "kind": "chip",
+      "refersTo": "badge-pass",
+      "description": "PASS / FAIL pills: 10% wash, 25% edge, uppercase 11px.",
+      "html": "<span class=\"ds-badge ds-badge-pass\">Pass</span> <span class=\"ds-badge ds-badge-fail\">Fail</span>",
+      "css": ".ds-badge{display:inline-block;border-radius:999px;padding:3px 10px;font:600 11px Manrope,system-ui,sans-serif;letter-spacing:.06em;text-transform:uppercase}.ds-badge-pass{background:rgba(16,185,129,.1);color:#10B981;border:1px solid rgba(16,185,129,.25)}.ds-badge-fail{background:rgba(239,68,68,.1);color:#EF4444;border:1px solid rgba(239,68,68,.25)}"
+    },
+    {
+      "name": "Card",
+      "kind": "card",
+      "refersTo": "card",
+      "description": "Flat panel: #121214 with a 1px hairline, 12px radius, no shadow at rest.",
+      "html": "<div class=\"ds-card\"><p class=\"ds-card-eyebrow\">Reality</p><p class=\"ds-card-title\">Zapier says \u2713</p><p class=\"ds-card-body\">Task completed. 200 OK. All nodes green.</p></div>",
+      "css": ".ds-card{background:#121214;border:1px solid #27272A;border-radius:12px;padding:24px;max-width:320px}.ds-card-eyebrow{margin:0 0 12px;font:400 10px Manrope,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#71717A}.ds-card-title{margin:0 0 8px;font:400 18px Outfit,system-ui,sans-serif;letter-spacing:-.02em;color:#FAFAFA}.ds-card-body{margin:0;font:400 14px/1.625 Manrope,system-ui,sans-serif;color:#A1A1AA}"
+    },
+    {
+      "name": "Timeline",
+      "kind": "custom",
+      "refersTo": "timeline-square",
+      "description": "Thirty squares, newest on the right; PASS solid emerald, FAIL a red ring, empties ghost-grey. Hover lifts and glows.",
+      "html": "<div class=\"ds-tl\"><i class=\"ds-sq\"></i><i class=\"ds-sq\"></i><i class=\"ds-sq\"></i><button class=\"ds-sq pass\"></button><button class=\"ds-sq pass\"></button><button class=\"ds-sq pass\"></button><button class=\"ds-sq pass\"></button><button class=\"ds-sq fail\"></button><button class=\"ds-sq pass\"></button><button class=\"ds-sq pass\"></button><button class=\"ds-sq pass\"></button><button class=\"ds-sq fail\"></button></div>",
+      "css": ".ds-tl{display:flex;align-items:center;gap:4px}.ds-sq{display:block;width:12px;height:12px;border-radius:3px;background:#1C1C1F;border:none;padding:0;cursor:pointer;transition:transform 140ms ease,box-shadow 140ms ease}.ds-sq.pass{background:#10B981}.ds-sq.fail{background:transparent;box-shadow:inset 0 0 0 3px #EF4444}.ds-sq:hover{transform:translateY(-2px) scale(1.15)}.ds-sq.pass:hover{box-shadow:0 0 12px rgba(16,185,129,.5)}.ds-sq.fail:hover{box-shadow:0 0 12px rgba(239,68,68,.5)}"
+    },
+    {
+      "name": "Code Block",
+      "kind": "custom",
+      "refersTo": "code-block",
+      "description": "Snippet surface: true black, hairline, JetBrains Mono 12.5px, wraps rather than truncates.",
+      "html": "<pre class=\"ds-mono\">curl -X POST \"https://&lt;your-host&gt;/api/hook/&lt;secret&gt;\" \\\n     -H \"content-type: application/json\" -d '{\"wrote\": 3}'</pre>",
+      "css": ".ds-mono{background:#000;border:1px solid #27272A;border-radius:8px;padding:14px 16px;font:400 12.5px/1.6 'JetBrains Mono',ui-monospace,monospace;color:#E4E4E7;white-space:pre-wrap;word-break:break-word;margin:0}"
+    },
+    {
+      "name": "Nav",
+      "kind": "nav",
+      "refersTo": "card",
+      "description": "Sticky bar: wordmark beside an emerald icon tile, muted login link, primary CTA.",
+      "html": "<header class=\"ds-nav\"><a class=\"ds-nav-brand\"><span class=\"ds-nav-tile\"><svg width=\"15\" height=\"15\" viewBox=\"0 0 24 24\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"2.5\" stroke-linecap=\"round\" stroke-linejoin=\"round\"><path d=\"M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2\"/></svg></span>VerifyRuns</a><nav class=\"ds-nav-links\"><a class=\"ds-nav-link\">Log in</a><a class=\"ds-nav-cta\">Get started</a></nav></header>",
+      "css": ".ds-nav{display:flex;align-items:center;justify-content:space-between;padding:16px 24px;background:rgba(10,10,10,.8);border-bottom:1px solid #18181B}.ds-nav-brand{display:flex;align-items:center;gap:10px;font:600 18px Outfit,system-ui,sans-serif;letter-spacing:-.02em;color:#FAFAFA;text-decoration:none}.ds-nav-tile{width:28px;height:28px;border-radius:6px;background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);display:inline-flex;align-items:center;justify-content:center;color:#34D399}.ds-nav-links{display:flex;align-items:center;gap:12px}.ds-nav-link{color:#A1A1AA;font:400 14px Manrope,system-ui,sans-serif;transition:color 160ms ease;cursor:pointer}.ds-nav-link:hover{color:#FAFAFA}.ds-nav-cta{background:#FAFAFA;color:#0A0A0A;border-radius:8px;padding:10px 18px;font:600 14px Manrope,system-ui,sans-serif;cursor:pointer}"
+    }
+  ],
+  "narrative": {
+    "northStar": "The Verdict Slip",
+    "overview": "VerifyRuns looks like the receipt a careful engineer would print: near-black paper, one typeface for the claim, one for the evidence, and a single row of thirty squares that says everything before a word is read. The system is dark, flat and Swiss in temperament \u2014 solid surfaces, one-pixel hairlines, generous whitespace, no gradients, no glass, no decoration that is not data. Colour is rationed to two meanings: emerald means landed, red means did not. Everything else is a grey.",
+    "keyCharacteristics": [
+      "Two-tone status vocabulary (emerald / red) on an otherwise achromatic zinc scale.",
+      "Three faces with fixed jobs: Outfit for claims, Manrope for prose and UI, JetBrains Mono for evidence.",
+      "Flat surfaces separated by hairlines; depth comes from tonal steps, never from shadow at rest.",
+      "The 30-square timeline is the signature component and appears identically on every surface that shows runs.",
+      "Motion is small and functional: a 160 ms colour transition, a 500 ms fade-up on entrance, a lift-and-glow on timeline hover."
+    ],
+    "rules": [
+      {
+        "name": "The Two-Meaning Rule",
+        "body": "Emerald and red mean PASS and FAIL and nothing else. Do not use emerald for primary action or red for delete \u2014 the primary button is white, and danger is a red-edged ghost so the filled reds stay reserved for verdicts.",
+        "section": "colors"
+      },
+      {
+        "name": "The Wash-Not-Fill Rule",
+        "body": "Status colour appears as a 10% wash with a 20\u201325% edge, except on the timeline square, where it is the only solid fill in the system.",
+        "section": "colors"
+      },
+      {
+        "name": "The Evidence-Is-Mono Rule",
+        "body": "Anything the system observed \u2014 a timestamp, a count, a URL, a field name, a fingerprint \u2014 is set in JetBrains Mono. Anything the system says is set in Manrope.",
+        "section": "typography"
+      },
+      {
+        "name": "The Grey Second Clause Rule",
+        "body": "Headlines split into a claim and a consequence; the consequence is set in text-zinc-500 on its own line.",
+        "section": "typography"
+      },
+      {
+        "name": "The Flat-At-Rest Rule",
+        "body": "Nothing casts a shadow until the user touches it or a modal opens. Depth is a tonal step and a hairline.",
+        "section": "elevation"
+      },
+      {
+        "name": "The One Blur Rule",
+        "body": "backdrop-blur is permitted on the sticky nav and on modal scrims only; nowhere else is content allowed to show through a surface.",
+        "section": "elevation"
+      }
+    ],
+    "dos": [
+      "Do set every observed value in JetBrains Mono, and every sentence the product speaks in Manrope.",
+      "Do keep the newest run on the right, padded with empties, on every timeline.",
+      "Do give PASS / FAIL a second channel beyond hue wherever verdict colour appears.",
+      "Do separate surfaces with a 1px hairline and a tonal step.",
+      "Do use the grey second clause for two-part headlines and a coloured eyebrow above them.",
+      "Do wrap verdict sentences in full; they are never truncated.",
+      "Do keep transitions specific at 140\u2013160ms and entrance fades at 500ms.",
+      "Do keep data-testid on every interactive and key informational element.",
+      "Do teach the 3-step setup in empty states.",
+      "Do keep every colour behind a semantic token: dark-only is the current look, not a commitment.",
+      "Do render empty timeline slots as ghost squares (#1C1C1F) and caption the strip 'N of 30 runs' while N < 30."
+    ],
+    "donts": [
+      "Don't load Inter.",
+      "Don't use gradients on dark surfaces, glassmorphism, or translucent panels with content scrolling beneath.",
+      "Don't fill a button with emerald or red.",
+      "Don't cast shadows at rest.",
+      "Don't nest cards inside cards.",
+      "Don't use emoji as icons.",
+      "Don't seed empty states or examples with fake customers, logos or numbers.",
+      "Don't apply transition: all, bounce / elastic easing, or centre the whole app container.",
+      "Don't follow design_guidelines.json's rounded-none md:rounded-lg \u2014 the shipped system is 8 / 12px and that file is retired."
+    ]
+  }
+}
