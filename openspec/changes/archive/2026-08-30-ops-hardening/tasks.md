@@ -7,6 +7,6 @@
 - [x] 2.2 headers set in the fetch wrapper
 
 ## 3. Site + CI
-- [ ] 3.1 `frontend/public/_headers` (CSP etc.), verified in Edge on the deployed site: landing loads, no CSP violations from the app itself, `/api/meta` reachable
-- [ ] 3.2 `ci.yml` green on GitHub; `monitor.yml` green on its first manual run
+- [x] 3.1 `frontend/public/_headers` (CSP etc.), verified in Edge on the deployed site: landing loads, no CSP violations from the app itself, `/api/meta` reachable
+- [x] 3.2 `ci.yml` green on GitHub; `monitor.yml` green on its first manual run
 - [x] 3.3 docs: deploy.md (headers, CI, monitor), security.md (headers + monitor lines)

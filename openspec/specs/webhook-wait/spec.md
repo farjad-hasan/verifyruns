@@ -11,3 +11,10 @@ How integrators get the verdict back in the same webhook request. Since `serverl
 #### Scenario: Node waits and fails the execution
 - **WHEN** the n8n node posts (with or without `wait=30`) and the run FAILs
 - **THEN** the response carries `verdict: "FAIL"` and the node throws with the diff message
+
+### Requirement: Queued-mode enqueue is atomic
+`POST /api/hook/{secret}?wait=0` SHALL append to `pending_runs` in a single UPDATE (`json_insert`) without reading the current value, so concurrent webhooks cannot overwrite each other's queued run. If a tick swaps the queue between an append and its own read, the appended item SHALL remain queued for the next tick rather than be lost.
+
+#### Scenario: Burst of queued webhooks
+- **WHEN** ten workflows POST with `?wait=0` within the same second
+- **THEN** all ten are acknowledged with 202 and all ten runs exist after the next tick

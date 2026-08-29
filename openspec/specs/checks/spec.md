@@ -28,7 +28,7 @@ Expectations SHALL be `min_new_records` (int ≥ 0, default 1), `required_fields
 - **THEN** the run FAILs with "Run reported success, but your workflow sent no record count (this Check expects {\"wrote\": N} in the webhook body)."
 
 ### Requirement: List, read, update, delete own Checks only
-The system SHALL scope every Check route to `user_id`; a Check owned by another user returns 404. The list route SHALL include the last 30 runs (oldest → newest) and `last_verdict` and SHALL omit `webhook_secret`; the detail route includes it.
+The system SHALL scope every Check route to `user_id`; a Check owned by another user returns 404. The list route SHALL include the last 30 runs (oldest → newest) and `last_verdict` and SHALL omit `webhook_secret`; the detail route includes it. On update, an unknown `connector_kind` SHALL be refused with 400, and a `connector_kind` different from the stored one SHALL be refused with 400 unless the same request carries a `config` for the new kind.
 
 #### Scenario: Cross-user access
 - **WHEN** user B requests user A's Check by id
@@ -37,6 +37,10 @@ The system SHALL scope every Check route to `user_id`; a Check owned by another 
 #### Scenario: Update keeps stored secrets when omitted
 - **WHEN** `PATCH /api/checks/{id}` sends `config` without the secret field
 - **THEN** the previously encrypted secret is preserved
+
+#### Scenario: Kind change without config
+- **WHEN** `PATCH /api/checks/{id}` sends `connector_kind: "airtable"` and no `config` on an `http_json` Check
+- **THEN** the response is HTTP 400 "config is required when changing connector_kind" and the Check is unchanged
 
 ### Requirement: Webhook trigger runs the Check asynchronously
 `POST /api/hook/{secret}` SHALL look up the Check by `webhook_secret`, run the check **inline**, and return `{accepted: true, run_id, verdict, diff_message, timed_out: false}` once the run is recorded. If the JSON body contains an integer under `wrote` (or `expected_new` / `count`), that value SHALL be passed to the run as `claimed_new`; any other body is ignored and noted on the run. A `wait` query parameter SHALL be accepted and ignored.
@@ -104,7 +108,7 @@ Runs SHALL carry `trigger` values `webhook`, `manual`, `retry`, or `heartbeat`; 
 - **THEN** three heartbeat FAIL runs appear on the timeline, one per window
 
 ### Requirement: Alert channels are managed per Check
-A Check SHALL hold a list of alert channels, each `{id, kind: slack | discord | email, target}` with the target Fernet-encrypted at rest. `POST /api/checks/{id}/channels {kind, target}` SHALL add one and return `{id, kind, last4}`; `DELETE /api/checks/{id}/channels/{channel_id}` SHALL remove it. The sanitised Check SHALL list channels as `{id, kind, last4}` only. A legacy single Slack URL SHALL appear as channel id `legacy-slack`.
+A Check SHALL hold a list of alert channels, each `{id, kind: slack | discord | email, target}` with the target Fernet-encrypted at rest. `POST /api/checks/{id}/channels {kind, target}` SHALL add one and return `{id, kind, last4}`; `DELETE /api/checks/{id}/channels/{channel_id}` SHALL remove it. The sanitised Check SHALL list channels as `{id, kind, last4}` only. A legacy single Slack URL SHALL appear as channel id `legacy-slack`. Every target SHALL be validated at save time wherever it is accepted: slack and discord targets MUST be `http`/`https` URLs whose host passes the egress policy applied to destinations; email targets MUST be email addresses. Violations are HTTP 422 with `loc` naming the field.
 
 #### Scenario: Add a Discord channel
 - **WHEN** the owner POSTs `{kind: "discord", target: "https://discord.com/api/webhooks/…/abcd"}`
@@ -117,6 +121,10 @@ A Check SHALL hold a list of alert channels, each `{id, kind: slack | discord | 
 #### Scenario: Remove a channel
 - **WHEN** the owner DELETEs a channel id
 - **THEN** it no longer appears on the Check and receives no further alerts
+
+#### Scenario: Webhook target on a private address
+- **WHEN** the owner adds `{kind: "slack", target: "http://169.254.169.254/hook"}` or sets it as the legacy Slack field
+- **THEN** the response is HTTP 422 and nothing is stored
 
 ### Requirement: Runs record delivery attempts
 After alert routing, a run SHALL carry `alerts_sent: [{kind, ok}]` — one entry per channel attempted — so the owner can see that an alert went out.
