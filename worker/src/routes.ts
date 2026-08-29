@@ -4,7 +4,7 @@ import { encryptSecret, hashPassword, signJwt, tokenUrlsafe, uuid, verifyJwt, ve
 import { emailAvailable, Env, flag, nowIso, num } from "./env";
 import { clientIp, HttpError, json, readJson, validation } from "./http";
 import { PLAN_IDS, PLANS } from "./plans";
-import { isEmail, parseChannel, parseExpectations, parseHeartbeat, parseName } from "./validate";
+import { CONNECTOR_KINDS, isEmail, parseChannel, parseExpectations, parseHeartbeat, parseName, validateChannelTarget } from "./validate";
 import { RateLimiter } from "./egress";
 
 export const EMAIL_NOT_CONFIGURED = "Email alerts are not configured on this host (set RESEND_API_KEY and ALERT_FROM).";
@@ -103,11 +103,15 @@ export async function createCheck(env: Env, request: Request): Promise<Response>
   const expectations = parseExpectations(body.expectations);
   const heartbeat = parseHeartbeat(body.heartbeat_hours);
   const config = await prepareConfigForStorage(env, kind, body.config);
+  const allowPrivate = flag(env.VR_ALLOW_PRIVATE_EGRESS, false);
+  const legacySlack = typeof body.alert_slack_webhook === "string" && body.alert_slack_webhook.trim() ? body.alert_slack_webhook.trim() : null;
+  if (legacySlack) validateChannelTarget("slack", legacySlack, allowPrivate, ["body", "alert_slack_webhook"]);
   const channels = [];
   if (Array.isArray(body.alert_channels)) {
-    for (const raw of body.alert_channels) {
+    for (const [i, raw] of (body.alert_channels as unknown[]).entries()) {
       const ch = parseChannel(raw);
       if (ch.kind === "email" && !emailAvailable(env)) throw new HttpError(400, EMAIL_NOT_CONFIGURED);
+      validateChannelTarget(ch.kind, ch.target.trim(), allowPrivate, ["body", "alert_channels", i, "target"]);
       channels.push({ id: uuid(), kind: ch.kind, target_encrypted: await encryptSecret(env.ENC_KEY, ch.target.trim()), created_at: nowIso() });
     }
   }
@@ -123,7 +127,7 @@ export async function createCheck(env: Env, request: Request): Promise<Response>
     retry_before_alert: body.retry_before_alert === undefined ? true : !!body.retry_before_alert,
     heartbeat_hours: heartbeat,
     store_samples: !!body.store_samples,
-    alert_slack_webhook_encrypted: typeof body.alert_slack_webhook === "string" && body.alert_slack_webhook.trim() ? await encryptSecret(env.ENC_KEY, body.alert_slack_webhook.trim()) : null,
+    alert_slack_webhook_encrypted: legacySlack ? await encryptSecret(env.ENC_KEY, legacySlack) : null,
     alert_channels: channels,
     public_token: null,
     snooze_until: null,
@@ -162,7 +166,11 @@ export async function patchCheck(env: Env, request: Request, id: string): Promis
   const patch: Record<string, unknown> = {};
   if (body.name !== undefined && body.name !== null) patch.name = parseName(body.name);
   if (body.expectations !== undefined && body.expectations !== null) patch.expectations = parseExpectations(body.expectations);
-  if (typeof body.connector_kind === "string") patch.connector_kind = body.connector_kind;
+  if (typeof body.connector_kind === "string") {
+    if (!(CONNECTOR_KINDS as readonly string[]).includes(body.connector_kind)) throw new HttpError(400, `Unknown connector kind: ${body.connector_kind}`);
+    if (body.connector_kind !== c.connector_kind && (body.config === undefined || body.config === null)) throw new HttpError(400, "config is required when changing connector_kind");
+    patch.connector_kind = body.connector_kind;
+  }
   if (body.config !== undefined && body.config !== null) {
     const kind = typeof body.connector_kind === "string" ? body.connector_kind : c.connector_kind;
     patch.config = await prepareConfigForStorage(env, kind, body.config, c.config);
@@ -171,7 +179,11 @@ export async function patchCheck(env: Env, request: Request, id: string): Promis
   if ("heartbeat_hours" in body) patch.heartbeat_hours = parseHeartbeat(body.heartbeat_hours);
   if (body.store_samples !== undefined && body.store_samples !== null) patch.store_samples = !!body.store_samples;
   if (body.clear_alert_slack) patch.alert_slack_webhook_encrypted = null;
-  else if (typeof body.alert_slack_webhook === "string" && body.alert_slack_webhook.trim()) patch.alert_slack_webhook_encrypted = await encryptSecret(env.ENC_KEY, body.alert_slack_webhook.trim());
+  else if (typeof body.alert_slack_webhook === "string" && body.alert_slack_webhook.trim()) {
+    const target = body.alert_slack_webhook.trim();
+    validateChannelTarget("slack", target, flag(env.VR_ALLOW_PRIVATE_EGRESS, false), ["body", "alert_slack_webhook"]);
+    patch.alert_slack_webhook_encrypted = await encryptSecret(env.ENC_KEY, target);
+  }
   await updateCheck(env, id, patch);
   return json(await sanitizeCheck(env, await getCheckForUser(env, id, user.id)));
 }
@@ -220,8 +232,38 @@ export async function publicCheck(env: Env, token: string): Promise<Response> {
   const row = await env.DB.prepare("SELECT * FROM checks WHERE public_token = ?").bind(token).first();
   if (!row) throw new HttpError(404, "Not found");
   const c = rowToCheck(row);
-  const runs = (await env.DB.prepare("SELECT id, verdict, timestamp, diff_message, trigger FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results;
-  return json({ name: c.name, connector_kind: c.connector_kind, last_verdict: runs.length ? (runs[0] as any).verdict : null, runs });
+  const rows = (await env.DB.prepare("SELECT id, verdict, timestamp, diff_message, trigger, alerts_sent FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results as any[];
+  // Verdicts only: no config, secrets, fingerprints or error_details, and alert delivery is
+  // reduced to {kind, ok} so neither the target nor a delivery error (which can quote the
+  // destination's response) ever reaches a viewer without an account.
+  const runs = rows.map((r) => ({
+    id: r.id,
+    verdict: r.verdict,
+    timestamp: r.timestamp,
+    diff_message: r.diff_message,
+    trigger: r.trigger,
+    alerts_sent: publicAlerts(r.alerts_sent),
+  }));
+  return json({
+    name: c.name,
+    connector_kind: c.connector_kind,
+    last_verdict: runs.length ? runs[0].verdict : null,
+    checked_at: runs.length ? runs[0].timestamp : null,
+    heartbeat_hours: c.heartbeat_hours ?? null,
+    runs,
+  });
+}
+
+/** Reduce a stored `alerts_sent` JSON column to `[{kind, ok}]`; anything unparseable counts as no alerts. */
+export function publicAlerts(stored: unknown): { kind: string; ok: boolean }[] {
+  if (typeof stored !== "string" || !stored) return [];
+  try {
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((a) => a && typeof a === "object").map((a) => ({ kind: String(a.kind), ok: !!a.ok }));
+  } catch {
+    return [];
+  }
 }
 
 // ---------- channels ----------
@@ -231,6 +273,7 @@ export async function addChannel(env: Env, request: Request, id: string): Promis
   const c = await getCheckForUser(env, id, user.id);
   const ch = parseChannel(await readJson(request));
   if (ch.kind === "email" && !emailAvailable(env)) throw new HttpError(400, EMAIL_NOT_CONFIGURED);
+  validateChannelTarget(ch.kind, ch.target.trim(), flag(env.VR_ALLOW_PRIVATE_EGRESS, false), ["body", "target"]);
   const doc = { id: uuid(), kind: ch.kind, target_encrypted: await encryptSecret(env.ENC_KEY, ch.target.trim()), created_at: nowIso() };
   await updateCheck(env, id, { alert_channels: [...c.alert_channels, doc] });
   return json(await sanitizeChannel(env, doc));

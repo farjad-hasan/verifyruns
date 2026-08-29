@@ -19,7 +19,7 @@ export async function readJson(request: Request): Promise<any> {
   }
 }
 
-export function validation(msg: string, loc: string[] = ["body"]): HttpError {
+export function validation(msg: string, loc: (string | number)[] = ["body"]): HttpError {
   return new HttpError(422, [{ loc, msg, type: "value_error" }]);
 }
 

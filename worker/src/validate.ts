@@ -1,4 +1,7 @@
+import { egressViolation } from "./egress";
 import { validation } from "./http";
+
+export const CONNECTOR_KINDS = ["http_json", "airtable", "postgres"] as const;
 
 export const GROWTH_MODES = ["growth", "steady", "claimed"] as const;
 export type GrowthMode = (typeof GROWTH_MODES)[number];
@@ -61,4 +64,21 @@ export function parseChannel(body: any): { kind: ChannelKind; target: string } {
   if (!body || !CHANNEL_KINDS.includes(body.kind)) throw validation("kind must be slack, discord or email", ["body", "kind"]);
   if (typeof body.target !== "string" || body.target.length < 3 || body.target.length > 2000) throw validation("target must be 3–2000 characters", ["body", "target"]);
   return { kind: body.kind, target: body.target };
+}
+
+/** Shape-check an alert target at save time: webhooks must be public http(s) URLs, emails must be emails. */
+export function validateChannelTarget(kind: ChannelKind, target: string, allowPrivate: boolean, loc: (string | number)[]): void {
+  if (kind === "email") {
+    if (!isEmail(target)) throw validation("target must be an email address", loc);
+    return;
+  }
+  let u: URL;
+  try {
+    u = new URL(target);
+  } catch {
+    throw validation("target must be an http(s) URL", loc);
+  }
+  if (u.protocol !== "http:" && u.protocol !== "https:") throw validation("target must be an http(s) URL", loc);
+  const v = egressViolation(target, allowPrivate);
+  if (v) throw validation(v, loc);
 }
