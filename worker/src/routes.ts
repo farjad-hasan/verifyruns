@@ -110,8 +110,8 @@ export async function createCheck(env: Env, request: Request): Promise<Response>
   if (Array.isArray(body.alert_channels)) {
     for (const [i, raw] of (body.alert_channels as unknown[]).entries()) {
       const ch = parseChannel(raw);
-      if (ch.kind === "email" && !emailAvailable(env)) throw new HttpError(400, EMAIL_NOT_CONFIGURED);
       validateChannelTarget(ch.kind, ch.target.trim(), allowPrivate, ["body", "alert_channels", i, "target"]);
+      if (ch.kind === "email" && !emailAvailable(env)) throw new HttpError(400, EMAIL_NOT_CONFIGURED);
       channels.push({ id: uuid(), kind: ch.kind, target_encrypted: await encryptSecret(env.ENC_KEY, ch.target.trim()), created_at: nowIso() });
     }
   }
@@ -272,8 +272,8 @@ export async function addChannel(env: Env, request: Request, id: string): Promis
   const user = await currentUser(env, request);
   const c = await getCheckForUser(env, id, user.id);
   const ch = parseChannel(await readJson(request));
-  if (ch.kind === "email" && !emailAvailable(env)) throw new HttpError(400, EMAIL_NOT_CONFIGURED);
   validateChannelTarget(ch.kind, ch.target.trim(), flag(env.VR_ALLOW_PRIVATE_EGRESS, false), ["body", "target"]);
+  if (ch.kind === "email" && !emailAvailable(env)) throw new HttpError(400, EMAIL_NOT_CONFIGURED);
   const doc = { id: uuid(), kind: ch.kind, target_encrypted: await encryptSecret(env.ENC_KEY, ch.target.trim()), created_at: nowIso() };
   await updateCheck(env, id, { alert_channels: [...c.alert_channels, doc] });
   return json(await sanitizeChannel(env, doc));
