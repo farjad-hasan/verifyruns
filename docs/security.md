@@ -15,10 +15,14 @@ Email **farjad.developer@gmail.com** with "VerifyRuns security" in the subject. 
 - Postgres connector: single `SELECT`/`WITH` statement (no semicolons), wrapped as a subquery, with `default_transaction_read_only = on` on the session. Use a read-only role anyway. TLS is on unless the connection string says `sslmode=disable`, and the connector never downgrades on its own; on the hosted build the platform verifies server certificates against public CAs only (private-CA providers such as Supabase fail fast with an explanation rather than connect unverified; publicly-signed ones such as Neon connect over TLS normally).
 - Data minimisation (`data-minimisation`, shipped): runs keep a fingerprint and a SHA-256 of the newest record, not rows; raw samples are opt-in per Check and expire after ~30 days. Details in [what-we-store.md](what-we-store.md).
 - All destination reads are server-side; the browser never touches a destination.
+- Headers (2026-08-30): every API response carries HSTS, `X-Content-Type-Options: nosniff`, `Referrer-Policy: no-referrer` and `Cache-Control: no-store`. The site (`frontend/public/_headers`) serves a Content-Security-Policy that runs scripts from its own origin only, connects only to itself and the API, and refuses framing — the backstop for the session token living in local storage.
+- Alert targets are validated like destinations (2026-08-30): Slack/Discord webhooks must be public `http(s)` URLs under the same egress policy; email targets must be addresses.
+- Monitoring: `GET /api/health` answers 503 when the cron has not ticked within 10 minutes; a scheduled GitHub Actions job probes it every 30 minutes and emails the owner on a red run. CI runs the worker suite and a frontend build on every push.
 
 ## Known gaps, tracked
 
 - No email verification or account lockout.
 - Rate limits are per isolate; a determined caller can exceed them across isolates.
+- The session token lives in local storage (readable by any script that runs on the page); the CSP is the mitigation, an httpOnly cookie the upgrade.
 
 Self-hosters: `VR_ALLOW_PRIVATE_EGRESS=1` disables the address checks — only set it on a host where every user is trusted.

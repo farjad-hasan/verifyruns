@@ -53,6 +53,8 @@ Either direct upload (what is live now — see the top of this page) or Git inte
 
 `frontend/public/_redirects` makes deep links (`/checks/<id>`, `/pricing`) load the SPA.
 
+`frontend/public/_headers` sets the site's Content-Security-Policy and transport headers. Its `connect-src` names the API origin literally — when you use a custom domain for the API, add it there and rebuild.
+
 Then point the API at the Pages origin: edit `PUBLIC_APP_URL` and `CORS_ORIGINS` in `worker/wrangler.toml` (`https://<project>.pages.dev`, or your custom domain) and `npm run deploy` again.
 
 ## 5. Check it
@@ -61,6 +63,7 @@ Then point the API at the Pages origin: edit `PUBLIC_APP_URL` and `CORS_ORIGINS`
 2. `curl -X POST https://<worker-url>/api/hook/<secret>` → a JSON verdict in the response.
 3. `curl -X POST https://<worker-url>/api/internal/tick -H "X-Tick-Secret: …"` → `{"heartbeats":0,"queued":0,"retries":0,"expired_samples":0}`.
 4. Cloudflare dashboard → the Worker → Logs: a `tick` line appears whenever something was processed.
+5. `curl -f https://<worker-url>/api/health` → `{"ok":true,"tick_age_seconds":…}`; it answers 503 once the cron has been silent for `VR_HEALTH_MAX_TICK_AGE_SECONDS` (default 600). `.github/workflows/monitor.yml` probes it every 30 minutes and fails loudly; `ci.yml` runs the worker suite and a frontend build on every push.
 
 ## Free-plan limits that shape behaviour
 

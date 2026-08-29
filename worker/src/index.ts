@@ -43,6 +43,7 @@ route("POST", "/api/internal/tick", async (env, req) => {
   if (!timingSafeEqual(given, env.VR_TICK_SECRET)) throw new HttpError(401, "Bad tick secret");
   return json(await tick(env));
 });
+route("GET", "/api/health", (env) => r.health(env));
 route("GET", "/api/meta", (env) => r.meta(env));
 route("GET", "/api/plans", (env) => r.plans(env));
 route("POST", "/api/interest", (env, req) => r.interest(env, req));
@@ -50,6 +51,14 @@ route("POST", "/api/interest", (env, req) => r.interest(env, req));
 export function addRoute(method: string, path: string, handler: Handler): void {
   route(method, path, handler);
 }
+
+/** On every response: the API is JSON over HTTPS only, never cached, never framed, never sniffed. */
+const SECURITY_HEADERS: Record<string, string> = {
+  "strict-transport-security": "max-age=31536000; includeSubDomains",
+  "x-content-type-options": "nosniff",
+  "referrer-policy": "no-referrer",
+  "cache-control": "no-store",
+};
 
 function corsHeaders(env: Env, request: Request): Record<string, string> {
   const origin = request.headers.get("origin") || "";
@@ -95,6 +104,7 @@ export default {
     }
     const headers = new Headers(res.headers);
     for (const [k, v] of Object.entries(cors)) headers.set(k, v);
+    for (const [k, v] of Object.entries(SECURITY_HEADERS)) headers.set(k, v);
     // Lazy tick on traffic: one winner per window, runs after the response
     if (!new URL(request.url).pathname.endsWith("/internal/tick")) {
       ctx.waitUntil(claimLazyTick(env).then((won) => (won ? tickSafely(env) : undefined)).catch((e) => console.error("lazy tick claim failed", e)));

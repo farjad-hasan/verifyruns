@@ -1,0 +1,19 @@
+# External backstop for the Worker and its cron: a red run emails the repository owner.
+# GitHub cron jitters by minutes and is auto-disabled after 60 days without repository activity,
+# so this is a backstop, not a pager. The probe itself drives the Worker's lazy tick, but /api/health
+# reports the age measured before that tick runs, so a dead cron still shows as stale.
+name: monitor
+on:
+  schedule:
+    - cron: "*/30 * * * *"
+  workflow_dispatch:
+jobs:
+  health:
+    runs-on: ubuntu-latest
+    steps:
+      - name: API health (tick age)
+        run: |
+          set -o pipefail
+          curl -sS -f --max-time 20 https://verifyruns-api.farjad-developer.workers.dev/api/health | tee /dev/stderr
+      - name: Site up
+        run: curl -sS -f -o /dev/null --max-time 20 https://verifyruns.pages.dev/

@@ -21,6 +21,7 @@ export interface Env {
   VR_PG_SAMPLE_TIMEOUT_MS?: string;
   VR_PG_CONNECT_TIMEOUT_MS?: string;
   VR_SAMPLE_TTL_DAYS?: string;
+  VR_HEALTH_MAX_TICK_AGE_SECONDS?: string;
   VR_TEST_PG_DSN?: string;
 }
 

@@ -1,0 +1,29 @@
+name: ci
+on:
+  push:
+  pull_request:
+jobs:
+  worker:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: worker } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: worker/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      # Postgres connector tests skip without VR_TEST_PG_DSN, exactly as on a laptop without the local stack.
+      - run: npm test
+  frontend:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: frontend } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
+      - run: npm ci
+      - run: npm run build
+        env:
+          CI: "false"   # CRA treats warnings as errors under CI=true; the build, not lint, is the gate here
+          REACT_APP_BACKEND_URL: https://verifyruns-api.farjad-developer.workers.dev
+          INLINE_RUNTIME_CHUNK: "false"

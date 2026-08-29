@@ -343,6 +343,18 @@ export function rowToRun(row: any): Record<string, any> {
 
 // ---------- plans / interest / meta ----------
 
+/** For an external monitor: 503 when the cron has not ticked within the allowed age. Read before this
+ *  request's own lazy tick runs (that is scheduled after the response), so a dead cron cannot hide behind the probe. */
+export async function health(env: Env): Promise<Response> {
+  const maxAge = num(env.VR_HEALTH_MAX_TICK_AGE_SECONDS, 600);
+  const row = await env.DB.prepare("SELECT value FROM meta WHERE key = 'tick_last_at'").first<{ value: string }>();
+  const now = Date.now();
+  const last = row ? new Date(row.value).getTime() : NaN;
+  const age = Number.isFinite(last) ? Math.max(0, Math.floor((now - last) / 1000)) : null;
+  const ok = age !== null && age <= maxAge;
+  return json({ ok, tick_age_seconds: age, max_tick_age_seconds: maxAge, checked_at: new Date(now).toISOString() }, ok ? 200 : 503);
+}
+
 export function meta(env: Env): Response {
   return json({ email_alerts: emailAvailable(env) });
 }
