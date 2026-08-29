@@ -48,7 +48,7 @@ export default function ForgotPage() {
               <p className="text-zinc-400 mb-10">Enter the email you signed up with. We'll send a link that lets you choose a new password.</p>
               <form onSubmit={submit} className="space-y-4">
                 <div>
-                  <label className="text-xs uppercase tracking-wider text-zinc-500 block mb-2">Email</label>
+                  <label className="text-xs uppercase tracking-wider text-quiet block mb-2">Email</label>
                   <input type="email" required autoComplete="email" className="rp-input font-mono" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@company.com" data-testid="forgot-email-input" />
                 </div>
                 {error && <div className="text-sm text-red-400 border border-red-500/25 bg-red-500/5 rounded-md p-3" data-testid="forgot-error">{error}</div>}
@@ -58,7 +58,7 @@ export default function ForgotPage() {
               </form>
             </>
           )}
-          <p className="mt-8 text-sm text-zinc-500">
+          <p className="mt-8 text-sm text-quiet">
             Remembered it? <Link to="/login" className="text-zinc-200 underline underline-offset-4 hover:text-white">Log in</Link>
           </p>
         </div>

@@ -13,6 +13,16 @@ module.exports = {
         sm: 'calc(var(--radius) - 4px)'
       },
       colors: {
+        // DESIGN.md tokens (design-pass, 2026-08-29)
+        ink: { DEFAULT: '#0A0A0A', alt: '#0C0C0E' },
+        panel: '#121214',
+        raised: '#18181B',
+        code: '#000000',
+        hairline: { DEFAULT: '#27272A', hover: '#3F3F46' },
+        quiet: '#8A8A93', // 'muted' is taken by shadcn's hsl(var(--muted)) below
+        focus: '#52525B',
+        'timeline-empty': '#1C1C1F',
+        verdict: { pass: '#10B981', fail: '#EF4444' },
         background: 'hsl(var(--background))',
         foreground: 'hsl(var(--foreground))',
         card: {

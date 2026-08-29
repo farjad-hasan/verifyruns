@@ -10,7 +10,7 @@ export default function LegalPage({ eyebrow, title, intro, updated, sections }) 
         <p className="text-xs uppercase tracking-widest text-emerald-400 mb-3">{eyebrow}</p>
         <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight mb-4">{title}</h1>
         <p className="text-zinc-400 text-lg leading-relaxed">{intro}</p>
-        <p className="text-sm text-zinc-500 mt-3 font-mono">Last updated {updated}</p>
+        <p className="text-sm text-quiet mt-3 font-mono">Last updated {updated}</p>
         <div className="mt-12 space-y-8">
           {sections.map((s) => (
             <div key={s.title}>
@@ -26,7 +26,7 @@ export default function LegalPage({ eyebrow, title, intro, updated, sections }) 
             </div>
           ))}
         </div>
-        <p className="text-sm text-zinc-500 mt-12">
+        <p className="text-sm text-quiet mt-12">
           <Link to="/privacy" className="underline underline-offset-4 hover:text-zinc-300">Privacy</Link> · <Link to="/terms" className="underline underline-offset-4 hover:text-zinc-300">Terms</Link> · <Link to="/data" className="underline underline-offset-4 hover:text-zinc-300">What we store</Link> · <Link to="/security" className="underline underline-offset-4 hover:text-zinc-300">Security</Link>
         </p>
       </div>

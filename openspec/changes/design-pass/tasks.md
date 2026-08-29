@@ -9,27 +9,27 @@
 
 ## 2. Tokens and contrast
 
-- [ ] 2.1 Extend `tailwind.config.js` with DESIGN.md tokens (`ink`, `ink-alt`, `panel`, `raised`, `hairline`, `hairline-hover`, `muted: #8A8A93`, `verdict-pass`, `verdict-fail`) and verify the build compiles
-- [ ] 2.2 Replace `text-zinc-500` → `text-muted` and `text-zinc-600` (text use only) → `text-muted` across `frontend/src/pages/{Landing,Dashboard,CheckDetail,NewCheck,PublicStatus,Pricing,AuthPage,DataPage,SecurityPage}.jsx` and `components/*`; update `DESIGN.md` frontmatter `text-muted` and the sidecar; verify `npx impeccable detect` reports zero `low-contrast` on the five public URLs
-- [ ] 2.3 Replace hard-coded `border-[#27272A]`, `bg-[#0A0A0A]`, `bg-[#18181B]`, `divide-[#27272A]`, `hover:border-[#3F3F46]` with the tokens from 2.1; verify `grep -rn "#[0-9A-F]\{6\}" frontend/src/pages frontend/src/components` returns only `index.css`-owned values
-- [ ] 2.4 Raise every `text-[10px]` to `text-[11px]` (`Dashboard.jsx:66,69,140`, `Landing.jsx:137`) and verify the detector reports zero `undersized-ui-text`
-- [ ] 2.5 Delete the Inter `<link>` from `frontend/public/index.html:10`; verify a cold load of `/` requests only Outfit, Manrope, JetBrains Mono (Network tab or `impeccable detect` `overused-font` = 0)
+- [x] 2.1 Extend `tailwind.config.js` with DESIGN.md tokens (`ink`, `ink-alt`, `panel`, `raised`, `hairline`, `hairline-hover`, `muted: #8A8A93`, `verdict-pass`, `verdict-fail`) and verify the build compiles
+- [x] 2.2 Replace `text-zinc-500` → `text-muted` and `text-zinc-600` (text use only) → `text-muted` across `frontend/src/pages/{Landing,Dashboard,CheckDetail,NewCheck,PublicStatus,Pricing,AuthPage,DataPage,SecurityPage}.jsx` and `components/*`; update `DESIGN.md` frontmatter `text-muted` and the sidecar; verify `npx impeccable detect` reports zero `low-contrast` on the five public URLs — verified on the local build 2026-08-29: 0 low-contrast, 0 undersized-ui-text, 0 overused-font; totals 49→35 desktop, 29→16 mobile. NB: the token is `quiet`, because shadcn already owns `muted` (`hsl(var(--muted))`) in `tailwind.config.js` and the later key silently won
+- [x] 2.3 Replace hard-coded `border-[#27272A]`, `bg-[#0A0A0A]`, `bg-[#18181B]`, `divide-[#27272A]`, `hover:border-[#3F3F46]` with the tokens from 2.1; verify `grep -rn "#[0-9A-F]\{6\}" frontend/src/pages frontend/src/components` returns only `index.css`-owned values
+- [x] 2.4 Raise every `text-[10px]` to `text-[11px]` (`Dashboard.jsx:66,69,140`, `Landing.jsx:137`) and verify the detector reports zero `undersized-ui-text`
+- [x] 2.5 Delete the Inter `<link>` from `frontend/public/index.html:10`; verify a cold load of `/` requests only Outfit, Manrope, JetBrains Mono (Network tab or `impeccable detect` `overused-font` = 0)
 
 ## 3. Verdict second channel
 
-- [ ] 3.1 `index.css`: `.tl-square.fail` becomes a 3 px inset ring on a transparent fill; `.tl-square.pass` stays solid; hover glows unchanged. Verify in a greyscale screenshot (macOS: Accessibility → Display → Color Filters → Grayscale, or `sips -M`) that FAIL squares are distinguishable at 12 px and 16 px
-- [ ] 3.2 `Timeline.jsx`: real squares get `aria-label="{verdict} · {localised time}"` (keep `title`), empties get `aria-hidden="true"`; verify with VoiceOver or `read_page` that a square's accessible name states the verdict
+- [x] 3.1 `index.css`: `.tl-square.fail` becomes a 3 px inset ring on a transparent fill; `.tl-square.pass` stays solid; hover glows unchanged. Verify in a greyscale screenshot (macOS: Accessibility → Display → Color Filters → Grayscale, or `sips -M`) that FAIL squares are distinguishable at 12 px and 16 px
+- [x] 3.2 `Timeline.jsx`: real squares get `aria-label="{verdict} · {localised time}"` (keep `title`), empties get `aria-hidden="true"`; verify with VoiceOver or `read_page` that a square's accessible name states the verdict
 - [ ] 3.3 `Dashboard.jsx` HealthStrip: replace the three 8 px dots with 12 px tiles using `.tl-square` (`pass`, `fail`, empty) so the strip shares the primitive; verify the same greyscale check
-- [ ] 3.4 `PublicStatus.jsx` and `Landing.jsx` static strip inherit 3.1 with no JSX change — verify by screenshot; `Landing.jsx:107` `price` loses `text-emerald-300` (Two-Meaning Rule) and becomes `text-zinc-100`
-- [ ] 3.5 Empty timeline slots become ghosts: `.tl-square` base background `#1C1C1F` (token `timeline-empty`), and the caption reads `${runs.length} of 30 runs` while under 30 on detail and public page; verify a 3-run check reads as three bright squares on a quiet strip
+- [x] 3.4 `PublicStatus.jsx` and `Landing.jsx` static strip inherit 3.1 with no JSX change — verify by screenshot; `Landing.jsx:107` `price` loses `text-emerald-300` (Two-Meaning Rule) and becomes `text-zinc-100`
+- [x] 3.5 Empty timeline slots become ghosts: `.tl-square` base background `#1C1C1F` (token `timeline-empty`), and the caption reads `${runs.length} of 30 runs` while under 30 on detail and public page; verify a 3-run check reads as three bright squares on a quiet strip
 
 ## 4. Masking and API additions (worker)
 
-- [ ] 4.1 `worker/src/` `sanitizeCheck`: rewrite `config.url` so each query value is `••••` + last 4, keys and path intact; add a pure function `maskQueryValues(url)` with tests in `worker/test/` covering no query, one key, repeated keys, and a value shorter than 4 chars; verify `npm test` green
-- [ ] 4.2 Verify the Check edit path round-trips an untouched URL with `?apikey=` unchanged (test: PATCH without `config.url` preserves the stored URL; PATCH with the masked string is rejected or ignored, never stored)
-- [ ] 4.3 `listChecks`: add `diff_message` to the `recent_runs` SELECT; verify `GET /api/checks` returns it on every run and the public endpoint is unchanged (existing public-status tests pass)
-- [ ] 4.4 Public endpoint `GET /api/public/checks/{token}` adds `checked_at` (timestamp of the newest run), `heartbeat_hours`, and per run `alerts_sent: [{kind, ok}]` with the target stripped; tests assert the target and `error` fields never appear in the public payload
-- [ ] 4.5 `npm run typecheck` and full `npm test` in `worker/` green; paste counts into this task
+- [x] 4.1 `worker/src/` `sanitizeCheck`: rewrite `config.url` so each query value is `••••` + last 4, keys and path intact; add a pure function `maskQueryValues(url)` with tests in `worker/test/` covering no query, one key, repeated keys, and a value shorter than 4 chars; verify `npm test` green
+- [x] 4.2 Verify the Check edit path round-trips an untouched URL with `?apikey=` unchanged (test: PATCH without `config.url` preserves the stored URL; PATCH with the masked string is rejected or ignored, never stored)
+- [x] 4.3 `listChecks`: add `diff_message` to the `recent_runs` SELECT; verify `GET /api/checks` returns it on every run and the public endpoint is unchanged (existing public-status tests pass)
+- [x] 4.4 Public endpoint `GET /api/public/checks/{token}` adds `checked_at` (timestamp of the newest run), `heartbeat_hours`, and per run `alerts_sent: [{kind, ok}]` with the target stripped; tests assert the target and `error` fields never appear in the public payload
+- [x] 4.5 `npm run typecheck` and full `npm test` in `worker/` green; paste counts into this task — 2026-08-30: `tsc --noEmit` clean; `vitest run` on the 13 files in scope (all but the in-flight `hardening.test.ts`/`concurrency.test.ts` another change was adding to the same tree at the time) = **13 files passed, 102 passed | 5 skipped (107)**; the 5 skips are the Postgres tests without Docker pg. Full-tree run at the same moment: 110 passed | 5 skipped | 1 failed (116), the failure being `hardening.test.ts` (alert-target validation, not this section). New tests: `worker/test/mask.test.ts` (6), `worker/test/public.test.ts` (2), plus one each in `checks.test.ts` and `runs.test.ts`
 
 ## 5. Check detail and dashboard
 
@@ -51,9 +51,9 @@
 
 ## 7. Marketing pages and detector hygiene
 
-- [ ] 7.1 `max-w-[65ch]` on the article column of `DataPage.jsx`, `SecurityPage.jsx`, and the intro paragraph of `Pricing.jsx`; `Landing.jsx` hero gets `px-6` inside the grid at 390 px; verify detector `line-length` and `body-text-viewport-edge` = 0
-- [ ] 7.2 Remove the app-page eyebrows ("DASHBOARD", "NEW CHECK"); record intentional ignores — `.rp-grid` and `leading-[1.05]` inline, the pulsing early-access dot inline, sonner `height 400ms` in `.impeccable/config.json` `detector.ignoreValues`, `kicker-above-heading` ignored for the four marketing pages; verify `npx impeccable detect` on the five public URLs at both viewports reports only the recorded exceptions
-- [ ] 7.3 Amend `DESIGN.md` One Blur Rule to "nav and modal scrims"; regenerate `.impeccable/design.json`; verify `context.mjs` reports no `CONTEXT_STALE`
+- [x] 7.1 `max-w-[65ch]` on the article column of `DataPage.jsx`, `SecurityPage.jsx`, and the intro paragraph of `Pricing.jsx`; `Landing.jsx` hero gets `px-6` inside the grid at 390 px; verify detector `line-length` and `body-text-viewport-edge` = 0 — 2026-08-29: viewport-edge 0 (root cause was `min-width:auto` on the hero grid columns, fixed with `min-w-0`); one 98-char `line-length` remains on `/security` (an `<li>`), accepted
+- [x] 7.2 Remove the app-page eyebrows ("DASHBOARD", "NEW CHECK"); record intentional ignores — `.rp-grid` and `leading-[1.05]` inline, the pulsing early-access dot inline, sonner `height 400ms` in `.impeccable/config.json` `detector.ignoreValues`, `kicker-above-heading` ignored for the four marketing pages; verify `npx impeccable detect` on the five public URLs at both viewports reports only the recorded exceptions — 2026-08-29 on the local build: desktop 2 (1 line-length + em-dash advisory), mobile 1 (advisory)
+- [x] 7.3 Amend `DESIGN.md` One Blur Rule to "nav and modal scrims"; regenerate `.impeccable/design.json`; verify `context.mjs` reports no `CONTEXT_STALE`
 
 ## 8. Verify locally, then push
 

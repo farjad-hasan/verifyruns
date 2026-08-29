@@ -25,6 +25,24 @@ describe("webhook + runs (parity with test_serverless / test_claimed_api / test_
     expect((await api(`/hook/nope`, { method: "POST" })).status).toBe(404);
   });
 
+  it("GET /api/checks carries diff_message on every recent run; the public run shape is {id, verdict, timestamp, diff_message, trigger, alerts_sent}", async () => {
+    serve();
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 } });
+    await api(`/hook/${c.webhook_secret}`, { method: "POST" });
+    await api(`/hook/${c.webhook_secret}`, { method: "POST" });
+    const list = await api("/checks", { token: u.token });
+    expect(list.data[0].recent_runs.length).toBe(2);
+    for (const run of list.data[0].recent_runs) {
+      expect(Object.keys(run).sort()).toEqual(["diff_message", "id", "timestamp", "verdict"]);
+      expect(typeof run.diff_message).toBe("string");
+    }
+    expect(list.data[0].recent_runs[0].diff_message.startsWith("First successful check")).toBe(true);
+    const on = await api(`/checks/${c.id}/public`, { method: "POST", token: u.token });
+    const pub = await api(`/public/checks/${on.data.public_token}`);
+    for (const run of pub.data.runs) expect(Object.keys(run).sort()).toEqual(["alerts_sent", "diff_message", "id", "timestamp", "trigger", "verdict"]);
+  });
+
   it("claimed count from the body is stored and reconciled", async () => {
     serve();
     const u = await user();

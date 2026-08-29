@@ -93,6 +93,21 @@
           "#71717A",
           "#A1A1AA"
         ]
+      },
+      "text-muted": {
+        "role": "neutral",
+        "displayName": "Muted",
+        "canonical": "#8A8A93",
+        "tonalRamp": [
+          "#27272A",
+          "#3F3F46",
+          "#52525B",
+          "#71717A",
+          "#8A8A93",
+          "#A1A1AA",
+          "#D4D4D8",
+          "#FAFAFA"
+        ]
       }
     },
     "typographyMeta": {
@@ -226,7 +241,7 @@
       "refersTo": "card",
       "description": "Flat panel: #121214 with a 1px hairline, 12px radius, no shadow at rest.",
       "html": "<div class=\"ds-card\"><p class=\"ds-card-eyebrow\">Reality</p><p class=\"ds-card-title\">Zapier says \u2713</p><p class=\"ds-card-body\">Task completed. 200 OK. All nodes green.</p></div>",
-      "css": ".ds-card{background:#121214;border:1px solid #27272A;border-radius:12px;padding:24px;max-width:320px}.ds-card-eyebrow{margin:0 0 12px;font:400 10px Manrope,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#71717A}.ds-card-title{margin:0 0 8px;font:400 18px Outfit,system-ui,sans-serif;letter-spacing:-.02em;color:#FAFAFA}.ds-card-body{margin:0;font:400 14px/1.625 Manrope,system-ui,sans-serif;color:#A1A1AA}"
+      "css": ".ds-card{background:#121214;border:1px solid #27272A;border-radius:12px;padding:24px;max-width:320px}.ds-card-eyebrow{margin:0 0 12px;font:400 10px Manrope,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#8A8A93}.ds-card-title{margin:0 0 8px;font:400 18px Outfit,system-ui,sans-serif;letter-spacing:-.02em;color:#FAFAFA}.ds-card-body{margin:0;font:400 14px/1.625 Manrope,system-ui,sans-serif;color:#A1A1AA}"
     },
     {
       "name": "Timeline",
@@ -264,6 +279,11 @@
       "Motion is small and functional: a 160 ms colour transition, a 500 ms fade-up on entrance, a lift-and-glow on timeline hover."
     ],
     "rules": [
+      {
+        "name": "The Quiet-But-Legible Rule",
+        "body": "Every grey a user is expected to read clears 4.5:1 on the surface it sits on; quietness comes from size and weight, never from a darker grey.",
+        "section": "colors"
+      },
       {
         "name": "The Two-Meaning Rule",
         "body": "Emerald and red mean PASS and FAIL and nothing else. Do not use emerald for primary action or red for delete \u2014 the primary button is white, and danger is a red-edged ghost so the filled reds stay reserved for verdicts.",

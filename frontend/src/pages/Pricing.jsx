@@ -38,7 +38,7 @@ export default function Pricing() {
       <div className="max-w-5xl mx-auto px-6 lg:px-10 pt-16 pb-24">
         <p className="text-xs uppercase tracking-widest text-emerald-400 mb-3">Pricing</p>
         <h1 className="font-display text-4xl sm:text-5xl font-semibold tracking-tight mb-4">Free while we earn your trust.</h1>
-        <p className="text-zinc-400 text-lg max-w-2xl leading-relaxed">
+        <p className="text-zinc-400 text-lg max-w-[65ch] leading-relaxed">
           VerifyRuns is in early access. Every feature below is on for everyone, at no cost, until the paid tiers open.
           The prices are what we plan to charge — if one looks wrong for what you'd get, tell us before we lock it in.
         </p>
@@ -54,7 +54,7 @@ export default function Pricing() {
           {(data?.plans || []).map((p) => (
             <div key={p.id} className={`rp-card p-7 flex flex-col ${p.id === "pro" ? "border-emerald-500/40" : ""}`} data-testid={`plan-${p.id}`}>
               <p className="font-display text-2xl">{p.name}</p>
-              <p className="font-mono text-sm text-zinc-400 mt-1">{p.planned_price}{p.id !== "free" && <span className="text-zinc-600"> · planned</span>}</p>
+              <p className="font-mono text-sm text-zinc-400 mt-1">{p.planned_price}{p.id !== "free" && <span className="text-quiet"> · planned</span>}</p>
               <p className="text-sm text-zinc-400 mt-4 leading-relaxed">{p.for}</p>
               <ul className="mt-6 space-y-2 text-sm text-zinc-300 flex-1">
                 <li className="flex gap-2"><CheckIcon size={15} className="text-emerald-400 mt-0.5 shrink-0" /> {String(p.limits.checks)} Checks · {p.limits.history} history</li>
@@ -76,7 +76,7 @@ export default function Pricing() {
           ))}
         </div>
 
-        <p className="text-sm text-zinc-500 mt-10 max-w-2xl leading-relaxed">
+        <p className="text-sm text-quiet mt-10 max-w-[65ch] leading-relaxed">
           "I'd pay for…" records your interest and nothing else — no card, no charge. It's how we decide which tier to open first.
           Questions about what's stored? <Link to="/data" className="underline underline-offset-4 hover:text-zinc-300">What we store</Link>.
         </p>

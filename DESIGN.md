@@ -14,7 +14,7 @@ colors:
   hairline-faint: "rgba(255,255,255,0.05)"
   text-primary: "#FAFAFA"
   text-secondary: "#A1A1AA"
-  text-muted: "#71717A"
+  text-muted: "#8A8A93"
   text-placeholder: "#52525B"
   text-code: "#E4E4E7"
   verdict-pass: "#10B981"
@@ -204,11 +204,15 @@ warning amber.
 - **Hairline** (`#27272A`): card borders and inputs. Hover state lifts to `#3F3F46`.
 - **Timeline Ghost** (`#1C1C1F`): the empty timeline slot — one step above Panel so empties read
   as ground and real runs as figure.
-- **Text** — Primary `#FAFAFA`, Secondary `#A1A1AA` (prose), Muted `#71717A` (captions,
-  eyebrows), Placeholder `#52525B`, Code `#E4E4E7`.
+- **Text** — Primary `#FAFAFA`, Secondary `#A1A1AA` (prose), Muted `#8A8A93` (captions,
+  eyebrows, timestamps — 5.8:1 on Ink, 5.2:1 on Raised; was `#71717A`, which failed AA on
+  every surface), Placeholder `#52525B` (exempt: never the only label), Code `#E4E4E7`.
 - **Snoozed Amber** (`#FBBF24`, Tailwind `amber-400`): the only third hue, for a snoozed Check label.
 
 ### Named Rules
+**The Quiet-But-Legible Rule.** Every grey a user is expected to read clears 4.5:1 on the surface
+it sits on; quietness comes from size and weight, never from a darker grey.
+
 **The Two-Meaning Rule.** Emerald and red mean PASS and FAIL and nothing else. Do not use emerald
 for "primary action" or red for "delete" — the primary button is white, and danger is a red-*edged*
 ghost so the filled reds stay reserved for verdicts.
@@ -342,7 +346,7 @@ ghost pills that take the emerald wash when selected.
 ### Timeline (signature component)
 Thirty 12 px squares (16 px in `.tl-hero`) at 4 px gap, 3 px radius (4 px hero), left-padded with
 ghost empties (`#1C1C1F`, one step above the panel) so the newest run is always the rightmost square. PASS fills emerald, FAIL
-fills red; each real square is a `<button>` with a `title` tooltip ("PASS · timestamp"). Hover
+is a 3 px red ring (4 px in hero) on a transparent fill, so the verdict survives greyscale; each real square is a `<button>` with a `title` tooltip ("PASS · timestamp"). Hover
 lifts 2 px, scales 1.15 and glows in its own hue, 140 ms. A "newest →" mono caption sits above it
 on the status page. It appears on the landing FAIL card (static), every dashboard row (hidden
 below `sm`), Check detail, and the public status page.
@@ -391,5 +395,10 @@ steps with mono `01 / 02 / 03` numerals in emerald, then one primary button. No 
   Zap, Eye, Globe).
 - **Don't** seed empty states or examples with fake customers, logos or numbers.
 - **Don't** apply `transition: all`, bounce / elastic easing, or centre the whole app container.
+- **Don't** re-litigate the five recorded detector exceptions in `.impeccable/config.json`
+  (`kicker-above-heading` — the Label eyebrow is this system's section voice on marketing pages
+  and is gone from app pages; `pulsing-dot` — the one early-access badge; `tight-leading` — the
+  display H1; `codex-grid-background` — the masked hero grid; `layout-transition` — sonner's
+  toast CSS, third-party). Everything else the detector reports is a defect.
 - **Don't** follow `design_guidelines.json`'s `rounded-none md:rounded-lg` — the shipped system
   is 8 / 12 px everywhere and that file is retired.

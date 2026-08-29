@@ -1,8 +1,8 @@
 /** Check model: validation + encryption of connector config, D1 row ↔ document, sanitising for clients. */
-import { decryptSecret, encryptSecret, maskToken } from "./crypto";
+import { decryptSecret, encryptSecret, MASK, maskQueryValues, maskToken } from "./crypto";
 import { egressViolation } from "./egress";
 import { Env, flag, nowIso } from "./env";
-import { HttpError } from "./http";
+import { HttpError, validation } from "./http";
 import { Expectations } from "./validate";
 
 export interface Channel {
@@ -63,11 +63,14 @@ export async function prepareConfigForStorage(env: Env, kind: string, cfgIn: any
   const allowPrivate = flag(env.VR_ALLOW_PRIVATE_EGRESS, false);
   const cfg = cfgIn && typeof cfgIn === "object" ? cfgIn : {};
   if (kind === "http_json") {
-    const url = cfg.url;
-    if (typeof url !== "string" || !url.trim()) throw new HttpError(400, "config.url is required for http_json");
-    const v = egressViolation(url.trim(), allowPrivate);
+    // Like the secrets below, an omitted url keeps the stored one; a url carrying the mask is the
+    // sanitised value echoed back by a client and must never overwrite the real destination.
+    const url: unknown = typeof cfg.url === "string" && cfg.url.trim() ? cfg.url.trim() : existing.url;
+    if (typeof url !== "string" || !url) throw new HttpError(400, "config.url is required for http_json");
+    if (url.includes(MASK)) throw validation("config.url contains a masked value; send the full URL or omit config.url to keep the stored one", ["body", "config", "url"]);
+    const v = egressViolation(url, allowPrivate);
     if (v) throw new HttpError(400, v);
-    const out: Record<string, any> = { url: url.trim(), json_path: cfg.json_path || null, newest_key: (cfg.newest_key || "").trim() || null };
+    const out: Record<string, any> = { url, json_path: cfg.json_path || null, newest_key: (cfg.newest_key || "").trim() || null };
     if (cfg.bearer_token) out.bearer_token_encrypted = await encryptSecret(env.ENC_KEY, cfg.bearer_token);
     else if (existing.bearer_token_encrypted) out.bearer_token_encrypted = existing.bearer_token_encrypted;
     return out;
@@ -102,6 +105,7 @@ export async function prepareConfigForStorage(env: Env, kind: string, cfgIn: any
 
 async function sanitizeConfig(env: Env, kind: string, cfg: Record<string, any>): Promise<Record<string, any>> {
   const out = { ...cfg };
+  if (kind === "http_json" && typeof out.url === "string") out.url = maskQueryValues(out.url);
   const pairs: Record<string, [string, string, string]> = {
     http_json: ["bearer_token_encrypted", "has_bearer_token", "bearer_token_last4"],
     airtable: ["pat_encrypted", "has_pat", "pat_last4"],

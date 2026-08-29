@@ -52,11 +52,11 @@ export default function ResetPage() {
               <p className="text-zinc-400 mb-10">At least 6 characters. You'll be signed in when it's saved.</p>
               <form onSubmit={submit} className="space-y-4">
                 <div>
-                  <label className="text-xs uppercase tracking-wider text-zinc-500 block mb-2">New password</label>
+                  <label className="text-xs uppercase tracking-wider text-quiet block mb-2">New password</label>
                   <input type="password" required minLength={6} autoComplete="new-password" className="rp-input font-mono" value={password} onChange={(e) => setPassword(e.target.value)} data-testid="reset-password-input" />
                 </div>
                 <div>
-                  <label className="text-xs uppercase tracking-wider text-zinc-500 block mb-2">Again</label>
+                  <label className="text-xs uppercase tracking-wider text-quiet block mb-2">Again</label>
                   <input type="password" required minLength={6} autoComplete="new-password" className="rp-input font-mono" value={confirm} onChange={(e) => setConfirm(e.target.value)} data-testid="reset-confirm-input" />
                 </div>
                 {error && (

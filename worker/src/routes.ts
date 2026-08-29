@@ -232,8 +232,38 @@ export async function publicCheck(env: Env, token: string): Promise<Response> {
   const row = await env.DB.prepare("SELECT * FROM checks WHERE public_token = ?").bind(token).first();
   if (!row) throw new HttpError(404, "Not found");
   const c = rowToCheck(row);
-  const runs = (await env.DB.prepare("SELECT id, verdict, timestamp, diff_message, trigger FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results;
-  return json({ name: c.name, connector_kind: c.connector_kind, last_verdict: runs.length ? (runs[0] as any).verdict : null, runs });
+  const rows = (await env.DB.prepare("SELECT id, verdict, timestamp, diff_message, trigger, alerts_sent FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results as any[];
+  // Verdicts only: no config, secrets, fingerprints or error_details, and alert delivery is
+  // reduced to {kind, ok} so neither the target nor a delivery error (which can quote the
+  // destination's response) ever reaches a viewer without an account.
+  const runs = rows.map((r) => ({
+    id: r.id,
+    verdict: r.verdict,
+    timestamp: r.timestamp,
+    diff_message: r.diff_message,
+    trigger: r.trigger,
+    alerts_sent: publicAlerts(r.alerts_sent),
+  }));
+  return json({
+    name: c.name,
+    connector_kind: c.connector_kind,
+    last_verdict: runs.length ? runs[0].verdict : null,
+    checked_at: runs.length ? runs[0].timestamp : null,
+    heartbeat_hours: c.heartbeat_hours ?? null,
+    runs,
+  });
+}
+
+/** Reduce a stored `alerts_sent` JSON column to `[{kind, ok}]`; anything unparseable counts as no alerts. */
+export function publicAlerts(stored: unknown): { kind: string; ok: boolean }[] {
+  if (typeof stored !== "string" || !stored) return [];
+  try {
+    const parsed = JSON.parse(stored);
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((a) => a && typeof a === "object").map((a) => ({ kind: String(a.kind), ok: !!a.ok }));
+  } catch {
+    return [];
+  }
 }
 
 // ---------- channels ----------

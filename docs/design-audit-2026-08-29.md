@@ -40,7 +40,9 @@ habits, not systemic drift.
 
 ### Detector findings (verified)
 
-49 findings desktop, 29 at 390 px; after de-duplication and false-positive removal:
+**After `design-pass` tasks 2–7 (local build, same five URLs): desktop 2, mobile 1 — both the em-dash advisory plus one 98-char `<li>` on `/security`. `low-contrast`, `overused-font`, `undersized-ui-text`, `body-text-viewport-edge` all 0; the five intentional rules are recorded in `.impeccable/config.json`.**
+
+Before: 49 findings desktop, 29 at 390 px; after de-duplication and false-positive removal:
 
 | Rule | Count | Verified? | Source |
 |---|---|---|---|

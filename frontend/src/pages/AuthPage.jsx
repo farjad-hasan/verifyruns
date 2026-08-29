@@ -47,7 +47,7 @@ export default function AuthPage({ mode }) {
 
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="text-xs uppercase tracking-wider text-zinc-500 block mb-2">Email</label>
+              <label className="text-xs uppercase tracking-wider text-quiet block mb-2">Email</label>
               <input
                 type="email"
                 required
@@ -60,7 +60,7 @@ export default function AuthPage({ mode }) {
               />
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-zinc-500 block mb-2">Password</label>
+              <label className="text-xs uppercase tracking-wider text-quiet block mb-2">Password</label>
               <input
                 type="password"
                 required
@@ -82,17 +82,17 @@ export default function AuthPage({ mode }) {
               {busy ? "Working…" : isLogin ? "Log in" : "Create account"}
             </button>
             {isLogin ? (
-              <p className="text-sm text-zinc-500">
+              <p className="text-sm text-quiet">
                 <Link to="/forgot" className="underline underline-offset-4 hover:text-zinc-300" data-testid="auth-forgot-link">Forgot your password?</Link>
               </p>
             ) : (
-              <p className="text-xs text-zinc-500 leading-relaxed" data-testid="auth-terms-note">
+              <p className="text-xs text-quiet leading-relaxed" data-testid="auth-terms-note">
                 By creating an account you agree to the <Link to="/terms" className="underline underline-offset-4 hover:text-zinc-300">Terms</Link> and the <Link to="/privacy" className="underline underline-offset-4 hover:text-zinc-300">Privacy Policy</Link>.
               </p>
             )}
           </form>
 
-          <p className="mt-8 text-sm text-zinc-500">
+          <p className="mt-8 text-sm text-quiet">
             {isLogin ? "New to VerifyRuns? " : "Already have an account? "}
             <Link to={isLogin ? "/signup" : "/login"} className="text-zinc-200 underline underline-offset-4 hover:text-white" data-testid="auth-switch-link">
               {isLogin ? "Create an account" : "Log in"}

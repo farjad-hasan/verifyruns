@@ -86,6 +86,39 @@ export function maskToken(plain: string): string {
   return "•".repeat(8) + plain.slice(-4);
 }
 
+/**
+ * Mask every query-string VALUE in a URL to `••••` + its last 4 characters (values of 4 chars or
+ * fewer keep the whole value after the dots). Keys, path, host and fragment are untouched, so the
+ * shape of the destination stays readable while an `?apikey=` can never leave the API in clear.
+ * Unparseable input and URLs without a query are returned unchanged. Pure string work on purpose:
+ * the `URL.search` setter would percent-encode the dots and re-encode keys.
+ */
+/** The four dots every masked value starts with; clients that echo a sanitised value back are detected by it. */
+export const MASK = "••••";
+
+export function maskQueryValues(url: string): string {
+  try {
+    new URL(url);
+  } catch {
+    return url;
+  }
+  const hashIdx = url.indexOf("#");
+  const qIdx = url.indexOf("?");
+  if (qIdx === -1 || (hashIdx !== -1 && qIdx > hashIdx)) return url;
+  const end = hashIdx === -1 ? url.length : hashIdx;
+  const query = url
+    .slice(qIdx + 1, end)
+    .split("&")
+    .map((part) => {
+      const eq = part.indexOf("=");
+      if (eq === -1) return part;
+      const value = part.slice(eq + 1);
+      return `${part.slice(0, eq)}=${MASK}${value.slice(-4)}`;
+    })
+    .join("&");
+  return url.slice(0, qIdx + 1) + query + url.slice(end);
+}
+
 // ---------- passwords (PBKDF2-SHA256) ----------
 
 export async function hashPassword(password: string, iterations: number): Promise<string> {

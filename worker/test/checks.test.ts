@@ -1,5 +1,8 @@
+import { env } from "cloudflare:test";
 import { describe, expect, it } from "vitest";
 import { api, DEST_URL, makeCheck, user } from "./helpers";
+
+const storedUrl = async (id: string) => JSON.parse((await env.DB.prepare("SELECT config FROM checks WHERE id = ?").bind(id).first<any>()).config).url;
 
 describe("checks CRUD (parity with backend_test.py + test_egress/test_heartbeat validation)", () => {
   it("creates an HTTP/JSON check and masks the bearer token", async () => {
@@ -92,6 +95,32 @@ describe("checks CRUD (parity with backend_test.py + test_egress/test_heartbeat 
     expect(r.data.expectations.min_new_records).toBe(3);
   });
 
+  it("PATCH round-trips a stored ?apikey= URL: omitted url is preserved, a masked url is rejected and never stored", async () => {
+    const u = await user();
+    const raw = `${DEST_URL}?select=id&apikey=abcdefgh1234`;
+    const masked = `${DEST_URL}?select=••••id&apikey=••••1234`;
+    const c = await makeCheck(u.token, { config: { url: raw } });
+    expect(await storedUrl(c.id)).toBe(raw);
+    // No config at all.
+    expect((await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { name: "renamed" } })).status).toBe(200);
+    expect(await storedUrl(c.id)).toBe(raw);
+    // config without url (the edit form leaving the field untouched).
+    const r = await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { config: { json_path: "items" } } });
+    expect(r.status).toBe(200);
+    expect(r.data.config.json_path).toBe("items");
+    expect(r.data.config.url).toBe(masked);
+    expect(await storedUrl(c.id)).toBe(raw);
+    // The sanitised value sent back must never be stored.
+    const bad = await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { config: { url: masked, json_path: "x" } } });
+    expect(bad.status).toBe(422);
+    expect(bad.data.detail[0].loc).toEqual(["body", "config", "url"]);
+    expect(await storedUrl(c.id)).toBe(raw);
+    expect((await api(`/checks/${c.id}`, { token: u.token })).data.config.json_path).toBe("items");
+    // Create-time: url still required, masked still rejected.
+    const create = await api("/checks", { method: "POST", token: u.token, json: { name: "n", connector_kind: "http_json", config: { url: masked } } });
+    expect(create.status).toBe(422);
+  });
+
   it("deletes a check and its runs", async () => {
     const u = await user();
     const c = await makeCheck(u.token);
@@ -120,7 +149,7 @@ describe("checks CRUD (parity with backend_test.py + test_egress/test_heartbeat 
     expect(again.data.public_token).toBe(on.data.public_token);
     const pub = await api(`/public/checks/${on.data.public_token}`);
     expect(pub.status).toBe(200);
-    expect(pub.data).toEqual({ name: "t", connector_kind: "http_json", last_verdict: null, runs: [] });
+    expect(pub.data).toEqual({ name: "t", connector_kind: "http_json", last_verdict: null, checked_at: null, heartbeat_hours: null, runs: [] });
     expect((await api(`/checks/${c.id}/public`, { method: "DELETE", token: u.token })).data).toEqual({ is_public: false });
     expect((await api(`/public/checks/${on.data.public_token}`)).status).toBe(404);
   });

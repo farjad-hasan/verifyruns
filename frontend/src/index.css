@@ -105,16 +105,27 @@ body {
     width: 12px;
     height: 12px;
     border-radius: 3px;
-    background: #27272A;
+    background: #1C1C1F; /* ghost empty slot: one step above the panel */
+    flex-shrink: 0;
+    border: none;
+    padding: 0;
     transition: transform 140ms ease, box-shadow 140ms ease;
 }
 .tl-square.pass { background: #10B981; }
-.tl-square.fail { background: #EF4444; }
+/* FAIL is a ring, PASS a solid: the verdict survives greyscale by shape and luminance */
+.tl-square.fail { background: transparent; box-shadow: inset 0 0 0 3px #EF4444; }
 .tl-square:hover { transform: translateY(-2px) scale(1.15); }
 .tl-square.pass:hover { box-shadow: 0 0 12px rgba(16,185,129,0.5); }
-.tl-square.fail:hover { box-shadow: 0 0 12px rgba(239,68,68,0.5); }
+.tl-square.fail:hover { box-shadow: inset 0 0 0 3px #EF4444, 0 0 12px rgba(239,68,68,0.5); }
 
+/* The strip scrolls when narrower than 30 squares and starts at the right end, so the newest run is
+   always in view: rtl on the scroller sets the initial scroll position; the inner row is ltr. */
+.tl-scroller { direction: rtl; scrollbar-width: none; }
+.tl-scroller > * { direction: ltr; }
+.tl-scroller::-webkit-scrollbar { display: none; }
 .tl-hero .tl-square { width: 16px; height: 16px; border-radius: 4px; }
+.tl-hero .tl-square.fail { box-shadow: inset 0 0 0 4px #EF4444; }
+.tl-hero .tl-square.fail:hover { box-shadow: inset 0 0 0 4px #EF4444, 0 0 12px rgba(239,68,68,0.5); }
 
 /* Verdict badges */
 .badge-pass {

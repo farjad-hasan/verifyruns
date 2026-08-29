@@ -8,14 +8,17 @@ import { Plus, Globe, ArrowRight } from "lucide-react";
 
 export default function Dashboard() {
   const [checks, setChecks] = useState(null);
+  const [error, setError] = useState("");
   const nav = useNavigate();
 
   const load = async () => {
     try {
       const { data } = await api.get("/checks");
       setChecks(data);
-    } catch {
+      setError("");
+    } catch (e) {
       /* 401 handled by axios interceptor */
+      if (e.response?.status !== 401) setError("Could not reach VerifyRuns. Retrying in 10 s.");
     }
   };
   useEffect(() => {
@@ -30,7 +33,6 @@ export default function Dashboard() {
       <div className="max-w-6xl mx-auto px-6 lg:px-10 py-12">
         <div className="flex items-center justify-between mb-10">
           <div>
-            <p className="text-xs uppercase tracking-widest text-zinc-500 mb-2">Dashboard</p>
             <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">Your Checks</h1>
           </div>
           {checks && checks.length > 0 && (
@@ -40,8 +42,14 @@ export default function Dashboard() {
           )}
         </div>
 
-        {checks === null && (
-          <div className="rp-card p-10 text-zinc-500 font-mono text-sm">Loading…</div>
+        {checks === null && !error && (
+          <div className="rp-card p-10 text-quiet font-mono text-sm">Loading…</div>
+        )}
+        {error && (
+          <div className="rp-card p-8 flex flex-wrap items-center justify-between gap-4" data-testid="dashboard-error">
+            <p className="text-sm text-zinc-200">{error}</p>
+            <button className="rp-btn-ghost" onClick={load} data-testid="dashboard-retry">Retry now</button>
+          </div>
         )}
 
         {checks && checks.length === 0 && <EmptyState />}
@@ -54,7 +62,7 @@ export default function Dashboard() {
               <li key={c.id}>
                 <button
                   onClick={() => nav(`/checks/${c.id}`)}
-                  className="w-full text-left rp-card p-6 hover:border-[#3F3F46] transition-colors flex items-center gap-6"
+                  className="w-full text-left rp-card p-6 hover:border-hairline-hover transition-colors flex items-center gap-6"
                   data-testid={`check-row-${c.id}`}
                 >
                   <div className="flex-1 min-w-0">
@@ -63,20 +71,26 @@ export default function Dashboard() {
                       {c.last_verdict === "PASS" && <span className="badge-pass">Pass</span>}
                       {c.last_verdict === "FAIL" && <span className="badge-fail">Fail</span>}
                       {c.heartbeat_hours && (
-                        <span className="text-[10px] uppercase tracking-widest text-zinc-500 font-mono" title="Heartbeat: a FAIL is recorded if no run arrives within this window" data-testid={`heartbeat-${c.id}`}>every {c.heartbeat_hours} h</span>
+                        <span className="text-[11px] uppercase tracking-widest text-quiet font-mono" title="Heartbeat: a FAIL is recorded if no run arrives within this window" data-testid={`heartbeat-${c.id}`}>every {c.heartbeat_hours} h</span>
                       )}
                       {c.is_snoozed && (
-                        <span className="text-[10px] uppercase tracking-widest text-amber-400 font-mono" data-testid={`snoozed-${c.id}`}>Snoozed</span>
+                        <span className="text-[11px] uppercase tracking-widest text-amber-400 font-mono" data-testid={`snoozed-${c.id}`}>Snoozed</span>
                       )}
                     </div>
-                    <p className="text-xs text-zinc-500 font-mono flex items-center gap-1.5">
+                    <p className="text-xs text-quiet font-mono flex items-center gap-1.5">
                       <Globe size={11} /> {connectorLabel(c.connector_kind)}
                     </p>
+                    {latestSentence(c) && (
+                      <p className="text-sm text-zinc-300 mt-3 break-words" data-testid={`latest-${c.id}`}>{latestSentence(c)}</p>
+                    )}
+                    <div className="sm:hidden mt-3">
+                      <Timeline runs={(c.recent_runs || []).slice(-10)} total={10} testid={`timeline-sm-${c.id}`} />
+                    </div>
                   </div>
-                  <div className="hidden sm:block">
+                  <div className="hidden sm:block shrink-0">
                     <Timeline runs={c.recent_runs || []} testid={`timeline-${c.id}`} />
                   </div>
-                  <ArrowRight size={16} className="text-zinc-600" />
+                  <ArrowRight size={16} className="text-quiet" />
                 </button>
               </li>
             ))}
@@ -85,6 +99,11 @@ export default function Dashboard() {
       </div>
     </div>
   );
+}
+
+function latestSentence(c) {
+  const runs = c.recent_runs || [];
+  return runs.length ? runs[runs.length - 1].diff_message : null;
 }
 
 function EmptyState() {
@@ -123,21 +142,21 @@ function HealthStrip({ checks }) {
   const idle = checks.filter((c) => !c.last_verdict).length;
   return (
     <div className="rp-card p-5 mb-6 flex items-center gap-8" data-testid="health-strip">
-      <Stat label="Passing" value={passing} color="text-emerald-400" dot="bg-emerald-500" testid="health-passing" />
-      <Stat label="Failing" value={failing} color="text-red-400" dot="bg-red-500" testid="health-failing" />
-      <Stat label="No runs yet" value={idle} color="text-zinc-400" dot="bg-zinc-600" testid="health-idle" />
-      <div className="ml-auto text-xs text-zinc-500 font-mono hidden sm:block">Auto-refresh · 10s</div>
+      <Stat label="Passing" value={passing} color="text-emerald-400" square="pass" testid="health-passing" />
+      <Stat label="Failing" value={failing} color="text-red-400" square="fail" testid="health-failing" />
+      <Stat label="No runs yet" value={idle} color="text-zinc-400" square="" testid="health-idle" />
+      <div className="ml-auto text-xs text-quiet font-mono hidden sm:block">Auto-refresh · 10s</div>
     </div>
   );
 }
 
-function Stat({ label, value, color, dot, testid }) {
+function Stat({ label, value, color, square, testid }) {
   return (
     <div className="flex items-center gap-3" data-testid={testid}>
-      <span className={`w-2 h-2 rounded-full ${dot}`} />
+      <span className={`tl-square ${square}`} aria-hidden="true" />
       <div>
         <p className={`font-display text-2xl leading-none ${color}`}>{value}</p>
-        <p className="text-[10px] uppercase tracking-widest text-zinc-500 mt-1">{label}</p>
+        <p className="text-[11px] uppercase tracking-widest text-quiet mt-1">{label}</p>
       </div>
     </div>
   );
