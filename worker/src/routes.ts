@@ -9,6 +9,7 @@ import { RateLimiter } from "./egress";
 
 export const EMAIL_NOT_CONFIGURED = "Email alerts are not configured on this host (set RESEND_API_KEY and ALERT_FROM).";
 const JWT_EXPIRE_DAYS = 7;
+const D1_BIND_CHUNK = 90; // D1 allows 100 bound parameters per statement
 
 // Best-effort, per isolate (see the egress-policy spec delta)
 const limiters: { auth?: RateLimiter; hook?: RateLimiter; create?: RateLimiter } = {};
@@ -143,17 +144,19 @@ export async function listChecks(env: Env, request: Request): Promise<Response> 
   const user = await currentUser(env, request);
   const rows = (await env.DB.prepare("SELECT * FROM checks WHERE user_id = ? ORDER BY created_at DESC LIMIT 500").bind(user.id).all()).results;
   const checks = rows.map(rowToCheck);
-  // One statement for every check's last 30 runs (window function), instead of one per check.
+  // One statement per 90 checks for their last 30 runs (window function), instead of one per check.
+  // D1 binds at most 100 parameters per statement, so the id list is chunked.
   const runsByCheck = new Map<string, any[]>();
-  if (checks.length) {
-    const marks = checks.map(() => "?").join(",");
+  const ids = checks.map((c) => c.id);
+  for (let i = 0; i < ids.length; i += D1_BIND_CHUNK) {
+    const chunk = ids.slice(i, i + D1_BIND_CHUNK);
     const runRows = (
       await env.DB.prepare(
         `SELECT id, check_id, verdict, timestamp, diff_message FROM (
            SELECT id, check_id, verdict, timestamp, diff_message, row_number() OVER (PARTITION BY check_id ORDER BY timestamp DESC) AS rn
-           FROM check_runs WHERE check_id IN (${marks})
+           FROM check_runs WHERE check_id IN (${chunk.map(() => "?").join(",")})
          ) WHERE rn <= 30 ORDER BY check_id, timestamp ASC`,
-      ).bind(...checks.map((c) => c.id)).all<any>()
+      ).bind(...chunk).all<any>()
     ).results;
     for (const { check_id, ...run } of runRows) {
       if (!runsByCheck.has(check_id)) runsByCheck.set(check_id, []);
