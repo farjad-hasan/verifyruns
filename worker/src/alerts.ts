@@ -1,5 +1,5 @@
 /** Alert channels and transition-based delivery. Ported from backend/server.py. */
-import { CheckDoc, updateCheck } from "./checks";
+import { CheckDoc } from "./checks";
 import { decryptSecret } from "./crypto";
 import { emailAvailable, Env } from "./env";
 import { httpFetch } from "./net";
@@ -59,12 +59,17 @@ export async function maybeAlert(env: Env, c: CheckDoc, run: { id: string; verdi
   const chans = await channels(env, c);
   if (!chans.length) return;
   if (snoozed) return;
-  const fresh = await env.DB.prepare("SELECT last_alerted_verdict FROM checks WHERE id = ?").bind(c.id).first<{ last_alerted_verdict: string | null }>();
-  const last = fresh?.last_alerted_verdict ?? null;
-  let next = last;
-  if (run.verdict === "FAIL" && last !== "FAIL") next = "FAIL";
-  else if (run.verdict === "PASS" && last === "FAIL") next = "PASS";
-  else return;
+  // Claim the transition before delivering: a predicated UPDATE changes exactly one caller's row.
+  let next: "FAIL" | "PASS";
+  let claim: D1Result;
+  if (run.verdict === "FAIL") {
+    next = "FAIL";
+    claim = await env.DB.prepare("UPDATE checks SET last_alerted_verdict = 'FAIL' WHERE id = ? AND (last_alerted_verdict IS NULL OR last_alerted_verdict != 'FAIL')").bind(c.id).run();
+  } else if (run.verdict === "PASS") {
+    next = "PASS";
+    claim = await env.DB.prepare("UPDATE checks SET last_alerted_verdict = 'PASS' WHERE id = ? AND last_alerted_verdict = 'FAIL'").bind(c.id).run();
+  } else return;
+  if (!claim.meta.changes) return; // not a transition, or another caller claimed it
   const appUrl = (env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
   const link = appUrl ? `${appUrl}/checks/${c.id}` : "";
   const state: AlertState = next === "FAIL" ? "FAIL" : "Recovered";
@@ -75,7 +80,6 @@ export async function maybeAlert(env: Env, c: CheckDoc, run: { id: string; verdi
     const r = await deliver(env, ch.kind, ch.target, body, subject);
     sent.push(r.ok ? { kind: ch.kind, ok: true } : { kind: ch.kind, ok: false, error: r.error });
   }
-  await updateCheck(env, c.id, { last_alerted_verdict: next });
   await env.DB.prepare("UPDATE check_runs SET alerts_sent = ? WHERE id = ?").bind(JSON.stringify(sent), run.id).run();
 }
 

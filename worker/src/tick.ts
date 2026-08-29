@@ -1,6 +1,6 @@
 /** Everything time-based, in one idempotent sweep: missed heartbeats, queued runs, due retries, sample expiry.
  *  Driven by the Worker's cron trigger, by traffic (lazy), or by POST /api/internal/tick. */
-import { rowToCheck, updateCheck } from "./checks";
+import { CheckDoc, rowToCheck, updateCheck } from "./checks";
 import { maybeAlert } from "./alerts";
 import { uuid } from "./crypto";
 import { Env, nowIso, num } from "./env";
@@ -34,10 +34,14 @@ export async function heartbeatTick(env: Env, now: Date): Promise<number> {
     const timestamp = nowIso();
     const message = heartbeatMessage(elapsedH, c.heartbeat_hours!);
     const fp = { record_count: 0, sample_size: 0, fields: [], newest_hash: null, sample_stored: false, newest_defined: true, null_pct: {} };
-    await env.DB.prepare(
+    // One statement: insert only if no heartbeat already landed inside this window, so concurrent ticks cannot both fire.
+    const windowStart = new Date(now.getTime() - c.heartbeat_hours! * 3600_000).toISOString();
+    const res = await env.DB.prepare(
       `INSERT INTO check_runs (id, check_id, timestamp, heartbeat_at, trigger, verdict, diff_message, fingerprint, error_details, is_retry, count_capped, count_estimated, claimed_new, body_note)
-       VALUES (?, ?, ?, ?, 'heartbeat', 'FAIL', ?, ?, NULL, 0, 0, 0, NULL, NULL)`,
-    ).bind(runId, c.id, timestamp, now.toISOString(), message, JSON.stringify(fp)).run();
+       SELECT ?, ?, ?, ?, 'heartbeat', 'FAIL', ?, ?, NULL, 0, 0, 0, NULL, NULL
+       WHERE NOT EXISTS (SELECT 1 FROM check_runs WHERE check_id = ? AND trigger = 'heartbeat' AND COALESCE(heartbeat_at, timestamp) >= ?)`,
+    ).bind(runId, c.id, timestamp, now.toISOString(), message, JSON.stringify(fp), c.id, windowStart).run();
+    if (!res.meta.changes) continue; // another tick fired this window first
     fired += 1;
     try {
       const snoozed = !!(c.snooze_until && c.snooze_until > nowIso());
@@ -66,6 +70,11 @@ export async function drainRetries(env: Env, now: Date): Promise<number> {
     }
   }
   return ran;
+}
+
+/** Append one queued run in a single UPDATE — no read, so concurrent webhooks cannot overwrite each other. */
+export async function enqueueRun(env: Env, checkId: string, item: CheckDoc["pending_runs"][number]): Promise<void> {
+  await env.DB.prepare("UPDATE checks SET pending_runs = json_insert(pending_runs, '$[#]', json(?)) WHERE id = ?").bind(JSON.stringify(item), checkId).run();
 }
 
 export async function drainPendingRuns(env: Env): Promise<number> {

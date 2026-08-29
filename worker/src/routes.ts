@@ -141,7 +141,7 @@ export async function listChecks(env: Env, request: Request): Promise<Response> 
   const out = [];
   for (const row of rows) {
     const c = rowToCheck(row);
-    const runs = (await env.DB.prepare("SELECT id, verdict, timestamp FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results.reverse();
+    const runs = (await env.DB.prepare("SELECT id, verdict, timestamp, diff_message FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results.reverse();
     const s = await sanitizeCheck(env, c, false);
     s.recent_runs = runs;
     s.last_verdict = runs.length ? (runs[runs.length - 1] as any).verdict : null;
@@ -320,7 +320,7 @@ export async function interest(env: Env, request: Request): Promise<Response> {
 // ---------- webhook + manual run ----------
 import { executeCheck } from "./execute";
 import { parseClaimed } from "./engine";
-import { getCheck } from "./checks";
+import { enqueueRun } from "./tick";
 
 export async function webhook(env: Env, request: Request, ctx: ExecutionContext, secret: string): Promise<Response> {
   enforce(limiter(env, "hook"), secret);
@@ -337,9 +337,7 @@ export async function webhook(env: Env, request: Request, ctx: ExecutionContext,
   const runId = uuid();
   const wait = new URL(request.url).searchParams.get("wait");
   if (wait !== null && Number(wait) === 0) {
-    const c = await getCheck(env, row.id);
-    const pending = [...(c?.pending_runs || []), { run_id: runId, claimed_new: claimedNew, body_note: bodyNote, queued_at: nowIso() }];
-    await updateCheck(env, row.id, { pending_runs: pending });
+    await enqueueRun(env, row.id, { run_id: runId, claimed_new: claimedNew, body_note: bodyNote, queued_at: nowIso() });
     return json({ accepted: true, run_id: runId, queued: true }, 202);
   }
   const run = await executeCheck(env, row.id, "webhook", runId, false, claimedNew, bodyNote);

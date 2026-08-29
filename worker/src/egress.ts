@@ -45,10 +45,21 @@ export class RateLimiter {
   private hits = new Map<string, number[]>();
   constructor(public limit: number, public windowSeconds = 60, private clock: () => number = () => Date.now() / 1000) {}
 
+  /** Live entries for `key`; every key whose window has emptied is dropped, so the map cannot grow without bound. */
   private prune(key: string, now: number): number[] {
-    const arr = (this.hits.get(key) || []).filter((t) => t > now - this.windowSeconds);
-    this.hits.set(key, arr);
+    const cutoff = now - this.windowSeconds;
+    for (const [k, ts] of this.hits) {
+      if (k === key) continue;
+      if (!ts.length || ts[ts.length - 1] <= cutoff) this.hits.delete(k);
+    }
+    const arr = (this.hits.get(key) || []).filter((t) => t > cutoff);
+    if (arr.length) this.hits.set(key, arr);
+    else this.hits.delete(key);
     return arr;
+  }
+
+  get size(): number {
+    return this.hits.size;
   }
 
   allow(key: string): boolean {
@@ -56,6 +67,7 @@ export class RateLimiter {
     const arr = this.prune(key, now);
     if (arr.length >= this.limit) return false;
     arr.push(now);
+    this.hits.set(key, arr);
     return true;
   }
 
