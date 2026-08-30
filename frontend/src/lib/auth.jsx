@@ -1,4 +1,5 @@
 import { createContext, useContext, useEffect, useState, useCallback } from "react";
+import posthog from "posthog-js";
 import api from "./api";
 
 const AuthCtx = createContext(null);
@@ -31,17 +32,23 @@ export function AuthProvider({ children }) {
     const { data } = await api.post("/auth/login", { email, password });
     localStorage.setItem("rp_token", data.token);
     setUser(data.user);
+    if (posthog.__loaded) posthog.identify(data.user.id, { email: data.user.email });
     return data.user;
   };
   const register = async (email, password) => {
     const { data } = await api.post("/auth/register", { email, password });
     localStorage.setItem("rp_token", data.token);
     setUser(data.user);
+    if (posthog.__loaded) {
+      posthog.identify(data.user.id, { email: data.user.email });
+      posthog.capture("signup");
+    }
     return data.user;
   };
   const logout = () => {
     localStorage.removeItem("rp_token");
     setUser(false);
+    if (posthog.__loaded) posthog.reset();
   };
 
   return (

@@ -1,6 +1,6 @@
 # Deploying VerifyRuns for $0 — all on Cloudflare
 
-**Live since 2026-08-28:** API `https://verifyruns-api.farjad-developer.workers.dev` (D1 `verifyruns`, cron every minute), frontend `https://verifyruns.pages.dev` (Pages project `verifyruns`, direct upload). Secrets are set; copies live in `~/.verifyruns-secrets.env` on the Mac (owner-only). Redeploy the API with `cd worker && npm run deploy`; redeploy the frontend with `cd frontend && REACT_APP_BACKEND_URL=https://verifyruns-api.farjad-developer.workers.dev npm run build && cd ../worker && npx wrangler pages deploy ../frontend/build --project-name verifyruns --branch main`.
+**Live since 2026-08-28:** API `https://verifyruns-api.farjad-developer.workers.dev` (D1 `verifyruns`, cron every minute), frontend `https://verifyruns.pages.dev` (Pages project `verifyruns`, direct upload). Secrets are set; copies live in `~/.verifyruns-secrets.env` on the Mac (owner-only). Redeploy the API with `cd worker && npm run deploy`; redeploy the frontend with `cd frontend && REACT_APP_BACKEND_URL=https://verifyruns-api.farjad-developer.workers.dev REACT_APP_POSTHOG_KEY=phc_pvRHXAdUAzreQzCNxcu6b7JezduKoE4BXgTMvSBSesau npm run build && cd ../worker && npx wrangler pages deploy ../frontend/build --project-name verifyruns --branch main`.
 
 API on **Cloudflare Workers** with **D1**, frontend on **Cloudflare Pages**, scheduling by the Worker's own **cron trigger**. One free account, no card.
 
