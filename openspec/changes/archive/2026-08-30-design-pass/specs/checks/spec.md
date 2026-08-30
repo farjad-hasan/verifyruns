@@ -12,7 +12,7 @@ The Check detail page SHALL label the Check with its connector kind and SHALL re
 - **THEN** the Destination card shows `https://host/rest/v1/t?select=••••id&apikey=••••1234`, and the sanitised Check returned by `GET /api/checks/{id}` carries the URL already masked
 
 ### Requirement: List, read, update, delete own Checks only
-The system SHALL scope every Check route to `user_id`; a Check owned by another user returns 404. The list route SHALL include the last 30 runs (oldest → newest) as `{id, verdict, timestamp, diff_message}` and `last_verdict` and SHALL omit `webhook_secret`; the detail route includes it.
+The system SHALL scope every Check route to `user_id`; a Check owned by another user returns 404. The list route SHALL include the last 30 runs (oldest → newest) as `{id, verdict, timestamp, diff_message}` and `last_verdict` and SHALL omit `webhook_secret`; the detail route includes it. On update, an unknown `connector_kind` SHALL be refused with 400, and a `connector_kind` different from the stored one SHALL be refused with 400 unless the same request carries a `config` for the new kind.
 
 #### Scenario: Cross-user access
 - **WHEN** user B requests user A's Check by id
@@ -21,6 +21,10 @@ The system SHALL scope every Check route to `user_id`; a Check owned by another 
 #### Scenario: Update keeps stored secrets when omitted
 - **WHEN** `PATCH /api/checks/{id}` sends `config` without the secret field
 - **THEN** the previously encrypted secret is preserved
+
+#### Scenario: Kind change without config
+- **WHEN** `PATCH /api/checks/{id}` sends `connector_kind: "airtable"` and no `config` on an `http_json` Check
+- **THEN** the response is HTTP 400 "config is required when changing connector_kind" and the Check is unchanged
 
 #### Scenario: Dashboard row carries the sentence
 - **WHEN** a user lists their Checks

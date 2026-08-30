@@ -28,7 +28,7 @@ Expectations SHALL be `min_new_records` (int ≥ 0, default 1), `required_fields
 - **THEN** the run FAILs with "Run reported success, but your workflow sent no record count (this Check expects {\"wrote\": N} in the webhook body)."
 
 ### Requirement: List, read, update, delete own Checks only
-The system SHALL scope every Check route to `user_id`; a Check owned by another user returns 404. The list route SHALL include the last 30 runs (oldest → newest) and `last_verdict` and SHALL omit `webhook_secret`; the detail route includes it. On update, an unknown `connector_kind` SHALL be refused with 400, and a `connector_kind` different from the stored one SHALL be refused with 400 unless the same request carries a `config` for the new kind.
+The system SHALL scope every Check route to `user_id`; a Check owned by another user returns 404. The list route SHALL include the last 30 runs (oldest → newest) as `{id, verdict, timestamp, diff_message}` and `last_verdict` and SHALL omit `webhook_secret`; the detail route includes it. On update, an unknown `connector_kind` SHALL be refused with 400, and a `connector_kind` different from the stored one SHALL be refused with 400 unless the same request carries a `config` for the new kind.
 
 #### Scenario: Cross-user access
 - **WHEN** user B requests user A's Check by id
@@ -41,6 +41,10 @@ The system SHALL scope every Check route to `user_id`; a Check owned by another 
 #### Scenario: Kind change without config
 - **WHEN** `PATCH /api/checks/{id}` sends `connector_kind: "airtable"` and no `config` on an `http_json` Check
 - **THEN** the response is HTTP 400 "config is required when changing connector_kind" and the Check is unchanged
+
+#### Scenario: Dashboard row carries the sentence
+- **WHEN** a user lists their Checks
+- **THEN** each Check's newest recent run includes its `diff_message`, so the dashboard can show the sentence without a second request
 
 ### Requirement: Webhook trigger runs the Check asynchronously
 `POST /api/hook/{secret}` SHALL look up the Check by `webhook_secret`, run the check **inline**, and return `{accepted: true, run_id, verdict, diff_message, timed_out: false}` once the run is recorded. If the JSON body contains an integer under `wrote` (or `expected_new` / `count`), that value SHALL be passed to the run as `claimed_new`; any other body is ignored and noted on the run. A `wait` query parameter SHALL be accepted and ignored.
@@ -79,11 +83,15 @@ The system SHALL scope every Check route to `user_id`; a Check owned by another 
 - **THEN** the run is recorded and no Slack message is posted
 
 ### Requirement: Detail view is connector-aware
-The Check detail page SHALL label the Check with its connector kind and SHALL render a Destination card specific to that connector: HTTP/JSON (URL, JSON path, masked bearer), Airtable (base, table, view, masked PAT), Postgres (query, masked DSN).
+The Check detail page SHALL label the Check with its connector kind and SHALL render a Destination card specific to that connector: HTTP/JSON (URL with every query-string value masked to its last four characters, JSON path, masked bearer), Airtable (base, table, view, masked PAT), Postgres (query, masked DSN).
 
 #### Scenario: Postgres Check
 - **WHEN** the owner opens a Check whose `connector_kind` is `postgres`
 - **THEN** the header reads "Postgres check" and the Destination card shows the query and the DSN masked to its last 4 characters
+
+#### Scenario: HTTP/JSON Check with a key in the query string
+- **WHEN** the owner opens a Check whose GET URL is `https://host/rest/v1/t?select=id&apikey=abcdefgh1234`
+- **THEN** the Destination card shows `https://host/rest/v1/t?select=••••id&apikey=••••1234`, and the sanitised Check returned by `GET /api/checks/{id}` carries the URL already masked
 
 ### Requirement: Heartbeat cadence on a Check
 A Check MAY carry `heartbeat_hours` (integer 1–720, default null = off), settable at creation and via `PATCH /api/checks/{id}` (null clears it). The value SHALL be returned on the Check and shown on the dashboard row and detail page.
