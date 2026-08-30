@@ -265,27 +265,26 @@ export default function CheckDetail() {
           </div>
         </div>
 
-        {/* Latest verdict: the sentence is the product, so it leads */}
-        {latest && (
-          <div className="mt-6" data-testid="latest-verdict">
-            <div className="flex items-center gap-3 mb-2">
-              <span className={latest.verdict === "PASS" ? "badge-pass" : "badge-fail"}>{latest.verdict}</span>
-              <span className="text-xs text-quiet font-mono">{relativeTime(latest.timestamp)} · {latest.trigger}</span>
+        {/* State card: the latest verdict leads, the strip sits under it */}
+        <div className="rp-card p-6 sm:p-8 mt-8" data-testid="state-card">
+          {latest && (
+            <div className="mb-6 pb-6 border-b border-hairline" data-testid="latest-verdict">
+              <div className="flex items-center gap-3 mb-3">
+                <span className={latest.verdict === "PASS" ? "badge-pass" : "badge-fail"}>{latest.verdict}</span>
+                <span className="text-xs text-quiet font-mono">{relativeTime(latest.timestamp)} · {latest.trigger}</span>
+              </div>
+              <button
+                type="button"
+                onClick={() => openRun(latest)}
+                className="group block text-left max-w-[70ch] [text-wrap:pretty] -mx-2 px-2 py-1 rounded-md font-sans text-lg sm:text-xl text-zinc-50 leading-snug break-words hover:bg-raised/60 transition-colors"
+                title="Open this run"
+                data-testid="latest-diff-message"
+              >
+                {latest.diff_message}
+                <span className="ml-3 align-middle text-xs font-mono text-quiet opacity-0 group-hover:opacity-100 group-focus-visible:opacity-100 transition-opacity whitespace-nowrap" aria-hidden="true">open run →</span>
+              </button>
             </div>
-            <button
-              type="button"
-              onClick={() => openRun(latest)}
-              className="text-left font-sans text-lg sm:text-xl text-zinc-50 leading-relaxed break-words hover:text-white"
-              title="Open this run"
-              data-testid="latest-diff-message"
-            >
-              {latest.diff_message}
-            </button>
-          </div>
-        )}
-
-        {/* Timeline hero */}
-        <div className="rp-card p-6 sm:p-8 mt-8">
+          )}
           <div className="flex items-center justify-between mb-4">
             <p className="text-xs uppercase tracking-widest text-quiet">{timelineRuns.length < 30 ? `${timelineRuns.length} of 30 runs` : "Last 30 runs"}</p>
             <p className="text-xs text-quiet font-mono">newest &rarr;</p>

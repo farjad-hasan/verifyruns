@@ -351,6 +351,17 @@ lifts 2 px, scales 1.15 and glows in its own hue, 140 ms. A "newest →" mono ca
 on the status page. It appears on the landing FAIL card (static), every dashboard row (hidden
 below `sm`), Check detail, and the public status page.
 
+### State Card (Check detail)
+The timeline card on Check detail leads with the latest verdict once a run exists: badge and mono
+"12 min ago · webhook" on one line, the full sentence at `text-lg sm:text-xl` in Primary white at
+a 70 ch measure (`text-wrap: pretty`, so the last word is never orphaned), a hairline, then the
+"N of 30 runs" caption and the strip. The sentence is a button (opens the run sheet) with a
+`raised` wash on hover and an inline mono "open run →" hint.
+
+### Focus
+One ring for every control: `outline: 2px solid #52525B; outline-offset: 3px; border-radius: 6px`
+on `:focus-visible`, never the browser default. Inputs keep their border/box-shadow focus instead.
+
 ### Health Strip
 A Panel card at `p-5` holding three stats — Passing (emerald), Failing (red), No runs yet (grey) —
 each a 8 px dot, an Outfit `text-2xl` number and a 10 px uppercase label; "Auto-refresh · 10s" in

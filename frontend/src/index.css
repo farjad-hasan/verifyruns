@@ -208,3 +208,9 @@ body {
 }
 
 * { border-color: hsl(var(--border)); }
+
+/* Browser surfaces belong to the system too: one focus ring for every control, never the UA default. */
+:focus { outline: none; }
+:focus-visible { outline: 2px solid #52525B; outline-offset: 3px; border-radius: 6px; }
+.tl-square:focus-visible { outline-offset: 2px; border-radius: 4px; }
+.rp-input:focus-visible { outline: none; }

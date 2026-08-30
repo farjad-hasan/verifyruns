@@ -63,6 +63,12 @@ in `components/ui/`; every `data-testid` must survive; the API is a Cloudflare W
   size (`text-3xl`), and directly under it the **Latest verdict** block sets the badge and the full
   sentence at `text-lg sm:text-xl` Manrope in `text-primary` with a mono "12 min ago · webhook"
   line — the largest body text on the page, so the eye lands on it first.
+  **Amended 2026-08-30 after review of the built page:** the block floated between the H1 and the
+  timeline with three unrelated gaps, ran the full container width (~110 ch) and showed the
+  browser's default focus rectangle. It now lives *inside* the timeline card as one **state card**
+  — badge + time, the sentence at a 70 ch measure with `text-wrap: pretty` (no orphaned last word),
+  a hairline, then the strip — and the app gained a themed `:focus-visible` ring so no control
+  ever shows the UA outline.
 - **Detail page order once runs exist:** header → Latest verdict → timeline → Run history → Alert
   channels → Public status → Setup (Webhook, Destination, Expectations) collapsed by default. With
   zero runs the current order stays, since Setup *is* the task.
