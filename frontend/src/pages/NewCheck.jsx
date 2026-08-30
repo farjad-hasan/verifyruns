@@ -93,9 +93,10 @@ export default function NewCheck() {
         </Link>
         <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-10">Create a check</h1>
 
-        <form onSubmit={submit} className="space-y-10">
+        <form onSubmit={submit} className="space-y-10" autoComplete="off">
           <Section title="Name">
-            <input required className="rp-input" placeholder="orders-sync" value={name} onChange={(e) => setName(e.target.value)} data-testid="check-name-input" />
+            <label htmlFor="check-name" className="sr-only">Check name</label>
+            <input id="check-name" required autoComplete="off" className="rp-input" placeholder="orders-sync" value={name} onChange={(e) => setName(e.target.value)} data-testid="check-name-input" />
           </Section>
 
           <Section title="Destination" subtitle="Pick the connector VerifyRuns should re-read after each run.">
@@ -126,7 +127,7 @@ export default function NewCheck() {
             {kind === "http_json" && (
               <div className="space-y-4">
                 <Field id="check-url" label="GET URL">
-                  <input id="check-url" required type="url" className="rp-input font-mono" placeholder="https://api.example.com/v1/orders" value={url} onChange={(e) => setUrl(e.target.value)} data-testid="check-url-input" />
+                  <input id="check-url" required type="url" autoComplete="off" className="rp-input font-mono" placeholder="https://api.example.com/v1/orders" value={url} onChange={(e) => setUrl(e.target.value)} data-testid="check-url-input" />
                 </Field>
                 <Field id="check-token" label="Bearer token" optional hint="Encrypted at rest; shown masked afterwards.">
                   <SecretInput id="check-token" placeholder="eyJhbGciOi…" value={token} onChange={setToken} testid="check-token-input" />
@@ -293,7 +294,9 @@ function SecretInput({ id, value, onChange, placeholder, required = false, testi
         id={id}
         required={required}
         type={show ? "text" : "password"}
-        autoComplete="off"
+        autoComplete="new-password"
+        data-lpignore="true"
+        data-1p-ignore="true"
         className="rp-input font-mono pr-11"
         placeholder={placeholder}
         value={value}

@@ -19,7 +19,7 @@
 
 - [x] 3.1 `index.css`: `.tl-square.fail` becomes a 3 px inset ring on a transparent fill; `.tl-square.pass` stays solid; hover glows unchanged. Verify in a greyscale screenshot (macOS: Accessibility → Display → Color Filters → Grayscale, or `sips -M`) that FAIL squares are distinguishable at 12 px and 16 px
 - [x] 3.2 `Timeline.jsx`: real squares get `aria-label="{verdict} · {localised time}"` (keep `title`), empties get `aria-hidden="true"`; verify with VoiceOver or `read_page` that a square's accessible name states the verdict
-- [ ] 3.3 `Dashboard.jsx` HealthStrip: replace the three 8 px dots with 12 px tiles using `.tl-square` (`pass`, `fail`, empty) so the strip shares the primitive; verify the same greyscale check
+- [x] 3.3 `Dashboard.jsx` HealthStrip: replace the three 8 px dots with 12 px tiles using `.tl-square` (`pass`, `fail`, empty) so the strip shares the primitive; verify the same greyscale check
 - [x] 3.4 `PublicStatus.jsx` and `Landing.jsx` static strip inherit 3.1 with no JSX change — verify by screenshot; `Landing.jsx:107` `price` loses `text-emerald-300` (Two-Meaning Rule) and becomes `text-zinc-100`
 - [x] 3.5 Empty timeline slots become ghosts: `.tl-square` base background `#1C1C1F` (token `timeline-empty`), and the caption reads `${runs.length} of 30 runs` while under 30 on detail and public page; verify a 3-run check reads as three bright squares on a quiet strip
 
@@ -33,21 +33,21 @@
 
 ## 5. Check detail and dashboard
 
-- [ ] 5.1 `Dashboard.jsx`: render the newest run's `diff_message` under the check name in Manrope `text-sm text-zinc-300`, full width, never truncated; verify on the dogfood check the FAIL sentence appears on the row
-- [ ] 5.2 `CheckDetail.jsx`: H1 steps down to `text-3xl`; add a "Latest verdict" block directly under it — badge, full sentence at `text-lg sm:text-xl` in `text-primary`, mono "`{relative} ago · {trigger}`" — shown when `runs.length > 0`; verify the sentence is above the fold at 1280×800 and is the largest body text on the page
-- [ ] 5.3 `CheckDetail.jsx`: when `runs.length > 0`, order becomes header → Latest verdict → timeline → Run history → Alert channels → Public status → a collapsed "Setup" `<details>` holding Webhook, Destination, Expectations; zero-run order unchanged; verify both states in Edge
-- [ ] 5.4 Replace the hand-rolled `RunPanel` overlay with the shadcn `Sheet` (`components/ui/`), keep `data-testid="run-panel"` on the content; verify Escape closes, focus returns to the square, and the body does not scroll behind it
-- [ ] 5.5 `CheckDetail.jsx` "Last 30 runs" → `Last ${timelineRuns.length} runs`; in-app curl examples gain `?wait=30`; `DiffRow` colours the delta by verdict, not by sign, when `growth_mode === "steady"`; verify by screenshot and a steady-mode run
-- [ ] 5.6 Load failures: Dashboard and CheckDetail set an `error` string (404 → "This check doesn't exist or was deleted."; other → "Could not reach VerifyRuns. Retrying in 10 s.") rendered in a card with Retry and the back link; verify by opening `/checks/does-not-exist`
-- [ ] 5.7 `Nav.jsx:38` delete-account control: `aria-label`, 44 px hit area; verify with `read_page` interactive filter
+- [x] 5.1 `Dashboard.jsx`: render the newest run's `diff_message` under the check name in Manrope `text-sm text-zinc-300`, full width, never truncated; verify on the dogfood check the FAIL sentence appears on the row
+- [x] 5.2 `CheckDetail.jsx`: H1 steps down to `text-3xl`; add a "Latest verdict" block directly under it — badge, full sentence at `text-lg sm:text-xl` in `text-primary`, mono "`{relative} ago · {trigger}`" — shown when `runs.length > 0`; verified 2026-08-30 at 1439×840: the FAIL sentence sits directly under the H1 at 20 px, above the timeline
+- [x] 5.3 `CheckDetail.jsx`: when `runs.length > 0`, order becomes header → Latest verdict → timeline → Run history → Alert channels → Public status → a collapsed "Setup" `<details>` holding Webhook, Destination, Expectations; zero-run order unchanged; verify both states in Edge
+- [x] 5.4 Replace the hand-rolled `RunPanel` overlay with the shadcn `Sheet` (`components/ui/`), keep `data-testid="run-panel"` on the content; verified 2026-08-30 on the local build: `role=dialog` + `aria-modal`, focus moves inside on open, body `overflow:hidden`, Escape closes, focus returns to the opener (explicit `openerRef`, because Radix's restore did not reach the square in this unmount pattern)
+- [x] 5.5 `CheckDetail.jsx` "Last 30 runs" → `Last ${timelineRuns.length} runs`; in-app curl examples gain `?wait=30`; `DiffRow` colours the delta by verdict, not by sign, when `growth_mode === "steady"`; verify by screenshot and a steady-mode run
+- [x] 5.6 Load failures: Dashboard and CheckDetail set an `error` string (404 → "This check doesn't exist or was deleted."; other → "Could not reach VerifyRuns. Retrying in 10 s.") rendered in a card with Retry and the back link; verified 2026-08-30 — see docs/design-audit screenshot notes
+- [x] 5.7 `Nav.jsx:38` delete-account control: `aria-label`, 44 px hit area; verify with `read_page` interactive filter
 
 ## 6. Forms and public page
 
-- [ ] 6.1 `NewCheck.jsx` Destination inputs (`:116-127,133-139,144-153`): visible `<label for>` in the Expectations label style, "(optional)" in the label text, `type="password"` with a reveal toggle for bearer token / PAT / DSN; verify each input's accessible name with `read_page`
-- [ ] 6.2 `NewCheck.jsx:103` connector cards `grid-cols-1 sm:grid-cols-3`; growth-mode `<option>` text shortened to the mode name with the sentence moved to a hint under the select; verify at 390 px (detector `--viewport 390x844` on a local dev URL) no horizontal scroll
-- [ ] 6.3 `CheckDetail.jsx` Alert channels input (`:474`) and the three `RunFilters` selects (`:689-715`) get labels (visually hidden is acceptable for the filters, with `aria-label`); verify accessible names
-- [ ] 6.4 `PublicStatus.jsx` (teammate monitoring page): connector label from `data.connector_kind` via `connectorLabel`; "as of {checked_at} ({timezone})" line under the timeline; "expects a run every {heartbeat_hours} h" beside it when set; "alerted: slack ✓ · email ✗" on the latest run from `alerts_sent`; `break-words` on the H1; verify on a temporarily enabled public page for the dogfood check (disable again afterwards, or use a throwaway check)
-- [ ] 6.5 Timeline at narrow widths: `.tl-square { flex-shrink: 0 }`, container `overflow-x-auto` right-anchored and scrolled to end on mount; `Dashboard.jsx:76` shows the last 10 squares below `sm` instead of hiding; verify at 390 px on dashboard, detail and public page that the newest square is visible without scrolling
+- [x] 6.1 `NewCheck.jsx` Destination inputs (`:116-127,133-139,144-153`): visible `<label for>` in the Expectations label style, "(optional)" in the label text, `type="password"` with a reveal toggle for bearer token / PAT / DSN; verified 2026-08-30: every New Check control has an accessible name (12/12); Edge autofill had injected the saved email + password into GET URL / Bearer token — fixed with form `autoComplete=off` and `new-password` on secret fields
+- [x] 6.2 `NewCheck.jsx:103` connector cards `grid-cols-1 sm:grid-cols-3`; growth-mode `<option>` text shortened to the mode name with the sentence moved to a hint under the select; verify at 390 px (detector `--viewport 390x844` on a local dev URL) no horizontal scroll
+- [x] 6.3 `CheckDetail.jsx` Alert channels input (`:474`) and the three `RunFilters` selects (`:689-715`) get labels (visually hidden is acceptable for the filters, with `aria-label`); verify accessible names
+- [x] 6.4 `PublicStatus.jsx` (teammate monitoring page): connector label from `data.connector_kind` via `connectorLabel`; "as of {checked_at} ({timezone})" line under the timeline; "expects a run every {heartbeat_hours} h" beside it when set; "alerted: slack ✓ · email ✗" on the latest run from `alerts_sent`; `break-words` on the H1; verified 2026-08-30 on a local throwaway check (`local-smoke`, local D1): "HTTP / JSON check" from the data, "as of 8/30/2026, 6:31:35 PM (Asia/Karachi)", 3 of 30 runs with a ring FAIL; heartbeat/alert lines absent because the check has neither
+- [x] 6.5 Timeline at narrow widths: `.tl-square { flex-shrink: 0 }`, container `overflow-x-auto` right-anchored and scrolled to end on mount; `Dashboard.jsx:76` shows the last 10 squares below `sm` instead of hiding; verify at 390 px on dashboard, detail and public page that the newest square is visible without scrolling
 
 ## 7. Marketing pages and detector hygiene
 
@@ -57,7 +57,7 @@
 
 ## 8. Verify locally, then push
 
-- [ ] 8.1 `cd worker && npm test && npm run typecheck` green; `cd frontend && npm run build` compiles with no new warnings
-- [ ] 8.2 `/impeccable polish` pass over dashboard, check detail, new check, public status against the running app (`localhost:3100` in Edge), desktop and 390 px; fix what it shows in one batch
-- [ ] 8.3 Re-run `npx impeccable detect` on the five public URLs at both viewports and paste the before/after counts (49/29 → ?) into `docs/design-audit-2026-08-29.md`
+- [x] 8.1 `cd worker && npm test && npm run typecheck` green; `cd frontend && npm run build` compiles with no new warnings — 2026-08-30: tsc clean, vitest 17 files, 116 passed | 5 skipped; CRA build 'Compiled successfully' with no warnings
+- [x] 8.2 `/impeccable polish` pass over dashboard, check detail, new check, public status against the running app (`localhost:3100` in Edge), desktop and 390 px; fix what it shows in one batch — done 2026-08-30 as the walkthrough on the local build: fixed Edge credential autofill on New Check, unlabeled name field, alerts-card spacing, run-history order, `aria-modal`, and focus return; 390 px on the logged-in pages is covered by the detector/code only (the Edge window cannot be resized here)
+- [x] 8.3 Re-run `npx impeccable detect` on the five public URLs at both viewports and before/after pasted into `docs/design-audit-2026-08-29.md`: 49/29 → 2/1 (local build; the live re-run happens after deploy)
 - [ ] 8.4 Commit in reviewed groups (tokens; verdict channel; worker; detail+dashboard; forms+public; marketing) and push; deploy Worker + Pages together; verify the dogfood check's dashboard row shows its sentence on the live site

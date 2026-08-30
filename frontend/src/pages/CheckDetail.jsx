@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, useCallback } from "react";
+import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../lib/api";
 import Nav from "../components/Nav";
@@ -17,6 +17,21 @@ export default function CheckDetail() {
   const [running, setRunning] = useState(false);
   const [filters, setFilters] = useState({ verdict: "all", trigger: "all", range: "all" });
   const [error, setError] = useState("");
+  // The element that opened the run sheet; focus goes back to it on close (WCAG 2.4.3).
+  const openerRef = useRef(null);
+  const openRun = useCallback((run) => {
+    openerRef.current = document.activeElement;
+    setSelectedRun(run);
+  }, []);
+  const closeRun = useCallback(() => setSelectedRun(null), []);
+  // Radix's own restore does not reach the opener when the whole Sheet unmounts, so it is done here.
+  const returnFocus = useCallback((event) => {
+    const el = openerRef.current;
+    if (el && typeof el.focus === "function" && document.contains(el)) {
+      event.preventDefault();
+      el.focus();
+    }
+  }, []);
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL;
 
@@ -112,6 +127,42 @@ export default function CheckDetail() {
   const timelineRuns = [...runs].slice(0, 30).reverse(); // newest on right
   const latest = runs.length ? runs[0] : null;
   const steady = check.expectations?.growth_mode === "steady";
+
+  const runHistory = (
+    <>
+        {/* Run history */}
+      <div className="mt-10">
+        <div className="flex items-center justify-between mb-3">
+          <p className="text-xs uppercase tracking-widest text-quiet">Run history</p>
+          <RunFilters filters={filters} setFilters={setFilters} />
+        </div>
+        {filteredRuns.length === 0 ? (
+          <div className="rp-card p-8 text-center text-quiet text-sm">
+            {runs.length === 0
+              ? "No runs yet. Verdicts will show up here after your workflow posts to the webhook."
+              : "No runs match the current filters."}
+          </div>
+        ) : (
+          <ul className="rp-card divide-y divide-hairline">
+            {filteredRuns.map((r) => (
+              <li key={r.id}>
+                <button
+                  onClick={() => openRun(r)}
+                  className="w-full text-left p-5 hover:bg-raised transition-colors flex items-center gap-5"
+                  data-testid={`run-row-${r.id}`}
+                >
+                  <span className={r.verdict === "PASS" ? "badge-pass" : "badge-fail"}>{r.verdict}</span>
+                  <span className="text-sm text-zinc-300 flex-1 break-words">{r.diff_message}</span>
+                  <span className="text-xs text-quiet font-mono whitespace-nowrap">{formatDate(r.timestamp)}</span>
+                  <span className="text-[11px] text-quiet font-mono uppercase">{r.trigger}</span>
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
+    </>
+  );
 
   const setupCards = (
     <>
@@ -223,7 +274,7 @@ export default function CheckDetail() {
             </div>
             <button
               type="button"
-              onClick={() => setSelectedRun(latest)}
+              onClick={() => openRun(latest)}
               className="text-left font-sans text-lg sm:text-xl text-zinc-50 leading-relaxed break-words hover:text-white"
               title="Open this run"
               data-testid="latest-diff-message"
@@ -244,11 +295,13 @@ export default function CheckDetail() {
               <p className="text-quiet font-mono text-sm">No runs yet. Trigger your workflow, or click &ldquo;Run check now&rdquo;.</p>
             </div>
           ) : (
-            <Timeline runs={timelineRuns} hero onRunClick={setSelectedRun} testid="detail-timeline" />
+            <Timeline runs={timelineRuns} hero onRunClick={openRun} testid="detail-timeline" />
           )}
         </div>
 
         {!latest && setupCards}
+
+        {latest && runHistory}
 
         {/* Alert channel */}
         <AlertChannelsCard check={check} onSaved={load} />
@@ -256,37 +309,7 @@ export default function CheckDetail() {
         {/* Public status card */}
         <PublicStatusCard check={check} onSaved={load} />
 
-        {/* Run history */}
-        <div className="mt-10">
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs uppercase tracking-widest text-quiet">Run history</p>
-            <RunFilters filters={filters} setFilters={setFilters} />
-          </div>
-          {filteredRuns.length === 0 ? (
-            <div className="rp-card p-8 text-center text-quiet text-sm">
-              {runs.length === 0
-                ? "No runs yet. Verdicts will show up here after your workflow posts to the webhook."
-                : "No runs match the current filters."}
-            </div>
-          ) : (
-            <ul className="rp-card divide-y divide-hairline">
-              {filteredRuns.map((r) => (
-                <li key={r.id}>
-                  <button
-                    onClick={() => setSelectedRun(r)}
-                    className="w-full text-left p-5 hover:bg-raised transition-colors flex items-center gap-5"
-                    data-testid={`run-row-${r.id}`}
-                  >
-                    <span className={r.verdict === "PASS" ? "badge-pass" : "badge-fail"}>{r.verdict}</span>
-                    <span className="text-sm text-zinc-300 flex-1 break-words">{r.diff_message}</span>
-                    <span className="text-xs text-quiet font-mono whitespace-nowrap">{formatDate(r.timestamp)}</span>
-                    <span className="text-[11px] text-quiet font-mono uppercase">{r.trigger}</span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
+        {!latest && runHistory}
 
         {latest && (
           <details className="mt-10 group" data-testid="setup-details">
@@ -303,7 +326,8 @@ export default function CheckDetail() {
           run={selectedRun}
           steady={steady}
           previousPassFingerprint={findPreviousPassFingerprint(runs, selectedRun)}
-          onClose={() => setSelectedRun(null)}
+          onClose={closeRun}
+          onCloseAutoFocus={returnFocus}
         />
       )}
     </div>
@@ -332,7 +356,7 @@ export function connectorLabel(kind) {
   return CONNECTOR_LABELS[kind] || "HTTP / JSON";
 }
 
-function RunPanel({ run, steady, previousPassFingerprint, onClose }) {
+function RunPanel({ run, steady, previousPassFingerprint, onClose, onCloseAutoFocus }) {
   const diff = previousPassFingerprint ? computeFpDiff(previousPassFingerprint, run.fingerprint || {}) : null;
   // Radix Dialog: focus trap, Escape to close, scroll lock, focus returned to the square that opened it.
   return (
@@ -341,6 +365,8 @@ function RunPanel({ run, steady, previousPassFingerprint, onClose }) {
         side="right"
         className="w-full sm:w-[540px] sm:max-w-[540px] bg-ink border-l border-hairline p-0 overflow-y-auto [&>button]:hidden"
         aria-describedby={undefined}
+        aria-modal="true"
+        onCloseAutoFocus={onCloseAutoFocus}
         data-testid="run-panel"
       >
         <SheetTitle className="sr-only">{run.verdict}: {run.diff_message}</SheetTitle>
@@ -503,7 +529,7 @@ function AlertChannelsCard({ check, onSaved }) {
 
   const channels = check.alert_channels || [];
   return (
-    <div className="rp-card p-6 sm:p-8" data-testid="alert-channels-card">
+    <div className="rp-card p-6 sm:p-8 mt-6" data-testid="alert-channels-card">
       <div className="flex items-center gap-2 mb-2">
         {channels.length ? <Bell size={18} className="text-emerald-400" /> : <BellOff size={18} className="text-quiet" />}
         <p className="font-display text-lg">Alert channels</p>
