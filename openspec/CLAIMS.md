@@ -17,8 +17,11 @@ by flipping `status` to `done` in your merge commit. Rules in [`AGENTS.md`](../A
 
 All seven production-readiness changes were implemented as a **stacked PR chain** (#1→#7, one
 session, sequential — the overlap table below made parallel claims impractical for this set) and
-merged to main on 2026-09-01. Not yet deployed: deploy + post-deploy verifications are owed
-(see the PR bodies and `docs/deploy.md`); archive each change after it ships.
+merged to main on 2026-09-01 and **deployed the same day** (Worker `5096069c`, Pages `62964528`;
+staging first per `docs/deploy.md`, migrations before code, smoke green in both envs). All seven
+changes are archived under `openspec/changes/archive/2026-08-31-*`. Remaining items are operator
+actions only: external uptime monitors + forced-failure alert test, restore rehearsal, keys into
+the password manager (see `docs/deploy.md`).
 
 ## File overlaps (from each proposal's Impact list — check before claiming in parallel)
 
