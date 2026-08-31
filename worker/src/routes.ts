@@ -104,17 +104,21 @@ export async function me(env: Env, request: Request): Promise<Response> {
   return json(await currentUser(env, request));
 }
 
-const DELETE_CHUNK = 90; // stays under D1's per-batch statement and bind limits
+const DELETE_CHUNK = 90; // divisible by 3, so a chunk never splits a check's group; under D1's batch limits
 
 export async function deleteMe(env: Env, request: Request): Promise<Response> {
   const user = await currentUser(env, request);
   const ids = (await env.DB.prepare("SELECT id FROM checks WHERE user_id = ?").bind(user.id).all<{ id: string }>()).results.map((r) => r.id);
+  // Each check's samples, runs AND its own row form one group inside one batch (one transaction):
+  // a check is either fully present or fully gone between chunks. A webhook landing between chunks
+  // therefore either finds a live check (its new run dies with the check's own chunk, since the
+  // runs-delete executes at chunk time) or a 404 — never a run row that outlives its check.
   const stmts = [];
   for (const id of ids) {
     stmts.push(env.DB.prepare("DELETE FROM run_samples WHERE check_id = ?").bind(id));
     stmts.push(env.DB.prepare("DELETE FROM check_runs WHERE check_id = ?").bind(id));
+    stmts.push(env.DB.prepare("DELETE FROM checks WHERE id = ?").bind(id));
   }
-  stmts.push(env.DB.prepare("DELETE FROM checks WHERE user_id = ?").bind(user.id));
   stmts.push(env.DB.prepare("DELETE FROM interest WHERE user_id = ? OR email = ?").bind(user.id, user.email));
   stmts.push(env.DB.prepare("DELETE FROM password_resets WHERE user_id = ?").bind(user.id));
   stmts.push(env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id));

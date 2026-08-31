@@ -4,6 +4,10 @@ import { deleteMe } from "../src/routes";
 import { retentionSweep } from "../src/tick";
 import { api, makeCheck, user } from "./helpers";
 
+// deleteMe arithmetic below: 300 checks × 3 statements + 3 tail statements = 903 → 10 chunks of 90
+// plus a final chunk of 3 holding interest/password_resets/users.
+const LAST_CHUNK = 11;
+
 const DAY = 86400_000;
 const iso = (daysAgo: number, seq = 0) => new Date(Date.now() - daysAgo * DAY + seq * 1000).toISOString();
 
@@ -62,6 +66,24 @@ describe("run retention sweep", () => {
     expect(baseline).toBe(30); // the verdict engine still finds its window
   });
 
+  it("young rows beyond the floors survive: age is required, not just position", async () => {
+    const u = await user("ry");
+    const c = await makeCheck(u.token, {});
+    await seedRuns(c.id, 50, 5, "PASS", "yng"); // 5 days old — inside the 90-day window, beyond the 35 floor
+    await fullRotation();
+    expect(await runCount(c.id)).toBe(50); // nothing deleted: the age condition, not the floor, protects them
+  });
+
+  it("the sweep's row budget bounds deletions per pass", async () => {
+    const u = await user("rb");
+    const c = await makeCheck(u.token, {});
+    await seedRuns(c.id, 60, 120, "PASS", "bud"); // 25 rows deletable beyond the 35 floor
+    await retentionSweep(env as any, new Date(), 10);
+    expect(await runCount(c.id)).toBe(50); // exactly the budget came off
+    await fullRotation();
+    expect(await runCount(c.id)).toBe(35); // later rotations finish the job
+  });
+
   it("the rotating cursor covers all Checks across successive ticks, batch respected", async () => {
     const u = await user("rc");
     const checks = [];
@@ -92,13 +114,14 @@ describe("account deletion at scale", () => {
     for (let i = 0; i < stmts.length; i += 90) await env.DB.batch(stmts.slice(i, i + 90));
 
     const delReq = () => new Request("http://api.test/api/auth/me", { method: "DELETE", headers: { authorization: `Bearer ${u.token}` } });
-    // fail the second chunk mid-way
+    // fail the FINAL chunk — the one that must hold the user row. If a regression moved the users
+    // DELETE into any earlier chunk, the login below would fail.
     let batches = 0;
     const failing = new Proxy(env.DB, {
       get(t, p) {
         if (p === "batch") {
           return (s: unknown[]) => {
-            if (++batches === 2) throw new Error("boom");
+            if (++batches === LAST_CHUNK) throw new Error("boom");
             return t.batch(s as any);
           };
         }
@@ -107,6 +130,9 @@ describe("account deletion at scale", () => {
       },
     });
     await expect(deleteMe({ ...env, DB: failing } as any, delReq())).rejects.toThrow("boom");
+    expect(batches).toBe(LAST_CHUNK); // the arithmetic above still matches DELETE_CHUNK
+    // every processed check vanished as a unit — no run row outlives its check
+    expect((await env.DB.prepare("SELECT COUNT(*) AS n FROM check_runs WHERE check_id NOT IN (SELECT id FROM checks)").first<{ n: number }>())!.n).toBe(0);
     // the user row went last: the account is intact and loginable, so the delete can be retried
     expect((await api("/auth/login", { method: "POST", json: { email: u.email, password: "pass123" } })).status).toBe(200);
     const r2 = await deleteMe(env as any, delReq());
