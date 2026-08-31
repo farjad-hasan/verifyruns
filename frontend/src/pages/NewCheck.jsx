@@ -24,7 +24,7 @@ export default function NewCheck() {
   const [dsn, setDsn] = useState("");
   const [query, setQuery] = useState("");
   // Expectations + alerts
-  const [minNew, setMinNew] = useState(1);
+  const [minNew, setMinNew] = useState(0);
   const [mode, setMode] = useState("growth");
   const [required, setRequired] = useState("");
   const [nonEmpty, setNonEmpty] = useState("");
@@ -201,8 +201,9 @@ export default function NewCheck() {
             </div>
             <div className="grid sm:grid-cols-2 gap-3">
               <div>
-                <label htmlFor="check-minnew" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Minimum new records per run (0 = growth optional)</label>
+                <label htmlFor="check-minnew" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Minimum new records per run</label>
                 <input id="check-minnew" type="number" min="0" className="rp-input font-mono" value={minNew} onChange={(e) => setMinNew(e.target.value)} data-testid="check-minnew-input" />
+                <p className="text-xs text-quiet mt-2 leading-relaxed">0 = growth optional; 1 asserts every run adds a record.</p>
               </div>
               <div>
                 <label htmlFor="check-required" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Required fields (comma-separated)</label>

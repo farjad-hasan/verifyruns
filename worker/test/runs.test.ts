@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it } from "vitest";
+import { env } from "cloudflare:test";
 import { setFetchForTests } from "../src/net";
 import { api, jsonResponse, makeCheck, user } from "./helpers";
 
@@ -41,6 +42,25 @@ describe("webhook + runs (parity with test_serverless / test_claimed_api / test_
     const on = await api(`/checks/${c.id}/public`, { method: "POST", token: u.token });
     const pub = await api(`/public/checks/${on.data.public_token}`);
     for (const run of pub.data.runs) expect(Object.keys(run).sort()).toEqual(["alerts_sent", "diff_message", "id", "timestamp", "trigger", "verdict"]);
+  });
+
+  it("a capped Airtable fetch marks the stored fingerprint and the next run skips the growth rule", async () => {
+    // every page returns one record and an offset forever, so the 40-page ceiling always trips
+    setFetchForTests(async (url) => {
+      const off = new URL(url).searchParams.get("offset") || "0";
+      return jsonResponse({ records: [{ id: `rec${off}`, createdTime: "2026-01-01T00:00:00.000Z", fields: { a: 1 } }], offset: `p${off}` });
+    });
+    const u = await user();
+    const r = await api("/checks", { method: "POST", token: u.token, json: { name: "at", connector_kind: "airtable", config: { base_id: "app1", table: "T" } } });
+    expect(r.status).toBe(200);
+    const first = await api(`/hook/${r.data.webhook_secret}`, { method: "POST" });
+    expect(first.data.verdict).toBe("PASS");
+    const stored = await env.DB.prepare("SELECT fingerprint FROM check_runs WHERE id = ?").bind(first.data.run_id).first<{ fingerprint: string }>();
+    expect(JSON.parse(stored!.fingerprint).count_capped).toBe(true);
+    const second = await api(`/hook/${r.data.webhook_secret}`, { method: "POST" });
+    expect(second.data.verdict).toBe("PASS");
+    expect(second.data.diff_message).toContain("Record-count checks were skipped: the count is capped.");
+    expect(second.data.diff_message).toContain("Count capped at 4,000 records.");
   });
 
   it("claimed count from the body is stored and reconciled", async () => {

@@ -28,8 +28,18 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
     } else {
       meta = res.meta || { total: res.records.length, capped: false, count_estimated: false };
       fp = fingerprint(res.records, meta.total, meta.newest_defined ?? true);
-      const prevRows = (await env.DB.prepare("SELECT fingerprint FROM check_runs WHERE check_id = ? AND verdict = 'PASS' ORDER BY timestamp DESC LIMIT 30").bind(checkId).all<{ fingerprint: string }>()).results;
-      const prev = prevRows.map((r) => ({ fingerprint: JSON.parse(r.fingerprint) })).reverse();
+      if (meta.capped) fp.count_capped = true;
+      if (meta.count_estimated) fp.count_estimated = true;
+      // The run columns cover baselines written before the fingerprint carried the flags.
+      const prevRows = (await env.DB.prepare("SELECT fingerprint, count_capped, count_estimated FROM check_runs WHERE check_id = ? AND verdict = 'PASS' ORDER BY timestamp DESC LIMIT 30").bind(checkId).all<{ fingerprint: string; count_capped: number; count_estimated: number }>()).results;
+      const prev = prevRows
+        .map((r) => {
+          const f = JSON.parse(r.fingerprint);
+          if (r.count_capped) f.count_capped = true;
+          if (r.count_estimated) f.count_estimated = true;
+          return { fingerprint: f };
+        })
+        .reverse();
       [verdict, message] = computeVerdict(fp, prev, c.expectations, claimedNew);
       message = annotateCount(message, meta, num(env.VR_AIRTABLE_MAX_PAGES, 40) * 100);
     }

@@ -12,6 +12,10 @@ export interface Fingerprint {
   newest_window: Record<string, unknown>[];
   newest_defined: boolean;
   null_pct: Record<string, number>;
+  /** Set when the connector knows the count is wrong: capped at a page ceiling or estimated after a
+   *  COUNT timeout. Either flag, on this run or the baseline PASS, makes the growth rule sit out. */
+  count_capped?: boolean;
+  count_estimated?: boolean;
 }
 
 export interface FetchMeta {
@@ -74,17 +78,26 @@ export function computeVerdict(fp: Fingerprint, prevPasses: { fingerprint: any }
   const prevCount = prevLast ? Number(prevLast.fingerprint.record_count) : 0;
   const delta = prevLast ? fp.record_count - prevCount : fp.record_count;
 
-  if (mode === "steady") {
-    if (prevLast && delta !== 0) reasons.push(`the destination changed by ${delta > 0 ? "+" : ""}${delta} records (expected no change)`);
-  } else if (mode === "claimed" && claimedNew === null) {
+  // A count the connector knows is wrong (capped page ceiling, timed-out COUNT) on either side of
+  // the comparison must not decide the verdict: the growth rule sits out with a note instead of
+  // failing on a saturated or collapsed delta. Field and non-empty rules are unaffected.
+  const anyCapped = !!(fp.count_capped || (prevLast && prevLast.fingerprint.count_capped));
+  const countExact = !anyCapped && !fp.count_estimated && !(prevLast && prevLast.fingerprint.count_estimated);
+
+  if (mode === "claimed" && claimedNew === null) {
+    // About the body, not the count: enforced even when the count is inexact.
     reasons.push('your workflow sent no record count (this Check expects {"wrote": N} in the webhook body)');
-  } else if (claimedNew !== null) {
-    if (prevLast && delta < claimedNew) reasons.push(`your workflow said it wrote ${claimedNew} records; the destination gained ${delta}`);
-    else if (!prevLast && fp.record_count < claimedNew) reasons.push(`your workflow said it wrote ${claimedNew} records; the destination has only ${fp.record_count}`);
-  } else if (prevLast && delta < minNew) {
-    reasons.push(`the destination gained ${delta} records (expected at least ${minNew})`);
-  } else if (!prevLast && fp.record_count < minNew) {
-    reasons.push(`the destination has only ${fp.record_count} records (expected at least ${minNew})`);
+  } else if (countExact) {
+    if (mode === "steady") {
+      if (prevLast && delta !== 0) reasons.push(`the destination changed by ${delta > 0 ? "+" : ""}${delta} records (expected no change)`);
+    } else if (claimedNew !== null) {
+      if (prevLast && delta < claimedNew) reasons.push(`your workflow said it wrote ${claimedNew} records; the destination gained ${delta}`);
+      else if (!prevLast && fp.record_count < claimedNew) reasons.push(`your workflow said it wrote ${claimedNew} records; the destination has only ${fp.record_count}`);
+    } else if (prevLast && delta < minNew) {
+      reasons.push(`the destination gained ${delta} records (expected at least ${minNew})`);
+    } else if (!prevLast && fp.record_count < minNew) {
+      reasons.push(`the destination has only ${fp.record_count} records (expected at least ${minNew})`);
+    }
   }
 
   const missingRequired = required.filter((f) => !fp.fields.includes(f));
@@ -99,6 +112,9 @@ export function computeVerdict(fp: Fingerprint, prevPasses: { fingerprint: any }
   }
 
   const notes: string[] = [];
+  // This run's own flag names the cause; the baseline's flag is the fallback.
+  const skipWord = fp.count_capped ? "capped" : fp.count_estimated ? "estimated" : anyCapped ? "capped" : "estimated";
+  if (!countExact) notes.push(`Record-count checks were skipped: the count is ${skipWord}.`);
   const newest = fp.newest_record || {};
   const window = fp.newest_window?.length ? fp.newest_window : fp.newest_record ? [fp.newest_record] : [];
   if (nonEmpty.length && fp.newest_defined === false) {
@@ -114,13 +130,17 @@ export function computeVerdict(fp: Fingerprint, prevPasses: { fingerprint: any }
 
   const suffix = notes.length ? " " + notes.join(" ") : "";
   if (reasons.length) return ["FAIL", `Run reported success, but ${humanJoin(reasons)}.${suffix}`];
+  // Delta-based PASS wording would repeat the number we just refused to judge by.
+  if (!countExact) return ["PASS", `All expectations met.${suffix}`];
   if (!prevLast) return ["PASS", `First successful check. Destination has ${fp.record_count} records across ${fp.fields.length} fields.${suffix}`];
   if (mode === "steady") return ["PASS", `Destination unchanged at ${fp.record_count} records. All expectations met.${suffix}`];
   if (claimedNew !== null) return ["PASS", `Destination gained ${delta} record(s), matching what your workflow reported.${suffix}`];
   return ["PASS", `Destination gained ${delta} record(s). All expectations met.${suffix}`];
 }
 
-const CLAIM_KEYS = ["wrote", "expected_new", "count"];
+// `count` was dropped as a claim alias (2026-08-31): forwarded node payloads carry it accidentally,
+// and a passthrough {"count": 0} must never read as "my workflow wrote nothing".
+const CLAIM_KEYS = ["wrote", "expected_new"];
 
 export function parseClaimed(body: unknown): [number | null, string | null] {
   if (!body || typeof body !== "object" || Array.isArray(body)) return [null, null];
@@ -128,11 +148,15 @@ export function parseClaimed(body: unknown): [number | null, string | null] {
   for (const key of CLAIM_KEYS) {
     if (key in b) {
       const v = b[key];
-      if (typeof v === "number" && Number.isInteger(v)) return [v, null];
-      if (typeof v === "string" && /^-?\d+$/.test(v.trim())) return [Number(v.trim()), null];
-      return [null, `webhook body ignored: \`${key}\` is not an integer`];
+      let n: number | null = null;
+      if (typeof v === "number" && Number.isInteger(v)) n = v;
+      else if (typeof v === "string" && /^-?\d+$/.test(v.trim())) n = Number(v.trim());
+      else return [null, `webhook body ignored: \`${key}\` is not an integer`];
+      if (n < 0) return [null, `webhook body ignored: \`${key}\` is negative`];
+      return [n, null];
     }
   }
+  if ("count" in b) return [null, "webhook body key `count` is no longer read; send `wrote`"];
   return [null, null];
 }
 
