@@ -97,6 +97,25 @@ npx wrangler d1 time-travel restore verifyruns --timestamp "2026-08-31T10:00:00Z
 
 **Restore rehearsal** (do once, record the transcript here): create a scratch database `wrangler d1 create verifyruns-restore-test`, then `npx wrangler d1 execute verifyruns-restore-test --remote --file backup-<date>.sql`, then point a scratch Worker at it and confirm `/api/health` and one login work. A fresh clone plus the password-manager keys plus the latest export must be sufficient to reach a working deploy.
 
+## CI/CD (push to main deploys)
+
+`.github/workflows/deploy.yml` mechanizes this runbook: every push to `main` touching
+`worker/**` or `frontend/**` runs the worker suite, then **staging** (migrate → deploy →
+health smoke), and only if staging is green, **production** (migrate → deploy → smoke) and the
+Pages build+deploy. One deploy at a time, in commit order (`concurrency: deploy-main`); also
+triggerable by hand from the Actions tab (`workflow_dispatch`).
+
+One-time setup — two repository secrets (Settings → Secrets and variables → Actions):
+
+- `CLOUDFLARE_API_TOKEN` — create at dash.cloudflare.com → My Profile → API Tokens with
+  **Workers Scripts:Edit, D1:Edit, Cloudflare Pages:Edit** on this account. Store it in the
+  password manager alongside the other keys.
+- `CLOUDFLARE_ACCOUNT_ID` — printed by `wrangler whoami`.
+
+The manual commands above remain the fallback (and the only path while the secrets are unset —
+without them the deploy jobs fail at the first wrangler call while `ci.yml` still guards the
+code). Docs-only pushes don't deploy: the workflow's `paths` filter skips them.
+
 ## Staging
 
 `wrangler.toml` defines `[env.staging]` (`verifyruns-api-staging` + D1 `verifyruns-staging`). One-time setup: `wrangler d1 create verifyruns-staging`, paste the id into `wrangler.toml`, and set the three secrets with `wrangler secret put <NAME> --env staging`.
