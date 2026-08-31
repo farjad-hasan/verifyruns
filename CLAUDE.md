@@ -1,6 +1,10 @@
+@AGENTS.md
+
 # CLAUDE.md
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+`AGENTS.md` (imported above) carries the coordination rules for parallel agent sessions — claims,
+worktrees, staging discipline — and binds alongside everything here.
 
 ## What this is
 
