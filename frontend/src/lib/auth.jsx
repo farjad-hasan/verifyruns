@@ -7,6 +7,7 @@ const AuthCtx = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null); // null=checking, false=logged out, obj=logged in
   const [ready, setReady] = useState(false);
+  const [expired, setExpired] = useState(false); // a held token stopped working (vs never logged in)
 
   const refresh = useCallback(async () => {
     const token = localStorage.getItem("rp_token");
@@ -18,7 +19,11 @@ export function AuthProvider({ children }) {
     try {
       const { data } = await api.get("/auth/me");
       setUser(data);
-    } catch {
+      setExpired(false);
+    } catch (e) {
+      // A 401 already dropped the token via the interceptor; on a public route this resolves to
+      // "logged out" with no navigation — the page keeps rendering.
+      if (e?.response?.status === 401) setExpired(true);
       localStorage.removeItem("rp_token");
       setUser(false);
     } finally {
@@ -27,6 +32,17 @@ export function AuthProvider({ children }) {
   }, []);
 
   useEffect(() => { refresh(); }, [refresh]);
+
+  // The api interceptor announces a dead token from any request (e.g. a dashboard poll mid-session).
+  useEffect(() => {
+    const onUnauthorized = () => {
+      setExpired(true);
+      setUser(false);
+      setReady(true);
+    };
+    window.addEventListener("rp:unauthorized", onUnauthorized);
+    return () => window.removeEventListener("rp:unauthorized", onUnauthorized);
+  }, []);
 
   const login = async (email, password) => {
     const { data } = await api.post("/auth/login", { email, password });

@@ -4,9 +4,11 @@ import { toast } from "sonner";
 import Nav from "../components/Nav";
 import api from "../lib/api";
 import { useAuth } from "../lib/auth";
+import useTitle from "../lib/useTitle";
 import { Check as CheckIcon } from "lucide-react";
 
 export default function Pricing() {
+  useTitle("Pricing");
   const { user } = useAuth();
   const nav = useNavigate();
   const [data, setData] = useState(null);

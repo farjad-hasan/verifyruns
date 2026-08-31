@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import Nav from "../components/Nav";
+import useTitle from "../lib/useTitle";
 
 const SECTIONS = [
   {
@@ -29,6 +30,7 @@ const SECTIONS = [
 ];
 
 export default function DataPage() {
+  useTitle("What we store");
   return (
     <div className="min-h-screen">
       <Nav />

@@ -3,9 +3,11 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api, { formatError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import Nav from "../components/Nav";
+import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 
 export default function ResetPage() {
+  useTitle("Reset password");
   const [params] = useSearchParams();
   const token = params.get("token") || "";
   const { refresh } = useAuth();

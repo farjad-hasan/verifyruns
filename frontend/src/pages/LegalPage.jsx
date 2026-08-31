@@ -1,8 +1,10 @@
 import { Link } from "react-router-dom";
 import Nav from "../components/Nav";
+import useTitle from "../lib/useTitle";
 
 /** Shared shell for /terms and /privacy. `sections` is [{title, paras: [string | JSX]}]. */
 export default function LegalPage({ eyebrow, title, intro, updated, sections }) {
+  useTitle(title);
   return (
     <div className="min-h-screen">
       <Nav />

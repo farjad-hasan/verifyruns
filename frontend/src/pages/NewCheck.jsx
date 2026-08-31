@@ -3,10 +3,12 @@ import { useNavigate, Link } from "react-router-dom";
 import posthog from "posthog-js";
 import api, { formatError } from "../lib/api";
 import Nav from "../components/Nav";
+import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
 
 export default function NewCheck() {
+  useTitle("New check");
   const nav = useNavigate();
   const [name, setName] = useState("");
   const [kind, setKind] = useState("http_json");

@@ -1,5 +1,6 @@
 import { Link } from "react-router-dom";
 import Nav from "../components/Nav";
+import useTitle from "../lib/useTitle";
 
 const POSTURE = [
   { title: "Passwords and sessions", body: "Passwords are hashed with PBKDF2-SHA256 (100,000 iterations, per-user salt). Sessions are signed JWTs that expire after 7 days; there is no refresh token. Password reset sends a one-time link that works for an hour; only a SHA-256 of the token is stored, and a newer request cancels older links." },
@@ -17,6 +18,7 @@ const GAPS = [
 ];
 
 export default function SecurityPage() {
+  useTitle("Security");
   return (
     <div className="min-h-screen">
       <Nav />
