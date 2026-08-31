@@ -22,10 +22,11 @@ VerifyRuns is one Cloudflare Worker (`worker/`, TypeScript) with a D1 database a
 | `VR_ALLOW_PRIVATE_EGRESS` | `0` | `1` lets Checks point at private/loopback/link-local addresses. Only on an instance where every user is trusted |
 | `VR_MAX_RESPONSE_BYTES` | 5 MB | HTTP/JSON responses are streamed and abandoned past this size |
 | `VR_AIRTABLE_MAX_PAGES` | `40` | Airtable count stops here (100 records per page) and the run says "count capped" — the free plan allows 50 subrequests per request |
-| `VR_RATE_AUTH_PER_MIN` / `VR_RATE_HOOK_PER_MIN` / `VR_RATE_CREATE_PER_MIN` | 120 / 120 / 60 | per-minute limits for sign-up+login per IP, webhook per secret, Check creation per user; best effort per isolate |
+| `VR_RATE_AUTH_PER_MIN` / `VR_RATE_HOOK_PER_MIN` / `VR_RATE_CREATE_PER_MIN` | 120 / 120 / 60 | per-minute limits for sign-up+login per IP, webhook per secret, Check creation per user; best effort per isolate. Per-IP limits key on `CF-Connecting-IP` — off Cloudflare that header is absent and all auth traffic shares one collective bucket, so front a non-Cloudflare deployment with a proxy that sets it (never trust `X-Forwarded-For`) |
 | `VR_RETRY_DELAY_SECONDS` | `30` | how long after a fresh FAIL the retry becomes due; it runs on the next tick |
 | `VR_LAZY_TICK_SECONDS` | `300` | any request this long after the last tick runs one in the background (`0` disables); it is the fallback for hosts without a cron trigger — with the every-minute cron configured it rarely fires. Was `60` before 2026-08-31 |
 | `VR_TICK_BATCH` | `25` | per-tick ceiling for each sweep (heartbeats, queued runs, retries); backlog beyond it drains on the following ticks |
+| `VR_PBKDF2_ITERATIONS` | `600000` | PBKDF2-SHA256 cost for new password hashes; stored hashes carry their own count and upgrade on the next successful login. Lowering it never weakens existing hashes |
 | `VR_PBKDF2_ITERATIONS` | `100000` | password hashing cost |
 | `VR_PG_CONNECT_TIMEOUT_MS` | `15000` | Postgres connection budget, one attempt, no reconnects. TLS is used unless the DSN says `sslmode=disable`; see the certificate note in `deploy.md` |
 | `VR_PG_COUNT_TIMEOUT_MS` / `VR_PG_SAMPLE_TIMEOUT_MS` | `15000` | Postgres `COUNT(*)` timeout (falls back to the sample length, `count_estimated: true`) and sample query timeout |

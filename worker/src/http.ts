@@ -23,8 +23,10 @@ export function validation(msg: string, loc: (string | number)[] = ["body"]): Ht
   return new HttpError(422, [{ loc, msg, type: "value_error" }]);
 }
 
+/** Rate-limit key. CF-Connecting-IP is set by Cloudflare and cannot be chosen by the caller;
+ *  X-Forwarded-For must never be consulted — Cloudflare APPENDS the real IP to a client-supplied
+ *  value, so element 0 is attacker-chosen. Off-Cloudflare (no trusted header) every request shares
+ *  one fallback bucket, which rate-limits collectively. */
 export function clientIp(request: Request): string {
-  const fwd = request.headers.get("x-forwarded-for");
-  if (fwd) return fwd.split(",")[0].trim();
   return request.headers.get("cf-connecting-ip") || "unknown";
 }

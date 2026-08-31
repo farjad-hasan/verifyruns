@@ -13,7 +13,7 @@ VR_LAZY_TICK_SECONDS = "300"    # fallback only: the cron below covers the minut
 VR_TICK_BATCH = "25"
 VR_AIRTABLE_MAX_PAGES = "40"
 VR_MAX_RESPONSE_BYTES = "5242880"
-VR_PBKDF2_ITERATIONS = "100000"
+VR_PBKDF2_ITERATIONS = "600000"
 PUBLIC_APP_URL = "https://verifyruns.pages.dev"     # set to the Pages URL / custom domain
 CORS_ORIGINS = "https://verifyruns.pages.dev"
 

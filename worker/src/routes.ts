@@ -1,6 +1,6 @@
 /** HTTP handlers — same paths, payloads, status codes and messages as backend/server.py. */
 import { CheckDoc, deleteCheckCascade, getCheckForUser, insertCheck, prepareConfigForStorage, recomputeHeartbeatDue, rowToCheck, sanitizeChannel, sanitizeCheck, updateCheck } from "./checks";
-import { encryptSecret, hashPassword, signJwt, tokenUrlsafe, uuid, verifyJwt, verifyPassword } from "./crypto";
+import { dummyVerify, encryptSecret, hashIterations, hashPassword, signJwt, tokenUrlsafe, uuid, verifyJwt, verifyPassword } from "./crypto";
 import { emailAvailable, Env, flag, nowIso, num } from "./env";
 import { clientIp, HttpError, json, readJson, validation } from "./http";
 import { PLAN_IDS, PLANS } from "./plans";
@@ -37,14 +37,17 @@ export async function currentUser(env: Env, request: Request): Promise<User> {
   if (!m) throw new HttpError(401, "Not authenticated");
   const res = await verifyJwt(m[1], env.JWT_SECRET);
   if (!res.ok) throw new HttpError(401, res.reason === "expired" ? "Token expired" : "Invalid token");
-  const row = await env.DB.prepare("SELECT id, email, created_at FROM users WHERE id = ?").bind(res.payload.sub).first<User>();
+  const row = await env.DB.prepare("SELECT id, email, created_at, token_version FROM users WHERE id = ?").bind(res.payload.sub).first<User & { token_version: number }>();
   if (!row) throw new HttpError(401, "User not found");
-  return row;
+  // A password reset increments token_version; every JWT signed before it stops here. Tokens
+  // without the claim predate the migration and are grandfathered as version 0.
+  if ((res.payload.ver ?? 0) !== (row.token_version ?? 0)) throw new HttpError(401, "Token expired");
+  return { id: row.id, email: row.email, created_at: row.created_at };
 }
 
-async function makeToken(env: Env, userId: string, email: string): Promise<string> {
+async function makeToken(env: Env, userId: string, email: string, ver: number): Promise<string> {
   const exp = Math.floor(Date.now() / 1000) + JWT_EXPIRE_DAYS * 86400;
-  return signJwt({ sub: userId, email, exp }, env.JWT_SECRET);
+  return signJwt({ sub: userId, email, ver, exp }, env.JWT_SECRET);
 }
 
 // ---------- auth ----------
@@ -58,9 +61,9 @@ export async function register(env: Env, request: Request): Promise<Response> {
   const exists = await env.DB.prepare("SELECT id FROM users WHERE email = ?").bind(email).first();
   if (exists) throw new HttpError(400, "Email already registered");
   const id = uuid();
-  const hash = await hashPassword(body.password, num(env.VR_PBKDF2_ITERATIONS, 100000));
+  const hash = await hashPassword(body.password, num(env.VR_PBKDF2_ITERATIONS, 600000));
   await env.DB.prepare("INSERT INTO users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)").bind(id, email, hash, nowIso()).run();
-  return json({ token: await makeToken(env, id, email), user: { id, email } });
+  return json({ token: await makeToken(env, id, email, 0), user: { id, email } });
 }
 
 export async function login(env: Env, request: Request): Promise<Response> {
@@ -68,9 +71,20 @@ export async function login(env: Env, request: Request): Promise<Response> {
   const body = await readJson(request);
   if (!isEmail(body?.email)) throw validation("value is not a valid email address", ["body", "email"]);
   const email = body.email.toLowerCase().trim();
-  const row = await env.DB.prepare("SELECT id, password_hash FROM users WHERE email = ?").bind(email).first<{ id: string; password_hash: string }>();
-  if (!row || !(await verifyPassword(String(body.password ?? ""), row.password_hash))) throw new HttpError(401, "Invalid email or password");
-  return json({ token: await makeToken(env, row.id, email), user: { id: row.id, email } });
+  const password = String(body.password ?? "");
+  const iterations = num(env.VR_PBKDF2_ITERATIONS, 600000);
+  const row = await env.DB.prepare("SELECT id, password_hash, token_version FROM users WHERE email = ?").bind(email).first<{ id: string; password_hash: string; token_version: number }>();
+  if (!row) {
+    // Unknown email burns the same PBKDF2 cost as a real verification, so timing reveals nothing.
+    await dummyVerify(password, iterations);
+    throw new HttpError(401, "Invalid email or password");
+  }
+  if (!(await verifyPassword(password, row.password_hash))) throw new HttpError(401, "Invalid email or password");
+  // Transparent strength upgrade: the stored hash carries its own iteration count.
+  if (hashIterations(row.password_hash) < iterations) {
+    await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(await hashPassword(password, iterations), row.id).run();
+  }
+  return json({ token: await makeToken(env, row.id, email, row.token_version ?? 0), user: { id: row.id, email } });
 }
 
 export async function me(env: Env, request: Request): Promise<Response> {

@@ -123,6 +123,24 @@ export function maskQueryValues(url: string): string {
 
 // ---------- passwords (PBKDF2-SHA256) ----------
 
+/** Test instrumentation: counts PBKDF2 derivations so timing-equalisation (the dummy verify on
+ *  unknown emails) can be asserted without wall-clock measurement. */
+export const pbkdf2Calls = { count: 0 };
+
+/** The iteration count a stored hash carries (0 when unparseable). Verification always uses the
+ *  stored count; this exists so login can decide whether to re-hash at the current strength. */
+export function hashIterations(stored: string): number {
+  const [scheme, iter] = (stored || "").split("$");
+  return scheme === "pbkdf2" ? Number(iter) || 0 : 0;
+}
+
+/** Burn the same PBKDF2 cost as a real verification and always fail. Called for unknown emails so
+ *  login timing does not reveal whether an account exists. */
+export async function dummyVerify(password: string, iterations: number): Promise<false> {
+  await pbkdf2(password, new Uint8Array(16), iterations);
+  return false;
+}
+
 export async function hashPassword(password: string, iterations: number): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
   const bits = await pbkdf2(password, salt, iterations);
@@ -141,6 +159,7 @@ export async function verifyPassword(password: string, stored: string): Promise<
 }
 
 async function pbkdf2(password: string, salt: Uint8Array, iterations: number): Promise<ArrayBuffer> {
+  pbkdf2Calls.count += 1;
   const key = await crypto.subtle.importKey("raw", enc.encode(password), "PBKDF2", false, ["deriveBits"]);
   return crypto.subtle.deriveBits({ name: "PBKDF2", hash: "SHA-256", salt, iterations }, key, 256);
 }
