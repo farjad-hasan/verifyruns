@@ -1,6 +1,6 @@
 /** HTTP handlers — same paths, payloads, status codes and messages as backend/server.py. */
 import { CheckDoc, deleteCheckCascade, getCheckForUser, insertCheck, prepareConfigForStorage, recomputeHeartbeatDue, rowToCheck, sanitizeChannel, sanitizeCheck, updateCheck } from "./checks";
-import { dummyVerify, encryptSecret, hashIterations, hashPassword, signJwt, tokenUrlsafe, uuid, verifyJwt, verifyPassword } from "./crypto";
+import { dummyVerify, effectiveIterations, encryptSecret, hashIterations, hashPassword, signJwt, tokenUrlsafe, uuid, verifyJwt, verifyPassword } from "./crypto";
 import { emailAvailable, Env, flag, nowIso, num } from "./env";
 import { clientIp, HttpError, json, readJson, validation } from "./http";
 import { PLAN_IDS, PLANS } from "./plans";
@@ -76,15 +76,28 @@ export async function login(env: Env, request: Request): Promise<Response> {
   const row = await env.DB.prepare("SELECT id, password_hash, token_version FROM users WHERE email = ?").bind(email).first<{ id: string; password_hash: string; token_version: number }>();
   if (!row) {
     // Unknown email burns the same PBKDF2 cost as a real verification, so timing reveals nothing.
-    await dummyVerify(password, iterations);
+    // A derivation failure must not turn this 401 into a 500 (that would be its own oracle).
+    await dummyVerify(password, iterations).catch((e) => console.error("dummy verify failed", e));
     throw new HttpError(401, "Invalid email or password");
   }
   if (!(await verifyPassword(password, row.password_hash))) throw new HttpError(401, "Invalid email or password");
-  // Transparent strength upgrade: the stored hash carries its own iteration count.
-  if (hashIterations(row.password_hash) < iterations) {
-    await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(await hashPassword(password, iterations), row.id).run();
-  }
+  await maybeUpgradeHash(env, row.id, row.password_hash, password, iterations);
   return json({ token: await makeToken(env, row.id, email, row.token_version ?? 0), user: { id: row.id, email } });
+}
+
+/** Transparent strength upgrade after a successful verification. The UPDATE is a compare-and-swap
+ *  on the exact hash the password verified against: a concurrent password reset that lands mid-
+ *  derivation must never be overwritten with a hash of the OLD password — that would undo the
+ *  reset and let a stolen password persist. A missed swap just means no upgrade this login, and a
+ *  derivation failure must never turn a correct login into a 500. */
+export async function maybeUpgradeHash(env: Env, userId: string, verifiedHash: string, password: string, iterations: number): Promise<void> {
+  if (hashIterations(verifiedHash) >= effectiveIterations(iterations)) return;
+  try {
+    const upgraded = await hashPassword(password, iterations);
+    await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ? AND password_hash = ?").bind(upgraded, userId, verifiedHash).run();
+  } catch (e) {
+    console.error("hash upgrade failed; login continues on the verified hash", e);
+  }
 }
 
 export async function me(env: Env, request: Request): Promise<Response> {

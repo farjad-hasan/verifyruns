@@ -134,17 +134,37 @@ export function hashIterations(stored: string): number {
   return scheme === "pbkdf2" ? Number(iter) || 0 : 0;
 }
 
+/** Cloudflare production has historically refused PBKDF2 above 100,000 iterations (workerd #1346),
+ *  and the cap is not detectable until a derivation throws. Rather than let a higher setting 500
+ *  every register/login/reset, the first refusal lowers a per-isolate cap and the derivation
+ *  retries; new hashes then record the count actually used, so verification is unaffected. */
+const PBKDF2_RUNTIME_FALLBACK = 100000;
+let pbkdf2Cap = Infinity;
+export const effectiveIterations = (n: number): number => Math.min(n, pbkdf2Cap);
+
+async function pbkdf2Capped(password: string, salt: Uint8Array, iterations: number): Promise<{ bits: ArrayBuffer; used: number }> {
+  const n = effectiveIterations(iterations);
+  try {
+    return { bits: await pbkdf2(password, salt, n), used: n };
+  } catch (e) {
+    if (n <= PBKDF2_RUNTIME_FALLBACK) throw e;
+    console.warn(`PBKDF2 at ${n} iterations refused by the runtime; capping at ${PBKDF2_RUNTIME_FALLBACK}`, e);
+    pbkdf2Cap = PBKDF2_RUNTIME_FALLBACK;
+    return { bits: await pbkdf2(password, salt, PBKDF2_RUNTIME_FALLBACK), used: PBKDF2_RUNTIME_FALLBACK };
+  }
+}
+
 /** Burn the same PBKDF2 cost as a real verification and always fail. Called for unknown emails so
  *  login timing does not reveal whether an account exists. */
 export async function dummyVerify(password: string, iterations: number): Promise<false> {
-  await pbkdf2(password, new Uint8Array(16), iterations);
+  await pbkdf2Capped(password, new Uint8Array(16), iterations);
   return false;
 }
 
 export async function hashPassword(password: string, iterations: number): Promise<string> {
   const salt = crypto.getRandomValues(new Uint8Array(16));
-  const bits = await pbkdf2(password, salt, iterations);
-  return `pbkdf2$${iterations}$${b64encode(salt)}$${b64encode(bits)}`;
+  const { bits, used } = await pbkdf2Capped(password, salt, iterations);
+  return `pbkdf2$${used}$${b64encode(salt)}$${b64encode(bits)}`;
 }
 
 export async function verifyPassword(password: string, stored: string): Promise<boolean> {

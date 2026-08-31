@@ -72,6 +72,19 @@ describe("password hashing strength", () => {
     expect((await api("/auth/login", { method: "POST", json: { email: u.email, password: "pass123" } })).status).toBe(200);
   });
 
+  it("a rehash never overwrites a hash it did not verify against (concurrent reset)", async () => {
+    const { maybeUpgradeHash } = await import("../src/routes");
+    const u = await user("cr");
+    const weak = await hashPassword("pass123", 500);
+    await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(weak, u.id).run();
+    // a reset lands between this login's verification and its upgrade write
+    const resetHash = await hashPassword("resetpass", 1000);
+    await env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(resetHash, u.id).run();
+    await maybeUpgradeHash(env as any, u.id, weak, "pass123", 1000); // still holds the pre-reset hash it verified
+    const stored = (await env.DB.prepare("SELECT password_hash FROM users WHERE id = ?").bind(u.id).first<{ password_hash: string }>())!.password_hash;
+    expect(stored).toBe(resetHash); // the reset's hash stands; the old password was not re-installed
+  });
+
   it("migration 0004: users carry token_version, default 0", async () => {
     const u = await user("mg");
     const row = await env.DB.prepare("SELECT token_version FROM users WHERE id = ?").bind(u.id).first<{ token_version: number }>();

@@ -17,6 +17,8 @@ Copy the `database_id` it prints into `worker/wrangler.toml` (`[[d1_databases]] 
 
 ```bash
 npm run migrate:remote        # wrangler d1 migrations apply verifyruns --remote
+                              # ALWAYS before `deploy`: new code may read new columns on every
+                              # request (0004's token_version is read by every authenticated call)
 ```
 
 ## 2. Secrets
