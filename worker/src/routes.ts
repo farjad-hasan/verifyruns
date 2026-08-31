@@ -1,5 +1,5 @@
 /** HTTP handlers — same paths, payloads, status codes and messages as backend/server.py. */
-import { CheckDoc, deleteCheckCascade, getCheckForUser, insertCheck, prepareConfigForStorage, rowToCheck, sanitizeChannel, sanitizeCheck, updateCheck } from "./checks";
+import { CheckDoc, deleteCheckCascade, getCheckForUser, insertCheck, prepareConfigForStorage, recomputeHeartbeatDue, rowToCheck, sanitizeChannel, sanitizeCheck, updateCheck } from "./checks";
 import { encryptSecret, hashPassword, signJwt, tokenUrlsafe, uuid, verifyJwt, verifyPassword } from "./crypto";
 import { emailAvailable, Env, flag, nowIso, num } from "./env";
 import { clientIp, HttpError, json, readJson, validation } from "./http";
@@ -135,6 +135,7 @@ export async function createCheck(env: Env, request: Request): Promise<Response>
     last_alerted_verdict: null,
     pending_retry: null,
     pending_runs: [],
+    next_heartbeat_due_at: null, // derived from heartbeat_hours + created_at inside insertCheck
   };
   await insertCheck(env, doc);
   return json(await sanitizeCheck(env, doc));
@@ -205,6 +206,7 @@ export async function patchCheck(env: Env, request: Request, id: string): Promis
     patch.alert_slack_webhook_encrypted = await encryptSecret(env.ENC_KEY, target);
   }
   await updateCheck(env, id, patch);
+  if ("heartbeat_hours" in body) await recomputeHeartbeatDue(env, id);
   return json(await sanitizeCheck(env, await getCheckForUser(env, id, user.id)));
 }
 
