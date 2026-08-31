@@ -20,9 +20,11 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
-        with: { node-version: 22, cache: npm, cache-dependency-path: frontend/package-lock.json }
-      - run: npm ci --legacy-peer-deps   # react-day-picker 8 pins date-fns 2/3; the app uses 4 (same flag as the Pages build)
-      - run: npm run build
+        with: { node-version: 22, cache: yarn, cache-dependency-path: frontend/yarn.lock }
+      # yarn is the pinned package manager (frontend/package.json packageManager); yarn 1 only warns
+      # on the react-day-picker/date-fns peer mismatch that npm needed --legacy-peer-deps for.
+      - run: yarn install --frozen-lockfile
+      - run: yarn build
         env:
           CI: "false"   # CRA treats warnings as errors under CI=true; the build, not lint, is the gate here
           REACT_APP_BACKEND_URL: https://verifyruns-api.farjad-developer.workers.dev
