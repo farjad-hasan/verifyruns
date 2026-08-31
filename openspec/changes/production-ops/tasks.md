@@ -21,7 +21,7 @@
 
 ## 4. Frontend + docs
 
-- [x] 4.1 `robots.txt`: `Disallow: /status/`; `PublicStatus.jsx` sets `noindex` meta; enable-confirm dialog in `CheckDetail.jsx`
+- [x] 4.1 `/status/*` sends `X-Robots-Tag: noindex` via `_headers` (robots.txt deliberately does NOT disallow the path — a Disallow would hide the noindex); `PublicStatus.jsx` sets `noindex` meta; enable-confirm dialog in `CheckDetail.jsx`
 - [x] 4.2 `docs/deploy.md`: Backups & restore section, key custody, staging checklist, external monitor config; note monitor.yml's auto-disable beside its description
 - [x] 4.3 `docs/self-hosting.md`: mirror the backup/Time Travel guidance; add the missing `VR_HEALTH_MAX_TICK_AGE_SECONDS` row
 - [x] 4.4 Rewrite `CLAUDE.md` (delete the FastAPI/Mongo/pytest/yarn sections; point at `worker/`, `openspec/specs/`, `docs/deploy.md`, `DESIGN.md`, `memory/PRD.md`) and fix `README.md` (drop the MongoDB setup block, Fernet → AES-256-GCM); resolve the npm/yarn lockfile split one way
