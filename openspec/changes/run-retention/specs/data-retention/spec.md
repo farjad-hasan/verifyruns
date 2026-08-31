@@ -14,7 +14,7 @@
 ## ADDED Requirements
 
 ### Requirement: Run history is bounded
-The tick SHALL delete `check_runs` rows that are both older than `VR_RUN_RETENTION_DAYS` (default 90) and beyond the newest `VR_RUN_RETENTION_MIN` (default 35) rows of their Check, in bounded batches over a rotating cursor. The floor SHALL exceed the verdict baseline window so retention can never remove a run the engine or the 30-square timeline would read. Public copy about history length SHALL match this behaviour until per-plan windows ship with billing.
+The tick SHALL delete `check_runs` rows that are older than `VR_RUN_RETENTION_DAYS` (default 90) and beyond both the newest `VR_RUN_RETENTION_MIN` (default 35) rows and the newest 30 PASS rows of their Check, in bounded batches over a rotating cursor. The explicit PASS floor exists because the newest rows can be FAILs (a heartbeat streak), which would otherwise push a quiet Check's baseline past the row floor into deletion; retention can never remove a run the engine or the 30-square timeline would read. Public copy about history length SHALL match this behaviour until per-plan windows ship with billing.
 
 #### Scenario: Old busy Check
 - **WHEN** a Check has 100,000 runs and the sweep completes a rotation
@@ -23,6 +23,10 @@ The tick SHALL delete `check_runs` rows that are both older than `VR_RUN_RETENTI
 #### Scenario: Quiet Check with an old baseline
 - **WHEN** a Check's 30 most recent PASS runs are all older than 90 days
 - **THEN** they are retained by the floor and the next verdict still has its baseline
+
+#### Scenario: Heartbeat streak on a quiet Check
+- **WHEN** a quiet Check has accumulated 35 recent heartbeat FAILs and its PASS baseline is older than the window
+- **THEN** the PASS rows are still retained — the newest-rows floor does not displace the PASS floor
 
 #### Scenario: Tick not running
 - **WHEN** the cron is dead

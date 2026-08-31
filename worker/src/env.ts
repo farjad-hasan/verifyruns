@@ -12,6 +12,8 @@ export interface Env {
   VR_RETRY_DELAY_SECONDS?: string;
   VR_LAZY_TICK_SECONDS?: string;
   VR_TICK_BATCH?: string;
+  VR_RUN_RETENTION_DAYS?: string;
+  VR_RUN_RETENTION_MIN?: string;
   VR_AIRTABLE_MAX_PAGES?: string;
   VR_MAX_RESPONSE_BYTES?: string;
   VR_PBKDF2_ITERATIONS?: string;
