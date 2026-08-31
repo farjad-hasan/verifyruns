@@ -1,9 +1,30 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { env } from "cloudflare:test";
-import { deliver, formatAlert } from "../src/alerts";
+import { deliver, formatAlert, maybeAlert } from "../src/alerts";
+import { getCheck } from "../src/checks";
 import { setFetchForTests } from "../src/net";
+import { makeCheck, user } from "./helpers";
 
 afterEach(() => setFetchForTests(null));
+
+const SLACK = "https://hooks.slack.com/services/T/B/x";
+const DISCORD = "https://discord.com/api/webhooks/1/x";
+
+async function insertRun(checkId: string, id: string, verdict: "PASS" | "FAIL") {
+  const timestamp = new Date().toISOString();
+  await env.DB.prepare("INSERT INTO check_runs (id, check_id, timestamp, trigger, verdict, diff_message, fingerprint) VALUES (?, ?, ?, 'webhook', ?, 'm', '{}')").bind(id, checkId, timestamp, verdict).run();
+  return { id, verdict, diff_message: "m", timestamp };
+}
+
+const alertsSent = async (runId: string): Promise<any[] | null> => {
+  const row = await env.DB.prepare("SELECT alerts_sent FROM check_runs WHERE id = ?").bind(runId).first<{ alerts_sent: string | null }>();
+  return row?.alerts_sent ? JSON.parse(row.alerts_sent) : null;
+};
+
+const failureCounter = async (): Promise<number> => {
+  const row = await env.DB.prepare("SELECT value FROM meta WHERE key = 'alert_delivery_failures'").first<{ value: string }>();
+  return Number(row?.value ?? 0);
+};
 
 describe("deliver", () => {
   it("returns the provider's status and body when delivery is refused, so the run can show why", async () => {
@@ -21,6 +42,110 @@ describe("deliver", () => {
     const r = await deliver({ ...env, RESEND_API_KEY: "", ALERT_FROM: "" } as any, "email", "a@b.co", "text", "s");
     expect(r.ok).toBe(false);
     expect((r as any).error).toMatch(/RESEND_API_KEY/);
+  });
+});
+
+describe("delivery durability", () => {
+  it("all channels failing rolls the claim back so the next FAIL of the streak alerts again", async () => {
+    setFetchForTests(async () => new Response("no", { status: 500 }));
+    const u = await user();
+    const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }] });
+    const before = await failureCounter();
+    const run1 = await insertRun(c.id, "af1", "FAIL");
+    await maybeAlert(env, (await getCheck(env, c.id))!, run1, false);
+    expect(await alertsSent("af1")).toEqual([{ kind: "slack", ok: false, error: "500 no" }]);
+    expect(await failureCounter()).toBe(before + 1);
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBeNull();
+    setFetchForTests(async () => new Response("ok"));
+    const run2 = await insertRun(c.id, "af2", "FAIL");
+    await maybeAlert(env, (await getCheck(env, c.id))!, run2, false);
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("FAIL");
+    expect(await alertsSent("af2")).toEqual([{ kind: "slack", ok: true }]);
+  });
+
+  it("one of two channels failing keeps the claim and records both outcomes", async () => {
+    let deliveries = 0;
+    setFetchForTests(async (url) => {
+      deliveries++;
+      return String(url).startsWith(SLACK) ? new Response("ok") : new Response("gone", { status: 404 });
+    });
+    const u = await user();
+    const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }, { kind: "discord", target: DISCORD }] });
+    const before = await failureCounter();
+    const run1 = await insertRun(c.id, "ap1", "FAIL");
+    await maybeAlert(env, (await getCheck(env, c.id))!, run1, false);
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("FAIL");
+    expect(await alertsSent("ap1")).toEqual([
+      { kind: "slack", ok: true },
+      { kind: "discord", ok: false, error: "404 gone" },
+    ]);
+    expect(await failureCounter()).toBe(before + 1);
+    // the streak is alerted: the next FAIL neither claims nor delivers
+    const run2 = await insertRun(c.id, "ap2", "FAIL");
+    deliveries = 0;
+    await maybeAlert(env, (await getCheck(env, c.id))!, run2, false);
+    expect(deliveries).toBe(0);
+    expect(await alertsSent("ap2")).toBeNull();
+  });
+
+  it("concurrent maybeAlerts with a failing channel attempt delivery once, then roll back", async () => {
+    let attempts = 0;
+    setFetchForTests(async () => {
+      attempts++;
+      return new Response("no", { status: 500 });
+    });
+    const u = await user();
+    const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }] });
+    const doc = (await getCheck(env, c.id))!;
+    const run = await insertRun(c.id, "ac1", "FAIL");
+    await Promise.all([maybeAlert(env, doc, run, false), maybeAlert(env, doc, run, false), maybeAlert(env, doc, run, false)]);
+    expect(attempts).toBe(1);
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBeNull();
+  });
+
+  it("rollback does not clobber a state another caller moved meanwhile", async () => {
+    const u = await user();
+    const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }] });
+    setFetchForTests(async () => {
+      // while this delivery is failing, a recovery elsewhere claims PASS
+      await env.DB.prepare("UPDATE checks SET last_alerted_verdict = 'PASS' WHERE id = ?").bind(c.id).run();
+      return new Response("no", { status: 500 });
+    });
+    const run = await insertRun(c.id, "am1", "FAIL");
+    await maybeAlert(env, (await getCheck(env, c.id))!, run, false);
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("PASS");
+  });
+
+  it("an undecryptable target is a recorded failure, not a silent skip", async () => {
+    let fetched = 0;
+    setFetchForTests(async () => {
+      fetched++;
+      return new Response("ok");
+    });
+    const u = await user();
+    const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }] });
+    const row = await env.DB.prepare("SELECT alert_channels FROM checks WHERE id = ?").bind(c.id).first<{ alert_channels: string }>();
+    const corrupted = JSON.parse(row!.alert_channels).map((ch: any) => ({ ...ch, target_encrypted: "garbage" }));
+    await env.DB.prepare("UPDATE checks SET alert_channels = ? WHERE id = ?").bind(JSON.stringify(corrupted), c.id).run();
+    const before = await failureCounter();
+    const run = await insertRun(c.id, "ad1", "FAIL");
+    await maybeAlert(env, (await getCheck(env, c.id))!, run, false);
+    expect(fetched).toBe(0);
+    expect(await alertsSent("ad1")).toEqual([{ kind: "slack", ok: false, error: "decrypt" }]);
+    expect(await failureCounter()).toBe(before + 1);
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBeNull();
+  });
+
+  it("a redirecting webhook is a failure, not a follow", async () => {
+    let redirectMode: string | undefined;
+    setFetchForTests(async (_url, init) => {
+      redirectMode = init?.redirect;
+      return new Response(null, { status: 302, headers: { location: "https://evil.example/" } });
+    });
+    const r = await deliver(env as any, "slack", SLACK, "text");
+    expect(redirectMode).toBe("manual");
+    expect(r.ok).toBe(false);
+    expect((r as any).error).toMatch(/302/);
   });
 });
 

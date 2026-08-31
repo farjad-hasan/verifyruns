@@ -11,7 +11,7 @@ True as of 2026-08-29 (`deletion-purges-everything` shipped). The privacy policy
 
 - Timestamp, trigger, verdict, and the diff message.
 - The **fingerprint**: record count, sample size, the set of field names, per-field empty-percentages, and a **SHA-256 hash of the newest record** — enough to tell "unchanged" from "changed", not enough to reconstruct the row.
-- The claimed count from the webhook body, if one was sent, and which alert channels were attempted.
+- The claimed count from the webhook body, if one was sent, and which alert channels were attempted — per channel, its kind, whether it delivered, and a short error string on failure. A single service-wide counter of failed alert deliveries is also kept (a number only — no targets, no message bodies).
 - **No destination rows and no upstream response bodies** — unless the Check has **"Store raw samples"** turned on.
 
 ## When "Store raw samples" is on (off by default)

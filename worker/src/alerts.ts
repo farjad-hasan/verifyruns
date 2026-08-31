@@ -1,26 +1,27 @@
 /** Alert channels and transition-based delivery. Ported from backend/server.py. */
 import { CheckDoc } from "./checks";
 import { decryptSecret } from "./crypto";
-import { emailAvailable, Env } from "./env";
-import { httpFetch } from "./net";
+import { emailAvailable, Env, num } from "./env";
+import { httpFetch, readCapped } from "./net";
 
 const DISCORD_MAX_CHARS = 2000;
 
 export interface LiveChannel {
   id: string;
   kind: "slack" | "discord" | "email";
-  target: string;
+  /** null: a target is stored but failed to decrypt — a delivery failure, not an absent channel. */
+  target: string | null;
 }
 
 export async function channels(env: Env, c: CheckDoc): Promise<LiveChannel[]> {
   const out: LiveChannel[] = [];
   if (c.alert_slack_webhook_encrypted) {
     const target = await decryptSecret(env.ENC_KEY, c.alert_slack_webhook_encrypted);
-    if (target) out.push({ id: "legacy-slack", kind: "slack", target });
+    if (target !== "") out.push({ id: "legacy-slack", kind: "slack", target });
   }
   for (const ch of c.alert_channels) {
     const target = await decryptSecret(env.ENC_KEY, ch.target_encrypted);
-    if (target) out.push({ id: ch.id, kind: ch.kind, target });
+    if (target !== "") out.push({ id: ch.id, kind: ch.kind, target });
   }
   return out;
 }
@@ -34,6 +35,7 @@ export async function deliver(env: Env, kind: string, target: string, text: stri
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
       body: JSON.stringify(body),
+      redirect: "manual",
       signal: AbortSignal.timeout(8000),
     });
     if (kind === "slack") resp = await httpFetch(target, init({ text }));
@@ -42,8 +44,10 @@ export async function deliver(env: Env, kind: string, target: string, text: stri
       if (!emailAvailable(env)) return { ok: false, error: "email alerts need RESEND_API_KEY and ALERT_FROM on the server" };
       resp = await httpFetch("https://api.resend.com/emails", init({ from: env.ALERT_FROM, to: [target], subject, text }, { authorization: `Bearer ${env.RESEND_API_KEY}` }));
     } else return { ok: false, error: `unknown channel kind ${kind}` };
-    if (resp.status >= 400) {
-      const body = (await resp.text().catch(() => "")).slice(0, 300);
+    // With redirect: "manual" a 3xx surfaces here as its own status; a redirecting webhook is a failure.
+    if (resp.status >= 300) {
+      const raw = await readCapped(resp, num(env.VR_MAX_RESPONSE_BYTES, 5 * 1024 * 1024)).catch(() => null);
+      const body = raw ? new TextDecoder().decode(raw).slice(0, 300) : "";
       console.warn(`${kind} alert non-2xx: ${resp.status} ${body}`);
       return { ok: false, error: `${resp.status} ${body}`.trim() };
     }
@@ -59,6 +63,10 @@ export async function maybeAlert(env: Env, c: CheckDoc, run: { id: string; verdi
   const chans = await channels(env, c);
   if (!chans.length) return;
   if (snoozed) return;
+  // Captured before the claim: what the rollback restores when no channel delivers. For a FAIL claim
+  // this may be stale (NULL vs 'PASS'), but either restores a non-FAIL state, so the next FAIL of the
+  // streak can claim again; a PASS claim guarantees the prior was 'FAIL'.
+  const prior = c.last_alerted_verdict === "FAIL" || c.last_alerted_verdict === "PASS" ? c.last_alerted_verdict : null;
   // Claim the transition before delivering: a predicated UPDATE changes exactly one caller's row.
   let next: "FAIL" | "PASS";
   let claim: D1Result;
@@ -76,11 +84,28 @@ export async function maybeAlert(env: Env, c: CheckDoc, run: { id: string; verdi
   const subject = `VerifyRuns: ${state} — ${c.name}`;
   const sent: { kind: string; ok: boolean; error?: string }[] = [];
   for (const ch of chans) {
+    if (ch.target === null) {
+      console.error(`alert channel ${ch.kind} (${ch.id}) on check ${c.id} failed to decrypt`);
+      sent.push({ kind: ch.kind, ok: false, error: "decrypt" });
+      continue;
+    }
     const body = formatAlert(ch.kind, { state, name: c.name, message: run.diff_message, timestamp: run.timestamp, link });
     const r = await deliver(env, ch.kind, ch.target, body, subject);
     sent.push(r.ok ? { kind: ch.kind, ok: true } : { kind: ch.kind, ok: false, error: r.error });
   }
-  await env.DB.prepare("UPDATE check_runs SET alerts_sent = ? WHERE id = ?").bind(JSON.stringify(sent), run.id).run();
+  const failures = sent.filter((s) => !s.ok).length;
+  const stmts = [env.DB.prepare("UPDATE check_runs SET alerts_sent = ? WHERE id = ?").bind(JSON.stringify(sent), run.id)];
+  if (failures) {
+    stmts.push(
+      env.DB.prepare("INSERT INTO meta(key, value) VALUES ('alert_delivery_failures', ?) ON CONFLICT(key) DO UPDATE SET value = CAST(CAST(value AS INTEGER) + CAST(excluded.value AS INTEGER) AS TEXT)").bind(String(failures)),
+    );
+  }
+  if (failures === sent.length) {
+    // No channel heard about the streak: release the claim so the next run alerts again. Predicated on
+    // the claimed value — if another caller moved the state meanwhile, their state stands.
+    stmts.push(env.DB.prepare("UPDATE checks SET last_alerted_verdict = ? WHERE id = ? AND last_alerted_verdict = ?").bind(prior, c.id, next));
+  }
+  await env.DB.batch(stmts);
 }
 
 export type AlertState = "FAIL" | "Recovered";

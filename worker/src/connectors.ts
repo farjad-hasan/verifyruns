@@ -3,7 +3,7 @@ import { decryptSecret } from "./crypto";
 import { egressViolation } from "./egress";
 import { FetchMeta, hasOrderBy, sortDesc } from "./engine";
 import { Env, flag, num } from "./env";
-import { httpFetch } from "./net";
+import { httpFetch, readCapped } from "./net";
 import pg from "./vendor/pg.mjs";
 
 export interface FetchResult {
@@ -34,30 +34,7 @@ function getRecords(payload: unknown, jsonPath: string | null): Record<string, a
   return node.filter((x) => x && typeof x === "object" && !Array.isArray(x));
 }
 
-/** Read a body stream, abandoning it past `maxBytes`. Returns null when exceeded. */
-async function readCapped(resp: Response, maxBytes: number): Promise<Uint8Array | null> {
-  if (!resp.body) return new Uint8Array();
-  const reader = resp.body.getReader();
-  const chunks: Uint8Array[] = [];
-  let size = 0;
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    size += value.length;
-    if (size > maxBytes) {
-      await reader.cancel().catch(() => {});
-      return null;
-    }
-    chunks.push(value);
-  }
-  const out = new Uint8Array(size);
-  let o = 0;
-  for (const c of chunks) {
-    out.set(c, o);
-    o += c.length;
-  }
-  return out;
-}
+const CREDENTIAL_UNREADABLE = "Stored credential could not be read; re-enter it on the Check.";
 
 export async function fetchRecords(env: Env, kind: string, cfg: Record<string, any>): Promise<FetchResult> {
   const allowPrivate = flag(env.VR_ALLOW_PRIVATE_EGRESS, false);
@@ -70,6 +47,7 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
     const headers: Record<string, string> = {};
     if (cfg.bearer_token_encrypted) {
       const plain = await decryptSecret(env.ENC_KEY, cfg.bearer_token_encrypted);
+      if (plain === null) return fail(CREDENTIAL_UNREADABLE);
       if (plain) headers.authorization = `Bearer ${plain}`;
     }
     let resp: Response;
@@ -102,6 +80,7 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
     const headers: Record<string, string> = {};
     if (cfg.pat_encrypted) {
       const plain = await decryptSecret(env.ENC_KEY, cfg.pat_encrypted);
+      if (plain === null) return fail(CREDENTIAL_UNREADABLE);
       if (plain) headers.authorization = `Bearer ${plain}`;
     }
     const base = `https://api.airtable.com/v0/${cfg.base_id}/${encodeURIComponent(cfg.table)}`;
@@ -166,6 +145,7 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
   if (kind === "postgres") {
     if (!cfg.dsn_encrypted || !cfg.query) return fail("Postgres config is missing DSN or query.");
     const dsn = await decryptSecret(env.ENC_KEY, cfg.dsn_encrypted);
+    if (dsn === null) return fail(CREDENTIAL_UNREADABLE);
     const v = egressViolation(dsn, allowPrivate);
     if (v) return fail(v);
     const query: string = cfg.query;

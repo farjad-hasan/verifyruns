@@ -43,6 +43,16 @@ describe("http_json", () => {
     const r = await fetchRecords(env, "http_json", { url: "https://x/big" });
     expect(r.error).toBe("Destination response exceeded 5 MB.");
   });
+  it("a stored credential that cannot be decrypted fails the run instead of fetching unauthenticated", async () => {
+    let fetched = 0;
+    setFetchForTests(async () => {
+      fetched++;
+      return jsonResponse([]);
+    });
+    const r = await fetchRecords(env, "http_json", { url: "https://x/", bearer_token_encrypted: "garbage" });
+    expect(fetched).toBe(0);
+    expect(r.error).toBe("Stored credential could not be read; re-enter it on the Check.");
+  });
   it("refuses private literals at fetch time when not allowed", async () => {
     const r = await fetchRecords({ ...env, VR_ALLOW_PRIVATE_EGRESS: "0" }, "http_json", { url: "http://127.0.0.1:8000/x" });
     expect(r.error).toContain("Destination must be a public address (127.0.0.1 is private)");

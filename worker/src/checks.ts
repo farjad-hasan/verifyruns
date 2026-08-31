@@ -116,13 +116,13 @@ async function sanitizeConfig(env: Env, kind: string, cfg: Record<string, any>):
     const enc = out[p[0]];
     delete out[p[0]];
     out[p[1]] = !!enc;
-    if (enc) out[p[2]] = maskToken(await decryptSecret(env.ENC_KEY, enc));
+    if (enc) out[p[2]] = maskToken((await decryptSecret(env.ENC_KEY, enc)) ?? "");
   }
   return out;
 }
 
 export async function sanitizeChannel(env: Env, ch: Channel): Promise<{ id: string; kind: string; last4: string }> {
-  return { id: ch.id, kind: ch.kind, last4: maskToken(await decryptSecret(env.ENC_KEY, ch.target_encrypted)) };
+  return { id: ch.id, kind: ch.kind, last4: maskToken((await decryptSecret(env.ENC_KEY, ch.target_encrypted)) ?? "") };
 }
 
 export async function sanitizeCheck(env: Env, c: CheckDoc, includeWebhookSecret = true): Promise<Record<string, any>> {
@@ -131,7 +131,7 @@ export async function sanitizeCheck(env: Env, c: CheckDoc, includeWebhookSecret 
   let alert_slack_last4: string | undefined;
   if (c.alert_slack_webhook_encrypted) {
     has_alert_slack = true;
-    alert_slack_last4 = maskToken(await decryptSecret(env.ENC_KEY, c.alert_slack_webhook_encrypted));
+    alert_slack_last4 = maskToken((await decryptSecret(env.ENC_KEY, c.alert_slack_webhook_encrypted)) ?? "");
     channels.push({ id: "legacy-slack", kind: "slack", last4: alert_slack_last4 });
   }
   for (const ch of c.alert_channels) channels.push(await sanitizeChannel(env, ch));
