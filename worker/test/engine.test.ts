@@ -31,6 +31,83 @@ describe("fingerprint", () => {
   });
 });
 
+describe("claims: keys and clamps", () => {
+  const COUNT_NOTE = "webhook body key `count` is no longer read; send `wrote`";
+  it("reads wrote and expected_new; a bare count key is ignored with a migration note", () => {
+    expect(parseClaimed({ wrote: 3 })).toEqual([3, null]);
+    expect(parseClaimed({ expected_new: "4" })).toEqual([4, null]);
+    expect(parseClaimed({ count: 0 })).toEqual([null, COUNT_NOTE]);
+    expect(parseClaimed({ count: 7 })).toEqual([null, COUNT_NOTE]);
+    expect(parseClaimed({ wrote: 2, count: 9 })).toEqual([2, null]);
+  });
+  it("wrote: 0 is a first-class claim", () => {
+    expect(parseClaimed({ wrote: 0 })).toEqual([0, null]);
+  });
+  it("negative claims are treated as absent with a note", () => {
+    expect(parseClaimed({ wrote: -2 })).toEqual([null, "webhook body ignored: `wrote` is negative"]);
+    expect(parseClaimed({ expected_new: "-3" })).toEqual([null, "webhook body ignored: `expected_new` is negative"]);
+  });
+  it("a passthrough {count: 0} does not claim: the growth rule still applies", () => {
+    const [claimed] = parseClaimed({ count: 0 });
+    const [v, m] = computeVerdict(fingerprint(records(40)), [passRun(40)], DEFAULTS, claimed);
+    expect(v).toBe("FAIL");
+    expect(m).toContain("the destination gained 0 records (expected at least 1)");
+  });
+  it("a deliberate {wrote: 0} PASSes on an unchanged destination", () => {
+    const [claimed] = parseClaimed({ wrote: 0 });
+    const [v, m] = computeVerdict(fingerprint(records(40)), [passRun(40)], DEFAULTS, claimed);
+    expect(v).toBe("PASS");
+    expect(m).toBe("Destination gained 0 record(s), matching what your workflow reported.");
+  });
+  it("claimed mode with a negative body FAILs with the teaching message", () => {
+    const [claimed] = parseClaimed({ wrote: -1 });
+    const [v, m] = computeVerdict(fingerprint(records(40)), [passRun(40)], { ...DEFAULTS, growth_mode: "claimed" }, claimed);
+    expect(v).toBe("FAIL");
+    expect(m).toContain('your workflow sent no record count (this Check expects {"wrote": N} in the webhook body)');
+  });
+});
+
+describe("verdict: inexact counts", () => {
+  const SKIP_CAP = "Record-count checks were skipped: the count is capped.";
+  const SKIP_EST = "Record-count checks were skipped: the count is estimated.";
+  const capped = (fp: any) => ({ ...fp, count_capped: true });
+  const cappedPass = (n: number, fields?: string[]) => ({ ...passRun(n, fields), fingerprint: { ...passRun(n, fields).fingerprint, count_capped: true } });
+
+  it("a capped run skips the growth rule with a note instead of failing on a saturated delta", () => {
+    const [v, m] = computeVerdict(capped(fingerprint(records(100), 4000)), [passRun(4000)], DEFAULTS);
+    expect(v).toBe("PASS");
+    expect(m).toBe(`All expectations met. ${SKIP_CAP}`);
+  });
+  it("a capped baseline also skips the growth rule", () => {
+    const [v, m] = computeVerdict(fingerprint(records(100), 100), [cappedPass(4000)], DEFAULTS);
+    expect(v).toBe("PASS");
+    expect(m).toBe(`All expectations met. ${SKIP_CAP}`);
+  });
+  it("an estimated baseline against a sample-collapsed count does not FAIL", () => {
+    const est = { ...passRun(5_000_000), fingerprint: { ...passRun(5_000_000).fingerprint, count_estimated: true } };
+    const [v, m] = computeVerdict(fingerprint(records(100), 100), [est], DEFAULTS);
+    expect(v).toBe("PASS");
+    expect(m).toBe(`All expectations met. ${SKIP_EST}`);
+  });
+  it("field rules still fire on a capped run", () => {
+    const prev = [0, 1, 2].map(() => cappedPass(4000, ["id", "name", "sku"]));
+    const [v, m] = computeVerdict(capped(fingerprint(records(100), 4000)), prev, DEFAULTS);
+    expect(v).toBe("FAIL");
+    expect(m).toContain("the field `sku` disappeared — it was present in the last 3 good runs");
+    expect(m).toContain(SKIP_CAP);
+  });
+  it("steady mode with an inexact count does not FAIL on change", () => {
+    const [v, m] = computeVerdict(capped(fingerprint(records(11), 11)), [passRun(12)], { ...DEFAULTS, growth_mode: "steady" });
+    expect(v).toBe("PASS");
+    expect(m).toBe(`All expectations met. ${SKIP_CAP}`);
+  });
+  it("claimed mode still requires the claim even when the count is inexact", () => {
+    const [v, m] = computeVerdict(capped(fingerprint(records(100), 4000)), [passRun(4000)], { ...DEFAULTS, growth_mode: "claimed" }, null);
+    expect(v).toBe("FAIL");
+    expect(m).toContain("your workflow sent no record count");
+  });
+});
+
 describe("verdict: growth", () => {
   it("first run", () => {
     const [v, m] = computeVerdict(fingerprint(records(40)), [], DEFAULTS);
@@ -104,7 +181,7 @@ describe("helpers", () => {
   it("parseClaimed", () => {
     expect(parseClaimed({ wrote: 3 })).toEqual([3, null]);
     expect(parseClaimed({ expected_new: 2 })).toEqual([2, null]);
-    expect(parseClaimed({ count: "5" })).toEqual([5, null]);
+    expect(parseClaimed({ count: "5" })).toEqual([null, "webhook body key `count` is no longer read; send `wrote`"]);
     expect(parseClaimed({ wrote: "three" })).toEqual([null, "webhook body ignored: `wrote` is not an integer"]);
     expect(parseClaimed(null)).toEqual([null, null]);
     expect(parseClaimed([1])).toEqual([null, null]);

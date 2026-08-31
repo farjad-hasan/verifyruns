@@ -8,6 +8,15 @@ import { toast } from "sonner";
 import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save, Pencil, Globe2, Filter, Moon, Sun, ChevronDown } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetClose } from "@/components/ui/sheet";
 
+// The engine appends "…checks were skipped: …" sentences to the verdict message when a rule sat
+// out (inexact count, no ORDER BY). The panel shows those as notes, not as part of the verdict.
+const SKIP_NOTE_RE = /(?:Record-count|Newest-record) checks were skipped:[^.]*\./g;
+function splitSkipNotes(message) {
+  const notes = (message || "").match(SKIP_NOTE_RE) || [];
+  const main = notes.length ? message.replace(SKIP_NOTE_RE, "").replace(/\s{2,}/g, " ").trim() : message;
+  return { message: main, notes };
+}
+
 export default function CheckDetail() {
   const { id } = useParams();
   const nav = useNavigate();
@@ -379,7 +388,11 @@ function RunPanel({ run, steady, previousPassFingerprint, onClose, onCloseAutoFo
             </SheetClose>
           </div>
           <p className="text-xs uppercase tracking-widest text-quiet mb-2">Verdict</p>
-          <p className="text-zinc-100 leading-relaxed mb-8" data-testid="run-diff-message">{run.diff_message}</p>
+          <p className="text-zinc-100 leading-relaxed mb-2" data-testid="run-diff-message">{splitSkipNotes(run.diff_message).message}</p>
+          {splitSkipNotes(run.diff_message).notes.map((note) => (
+            <p key={note} className="text-xs text-amber-400 font-mono leading-relaxed mb-2" data-testid="run-skip-note">{note}</p>
+          ))}
+          <div className="mb-8" />
 
           <p className="text-xs uppercase tracking-widest text-quiet mb-2">When</p>
           <p className="text-zinc-300 font-mono text-sm mb-8">
