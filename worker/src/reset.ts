@@ -47,14 +47,17 @@ export async function resetPassword(env: Env, request: Request): Promise<Respons
   if (!row || row.used_at || row.expires_at <= nowIso()) throw new HttpError(400, RESET_INVALID);
   const user = await env.DB.prepare("SELECT id, email FROM users WHERE id = ?").bind(row.user_id).first<{ id: string; email: string }>();
   if (!user) throw new HttpError(400, RESET_INVALID);
-  const pw = await hashPassword(body.password, num(env.VR_PBKDF2_ITERATIONS, 100000));
-  await env.DB.batch([
-    env.DB.prepare("UPDATE users SET password_hash = ? WHERE id = ?").bind(pw, user.id),
+  const pw = await hashPassword(body.password, num(env.VR_PBKDF2_ITERATIONS, 600000));
+  const results = await env.DB.batch([
+    // token_version++ kills every previously issued JWT (currentUser compares the `ver` claim);
+    // RETURNING gives this reset's own version, so a concurrent second reset cannot hand us a stale one
+    env.DB.prepare("UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ? RETURNING token_version").bind(pw, user.id),
     env.DB.prepare("UPDATE password_resets SET used_at = ? WHERE token_hash = ?").bind(nowIso(), hash),
     env.DB.prepare("DELETE FROM password_resets WHERE user_id = ? AND token_hash != ?").bind(user.id, hash),
   ]);
+  const ver = Number((results[0]?.results?.[0] as any)?.token_version ?? 0);
   const exp = Math.floor(Date.now() / 1000) + JWT_EXPIRE_DAYS * 86400;
-  return json({ token: await signJwt({ sub: user.id, email: user.email, exp }, env.JWT_SECRET), user: { id: user.id, email: user.email } });
+  return json({ token: await signJwt({ sub: user.id, email: user.email, ver, exp }, env.JWT_SECRET), user: { id: user.id, email: user.email } });
 }
 
 export async function expireResetTokens(env: Env, now: Date): Promise<number> {
