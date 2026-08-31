@@ -14,6 +14,7 @@ export default function usePoll(fn, { interval = 10000, enabled = true } = {}) {
     let stopped = false;
     let timer = null;
     let errors = 0;
+    let inFlight = false; // a visibility flip during a fetch must not fork a second timer chain
 
     const delay = () => (errors === 0 ? interval : Math.min(interval * 3 ** errors, 60000));
 
@@ -23,12 +24,15 @@ export default function usePoll(fn, { interval = 10000, enabled = true } = {}) {
     };
 
     async function run() {
-      if (stopped || document.hidden) return;
+      if (stopped || document.hidden || inFlight) return;
+      inFlight = true;
       try {
         await fnRef.current();
         errors = 0;
       } catch {
         errors += 1;
+      } finally {
+        inFlight = false;
       }
       schedule();
     }

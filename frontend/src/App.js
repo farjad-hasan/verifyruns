@@ -25,9 +25,9 @@ function Protected({ children }) {
   if (!ready) return <div className="min-h-screen flex items-center justify-center text-zinc-500 font-mono text-sm">Loading…</div>;
   if (!user) {
     // `expired` distinguishes a session that stopped working from never having logged in; the login
-    // page turns it into a sentence and returns the user here afterwards.
+    // page turns it into a sentence, and `next` returns the user here after login either way.
     const next = encodeURIComponent(location.pathname + location.search);
-    return <Navigate to={expired ? `/login?expired=1&next=${next}` : "/login"} replace />;
+    return <Navigate to={`/login?${expired ? "expired=1&" : ""}next=${next}`} replace />;
   }
   return children;
 }

@@ -21,7 +21,7 @@ export default function Dashboard() {
       setError("");
     } catch (e) {
       /* the auth provider handles 401s route-side */
-      if (e.response?.status !== 401) setError("Could not reach VerifyRuns. Retrying in 10 s.");
+      if (e.response?.status !== 401) setError("Could not reach VerifyRuns. Retrying automatically.");
       throw e; // usePoll backs off on consecutive failures
     }
   }, []);

@@ -70,7 +70,7 @@ export default function CheckDetail() {
       /* the auth provider handles 401s route-side */
       const status = e.response?.status;
       if (status === 404) setError("This check doesn't exist or was deleted.");
-      else if (status !== 401) setError("Could not reach VerifyRuns. Retrying in 10 s.");
+      else if (status !== 401) setError("Could not reach VerifyRuns. Retrying automatically.");
       throw e; // usePoll backs off on consecutive failures
     }
   }, [id]);
@@ -340,7 +340,7 @@ export default function CheckDetail() {
         <RunPanel
           run={selectedRun}
           steady={steady}
-          previousPassFingerprint={findPreviousPassFingerprint(runs, selectedRun)}
+          runs={runs}
           onClose={closeRun}
           onCloseAutoFocus={returnFocus}
         />
@@ -371,8 +371,7 @@ export function connectorLabel(kind) {
   return CONNECTOR_LABELS[kind] || "HTTP / JSON";
 }
 
-function RunPanel({ run, steady, previousPassFingerprint, onClose, onCloseAutoFocus }) {
-  const diff = previousPassFingerprint ? computeFpDiff(previousPassFingerprint, run.fingerprint || {}) : null;
+function RunPanel({ run, steady, runs, onClose, onCloseAutoFocus }) {
   // Radix Dialog: focus trap, Escape to close, scroll lock, focus returned to the square that opened it.
   return (
     <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -385,9 +384,22 @@ function RunPanel({ run, steady, previousPassFingerprint, onClose, onCloseAutoFo
         data-testid="run-panel"
       >
         <SheetTitle className="sr-only">{run.verdict}: {run.diff_message}</SheetTitle>
-        {/* One malformed run payload breaks only this sheet, never the page behind it. */}
+        {/* One malformed run payload — the fingerprint diff computation included — breaks only this
+            sheet, never the page behind it, which is why the body (and its derivations) live in a
+            child component under the boundary. */}
         <ErrorBoundary inline key={run.id}>
-        <div className="p-6 sm:p-8">
+          <RunPanelBody run={run} steady={steady} runs={runs} />
+        </ErrorBoundary>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function RunPanelBody({ run, steady, runs }) {
+  const previousPassFingerprint = findPreviousPassFingerprint(runs, run);
+  const diff = previousPassFingerprint ? computeFpDiff(previousPassFingerprint, run.fingerprint || {}) : null;
+  return (
+    <div className="p-6 sm:p-8">
           <div className="flex items-center justify-between mb-6">
             <span className={run.verdict === "PASS" ? "badge-pass" : "badge-fail"}>{run.verdict}</span>
             <SheetClose asChild>
@@ -488,10 +500,7 @@ function RunPanel({ run, steady, previousPassFingerprint, onClose, onCloseAutoFo
               <div className="mono-block text-red-300">{run.error_details}</div>
             </>
           )}
-        </div>
-        </ErrorBoundary>
-      </SheetContent>
-    </Sheet>
+    </div>
   );
 }
 

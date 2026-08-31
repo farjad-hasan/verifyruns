@@ -48,6 +48,7 @@ export function AuthProvider({ children }) {
     const { data } = await api.post("/auth/login", { email, password });
     localStorage.setItem("rp_token", data.token);
     setUser(data.user);
+    setExpired(false);
     if (posthog.__loaded) posthog.identify(data.user.id, { email: data.user.email });
     return data.user;
   };
@@ -55,6 +56,7 @@ export function AuthProvider({ children }) {
     const { data } = await api.post("/auth/register", { email, password });
     localStorage.setItem("rp_token", data.token);
     setUser(data.user);
+    setExpired(false);
     if (posthog.__loaded) {
       posthog.identify(data.user.id, { email: data.user.email });
       posthog.capture("signup");
@@ -64,11 +66,12 @@ export function AuthProvider({ children }) {
   const logout = () => {
     localStorage.removeItem("rp_token");
     setUser(false);
+    setExpired(false); // a deliberate sign-out is not an expiry
     if (posthog.__loaded) posthog.reset();
   };
 
   return (
-    <AuthCtx.Provider value={{ user, ready, login, register, logout, refresh }}>
+    <AuthCtx.Provider value={{ user, ready, expired, login, register, logout, refresh }}>
       {children}
     </AuthCtx.Provider>
   );
