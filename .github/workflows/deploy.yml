@@ -16,7 +16,8 @@ on:
       - ".github/workflows/deploy.yml"
   workflow_dispatch:
 
-# One deploy at a time, in commit order; never cancel a deploy mid-flight.
+# One deploy at a time; a newer push supersedes a pending one (the latest commit always
+# deploys; skipped intermediates show as cancelled). Never cancels a deploy mid-flight.
 concurrency:
   group: deploy-main
   cancel-in-progress: false
@@ -35,6 +36,8 @@ jobs:
 
   deploy-api:
     needs: test
+    # workflow_dispatch can be invoked from any branch carrying this file — only main deploys.
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     defaults: { run: { working-directory: worker } }
     env:
@@ -54,12 +57,19 @@ jobs:
         run: |
           base=https://verifyruns-api-staging.farjad-developer.workers.dev
           curl -sf "$base/api/" | grep -q '"ok":true'
-          # health keys off the last completed tick; allow up to 2 minutes for the cron
-          for i in $(seq 1 12); do
-            curl -sf "$base/api/health" | grep -q '"ok":true' && exit 0
+          # Health must prove a tick COMPLETED after this deploy — ok:true alone can ride the
+          # previous deployment's stamp for up to VR_HEALTH_MAX_TICK_AGE_SECONDS. Require
+          # tick_ok_age_seconds < seconds since this step began (cron fires every minute).
+          t0=$(date +%s)
+          for i in $(seq 1 18); do
+            h=$(curl -sf "$base/api/health" || true)
+            ok=$(jq -r '.ok' <<<"$h" 2>/dev/null || echo false)
+            age=$(jq -r '.tick_ok_age_seconds // empty' <<<"$h" 2>/dev/null); age=${age%.*}
+            now=$(date +%s)
+            if [ "$ok" = "true" ] && [ -n "$age" ] && [ "$age" -lt $((now - t0)) ]; then exit 0; fi
             sleep 10
           done
-          echo "staging /api/health never reached ok:true" >&2
+          echo "staging: no completed tick observed after deploy" >&2
           curl -s "$base/api/health" >&2 || true
           exit 1
 
@@ -71,16 +81,23 @@ jobs:
         run: |
           base=https://verifyruns-api.farjad-developer.workers.dev
           curl -sf "$base/api/" | grep -q '"ok":true'
-          for i in $(seq 1 12); do
-            curl -sf "$base/api/health" | grep -q '"ok":true' && exit 0
+          # Same post-deploy-tick proof as staging.
+          t0=$(date +%s)
+          for i in $(seq 1 18); do
+            h=$(curl -sf "$base/api/health" || true)
+            ok=$(jq -r '.ok' <<<"$h" 2>/dev/null || echo false)
+            age=$(jq -r '.tick_ok_age_seconds // empty' <<<"$h" 2>/dev/null); age=${age%.*}
+            now=$(date +%s)
+            if [ "$ok" = "true" ] && [ -n "$age" ] && [ "$age" -lt $((now - t0)) ]; then exit 0; fi
             sleep 10
           done
-          echo "production /api/health never reached ok:true" >&2
+          echo "production: no completed tick observed after deploy" >&2
           curl -s "$base/api/health" >&2 || true
           exit 1
 
   deploy-frontend:
     needs: deploy-api
+    if: github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
     env:
       CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -100,7 +117,7 @@ jobs:
           INLINE_RUNTIME_CHUNK: "false"
       # From the repo root so worker/wrangler.toml (no pages_build_output_dir) isn't consulted.
       - name: Deploy Pages
-        run: npx --yes wrangler@4 pages deploy frontend/build --project-name verifyruns --branch main
+        run: npx --yes wrangler@4.127.0 pages deploy frontend/build --project-name verifyruns --branch main
       - name: Smoke Pages
         run: |
           curl -sfo /dev/null https://verifyruns.pages.dev/

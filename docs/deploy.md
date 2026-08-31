@@ -102,8 +102,11 @@ npx wrangler d1 time-travel restore verifyruns --timestamp "2026-08-31T10:00:00Z
 `.github/workflows/deploy.yml` mechanizes this runbook: every push to `main` touching
 `worker/**` or `frontend/**` runs the worker suite, then **staging** (migrate → deploy →
 health smoke), and only if staging is green, **production** (migrate → deploy → smoke) and the
-Pages build+deploy. One deploy at a time, in commit order (`concurrency: deploy-main`); also
-triggerable by hand from the Actions tab (`workflow_dispatch`).
+Pages build+deploy. The staging smoke proves a **tick completed after the deploy** (not just a
+green health riding the previous deployment's stamp), so a tick-breaking migration stops before
+any production write. One deploy at a time — a newer push supersedes a pending one, so the
+latest commit always deploys (`concurrency: deploy-main`); also triggerable by hand from the
+Actions tab (`workflow_dispatch`, main only).
 
 One-time setup — two repository secrets (Settings → Secrets and variables → Actions):
 

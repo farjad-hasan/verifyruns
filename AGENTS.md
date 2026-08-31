@@ -49,6 +49,6 @@ These rules exist so that never repeats. `CLAUDE.md` is a one-line import of thi
   a deploy**; keep main green. Manual fallback (`docs/deploy.md`): `cd worker && npm run deploy`,
   then build the frontend with `REACT_APP_BACKEND_URL=https://verifyruns-api.farjad-developer.workers.dev`
   and `npx wrangler pages deploy ../frontend/build --project-name verifyruns --branch main`.
-  Migrations always before code: `migrate:staging` → smoke → `migrate:remote` → deploy.
+  Migrations always before code: `migrate:staging` → `deploy:staging` → smoke → `migrate:remote` → deploy.
 - Local dev: worker `cd worker && npm run dev` (:8787, local D1); frontend must be served on
   **:3100** — the dev CORS allowlist (`worker/.dev.vars`) accepts only that origin.
