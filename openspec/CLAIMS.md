@@ -6,14 +6,19 @@ by flipping `status` to `done` in your merge commit. Rules in [`AGENTS.md`](../A
 
 | change | owner | where | started | status |
 |---|---|---|---|---|
-| verdict-correctness | — | — | — | open |
-| alert-delivery-durability | — | — | — | open |
-| tick-run-durability | — | — | — | open |
-| auth-session-hardening | — | — | — | open |
-| run-retention | — | — | — | open |
-| app-resilience | — | — | — | open |
-| production-ops | — | — | — | open |
+| verdict-correctness | claude/prod-readiness | [PR #2](https://github.com/farjad-hasan/verifyruns/pull/2) | 2026-08-31 | done — merged 2026-09-01 |
+| alert-delivery-durability | claude/prod-readiness | [PR #1](https://github.com/farjad-hasan/verifyruns/pull/1) | 2026-08-31 | done — merged 2026-09-01 |
+| tick-run-durability | claude/prod-readiness | [PR #3](https://github.com/farjad-hasan/verifyruns/pull/3) | 2026-08-31 | done — merged 2026-09-01 |
+| auth-session-hardening | claude/prod-readiness | [PR #4](https://github.com/farjad-hasan/verifyruns/pull/4) | 2026-08-31 | done — merged 2026-09-01 |
+| run-retention | claude/prod-readiness | [PR #5](https://github.com/farjad-hasan/verifyruns/pull/5) | 2026-08-31 | done — merged 2026-09-01 |
+| app-resilience | claude/prod-readiness | [PR #6](https://github.com/farjad-hasan/verifyruns/pull/6) | 2026-08-31 | done — merged 2026-09-01 |
+| production-ops | claude/prod-readiness | [PR #7](https://github.com/farjad-hasan/verifyruns/pull/7) | 2026-08-31 | done — merged 2026-09-01 |
 | pricing-tiers | — | — | — | deferred (activation: ≥10 external live Checks) |
+
+All seven production-readiness changes were implemented as a **stacked PR chain** (#1→#7, one
+session, sequential — the overlap table below made parallel claims impractical for this set) and
+merged to main on 2026-09-01. Not yet deployed: deploy + post-deploy verifications are owed
+(see the PR bodies and `docs/deploy.md`); archive each change after it ships.
 
 ## File overlaps (from each proposal's Impact list — check before claiming in parallel)
 

@@ -40,7 +40,10 @@ These rules exist so that never repeats. `CLAUDE.md` is a one-line import of thi
   `docs/design-audit-2026-08-29.md`); changing a visual token means changing `DESIGN.md` in the
   same commit. The impeccable detector's intentional exceptions live in `.impeccable/config.json`.
 - Worker tests: `cd worker && npm test && npm run typecheck` (Postgres tests skip without Docker
-  pg on :5434). Frontend: `cd frontend && CI=false npm run build` must compile clean.
+  pg on :5434). Known flake: `listchecks.test.ts` can hit its 5 s timeout on a cold start —
+  rerun it alone before assuming a regression. Frontend: `cd frontend && yarn build` must
+  compile clean — **yarn is the pinned package manager** (`packageManager` in package.json;
+  `yarn.lock` is the one lockfile, `package-lock.json` was removed).
 - Deploy (only when asked): `cd worker && npm run deploy`, then build the frontend with
   `REACT_APP_BACKEND_URL=https://verifyruns-api.farjad-developer.workers.dev` and
   `npx wrangler pages deploy ../frontend/build --project-name verifyruns --branch main`.
