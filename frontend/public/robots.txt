@@ -6,6 +6,8 @@ Disallow: /login
 Disallow: /signup
 Disallow: /forgot
 Disallow: /reset
-Disallow: /status/
+# /status/ is deliberately NOT disallowed: de-indexing comes from the X-Robots-Tag: noindex header
+# (_headers) plus the in-page meta — a Disallow would hide the noindex from crawlers and leave
+# shared links indexable URL-only.
 
 Sitemap: https://verifyruns.pages.dev/sitemap.xml
