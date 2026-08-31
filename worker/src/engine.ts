@@ -112,7 +112,9 @@ export function computeVerdict(fp: Fingerprint, prevPasses: { fingerprint: any }
   }
 
   const notes: string[] = [];
-  if (!countExact) notes.push(`Record-count checks were skipped: the count is ${anyCapped ? "capped" : "estimated"}.`);
+  // This run's own flag names the cause; the baseline's flag is the fallback.
+  const skipWord = fp.count_capped ? "capped" : fp.count_estimated ? "estimated" : anyCapped ? "capped" : "estimated";
+  if (!countExact) notes.push(`Record-count checks were skipped: the count is ${skipWord}.`);
   const newest = fp.newest_record || {};
   const window = fp.newest_window?.length ? fp.newest_window : fp.newest_record ? [fp.newest_record] : [];
   if (nonEmpty.length && fp.newest_defined === false) {

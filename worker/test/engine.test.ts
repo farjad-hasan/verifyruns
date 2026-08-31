@@ -89,6 +89,12 @@ describe("verdict: inexact counts", () => {
     expect(v).toBe("PASS");
     expect(m).toBe(`All expectations met. ${SKIP_EST}`);
   });
+  it("this run's COUNT timing out (count_estimated on the run itself) also skips growth", () => {
+    const fp = { ...fingerprint(records(100), 100), count_estimated: true };
+    const [v, m] = computeVerdict(fp, [passRun(5_000_000)], DEFAULTS);
+    expect(v).toBe("PASS");
+    expect(m).toBe(`All expectations met. ${SKIP_EST}`);
+  });
   it("field rules still fire on a capped run", () => {
     const prev = [0, 1, 2].map(() => cappedPass(4000, ["id", "name", "sku"]));
     const [v, m] = computeVerdict(capped(fingerprint(records(100), 4000)), prev, DEFAULTS);
