@@ -19,28 +19,40 @@ export function heartbeatMessage(elapsedHours: number, heartbeatHours: number): 
   return `No run in ${Math.round(elapsedHours)} h — expected one every ${heartbeatHours} h.`;
 }
 
+export const DEFAULT_TICK_BATCH = 25;
+const batchOf = (env: Env) => Math.max(1, num(env.VR_TICK_BATCH, DEFAULT_TICK_BATCH));
+
 export async function heartbeatTick(env: Env, now: Date): Promise<number> {
   let fired = 0;
-  const rows = (await env.DB.prepare("SELECT * FROM checks WHERE heartbeat_hours IS NOT NULL AND heartbeat_hours > 0").all()).results;
+  // One range scan over the maintained due column (partial index); idle Checks cost nothing.
+  const rows = (await env.DB.prepare("SELECT * FROM checks WHERE next_heartbeat_due_at IS NOT NULL AND next_heartbeat_due_at <= ? LIMIT ?").bind(now.toISOString(), batchOf(env)).all()).results;
   for (const row of rows) {
     const c = rowToCheck(row);
+    const due = (row as any).next_heartbeat_due_at as string;
+    if (!c.heartbeat_hours) {
+      // stale column (cadence cleared under a race): heal it instead of firing
+      await env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = NULL WHERE id = ? AND next_heartbeat_due_at = ?").bind(c.id, due).run();
+      continue;
+    }
+    // The anchor is only needed for the message wording — one query per DUE Check, none for idle ones.
     const lastReal = await env.DB.prepare("SELECT timestamp FROM check_runs WHERE check_id = ? AND trigger != 'heartbeat' ORDER BY timestamp DESC LIMIT 1").bind(c.id).first<{ timestamp: string }>();
     const anchor = lastReal?.timestamp || c.created_at || nowIso();
-    const lastHb = await env.DB.prepare("SELECT heartbeat_at, timestamp FROM check_runs WHERE check_id = ? AND trigger = 'heartbeat' ORDER BY heartbeat_at DESC LIMIT 1").bind(c.id).first<{ heartbeat_at: string | null; timestamp: string }>();
-    const lastHbTs = lastHb?.heartbeat_at || lastHb?.timestamp || null;
-    if (!heartbeatDue(c.heartbeat_hours, anchor, lastHbTs, now)) continue;
     const elapsedH = (now.getTime() - new Date(anchor).getTime()) / 3600_000;
     const runId = uuid();
     const timestamp = nowIso();
-    const message = heartbeatMessage(elapsedH, c.heartbeat_hours!);
+    const message = heartbeatMessage(elapsedH, c.heartbeat_hours);
     const fp = { record_count: 0, sample_size: 0, fields: [], newest_hash: null, sample_stored: false, newest_defined: true, null_pct: {} };
     // One statement: insert only if no heartbeat already landed inside this window, so concurrent ticks cannot both fire.
-    const windowStart = new Date(now.getTime() - c.heartbeat_hours! * 3600_000).toISOString();
+    const windowStart = new Date(now.getTime() - c.heartbeat_hours * 3600_000).toISOString();
     const res = await env.DB.prepare(
       `INSERT INTO check_runs (id, check_id, timestamp, heartbeat_at, trigger, verdict, diff_message, fingerprint, error_details, is_retry, count_capped, count_estimated, claimed_new, body_note)
        SELECT ?, ?, ?, ?, 'heartbeat', 'FAIL', ?, ?, NULL, 0, 0, 0, NULL, NULL
        WHERE NOT EXISTS (SELECT 1 FROM check_runs WHERE check_id = ? AND trigger = 'heartbeat' AND COALESCE(heartbeat_at, timestamp) >= ?)`,
     ).bind(runId, c.id, timestamp, now.toISOString(), message, JSON.stringify(fp), c.id, windowStart).run();
+    // Advance the due time whether or not this caller won the insert (the loser must not re-select the
+    // Check every tick), predicated on the value we read so a fresher run-insert update is not clobbered.
+    const nextDue = new Date(now.getTime() + c.heartbeat_hours * 3600_000).toISOString();
+    await env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ? AND next_heartbeat_due_at = ?").bind(nextDue, c.id, due).run();
     if (!res.meta.changes) continue; // another tick fired this window first
     fired += 1;
     try {
@@ -55,7 +67,7 @@ export async function heartbeatTick(env: Env, now: Date): Promise<number> {
 
 export async function drainRetries(env: Env, now: Date): Promise<number> {
   let ran = 0;
-  const rows = (await env.DB.prepare("SELECT id, pending_retry FROM checks WHERE pending_retry IS NOT NULL").all<{ id: string; pending_retry: string }>()).results;
+  const rows = (await env.DB.prepare("SELECT id, pending_retry FROM checks WHERE pending_retry IS NOT NULL LIMIT ?").bind(batchOf(env)).all<{ id: string; pending_retry: string }>()).results;
   for (const row of rows) {
     const pr = JSON.parse(row.pending_retry);
     if (!pr?.due_at || new Date(pr.due_at).getTime() > now.getTime()) continue;
@@ -77,19 +89,40 @@ export async function enqueueRun(env: Env, checkId: string, item: CheckDoc["pend
   await env.DB.prepare("UPDATE checks SET pending_runs = json_insert(pending_runs, '$[#]', json(?)) WHERE id = ?").bind(JSON.stringify(item), checkId).run();
 }
 
-export async function drainPendingRuns(env: Env): Promise<number> {
+/** Remove exactly one queued item by run_id — concurrency-safe against `json_insert` appends,
+ *  since the index is re-derived inside the statement at removal time. */
+async function removeQueued(env: Env, checkId: string, runId: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE checks SET pending_runs = json_remove(pending_runs,
+       (SELECT fullkey FROM json_each(checks.pending_runs) WHERE json_extract(value, '$.run_id') = ? LIMIT 1))
+     WHERE id = ? AND EXISTS (SELECT 1 FROM json_each(checks.pending_runs) WHERE json_extract(value, '$.run_id') = ?)`,
+  ).bind(runId, checkId, runId).run();
+}
+
+/** At-least-once drain: an item leaves the queue only after its run is recorded. A tick that dies
+ *  mid-drain — thrown error or hard eviction — resumes where it stopped on the next tick. An item
+ *  whose run is already recorded (eviction landed between execute and remove) is reconciled without
+ *  a second destination fetch, since run ids are primary keys. */
+export async function drainPendingRuns(env: Env, batch?: number, exec: typeof executeCheck = executeCheck): Promise<number> {
+  const limit = batch ?? batchOf(env);
   let ran = 0;
-  const rows = (await env.DB.prepare("SELECT id, pending_runs FROM checks WHERE pending_runs != '[]'").all<{ id: string; pending_runs: string }>()).results;
+  const rows = (await env.DB.prepare("SELECT id, pending_runs FROM checks WHERE pending_runs != '[]' LIMIT ?").bind(limit).all<{ id: string; pending_runs: string }>()).results;
   for (const row of rows) {
-    const res = await env.DB.prepare("UPDATE checks SET pending_runs = '[]' WHERE id = ? AND pending_runs = ?").bind(row.id, row.pending_runs).run();
-    if (!res.meta.changes) continue; // another tick swapped it first
-    for (const item of JSON.parse(row.pending_runs) as { run_id: string; claimed_new: number | null; body_note: string | null }[]) {
-      try {
-        await executeCheck(env, row.id, "webhook", item.run_id, false, item.claimed_new ?? null, item.body_note ?? null);
-        ran += 1;
-      } catch (e) {
-        console.error("queued run failed", item.run_id, e);
+    const items = JSON.parse(row.pending_runs) as { run_id: string; claimed_new: number | null; body_note: string | null }[];
+    for (const item of items.slice(0, limit)) {
+      const recorded = await env.DB.prepare("SELECT 1 AS x FROM check_runs WHERE id = ?").bind(item.run_id).first();
+      if (!recorded) {
+        try {
+          await exec(env, row.id, "webhook", item.run_id, false, item.claimed_new ?? null, item.body_note ?? null);
+          ran += 1;
+        } catch (e) {
+          // Leave this item and its successors queued: order is preserved and the next tick resumes
+          // here. A stuck item is visible (queue depth), a dropped one would not be.
+          console.error("queued run failed; leaving it queued", item.run_id, e);
+          break;
+        }
       }
+      await removeQueued(env, row.id, item.run_id);
     }
   }
   return ran;
@@ -106,9 +139,10 @@ async function stampTick(env: Env, now: Date): Promise<void> {
   await env.DB.prepare("INSERT INTO meta (key, value) VALUES ('tick_last_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(now.toISOString()).run();
 }
 
-/** True for exactly one caller per VR_LAZY_TICK_SECONDS window (conditional update on the stamp). */
+/** True for exactly one caller per VR_LAZY_TICK_SECONDS window (conditional update on the stamp).
+ *  The cron covers the minute cadence in production; the lazy tick is the self-hosters' fallback. */
 export async function claimLazyTick(env: Env, now: Date = new Date()): Promise<boolean> {
-  const windowS = num(env.VR_LAZY_TICK_SECONDS, 60);
+  const windowS = num(env.VR_LAZY_TICK_SECONDS, 300);
   if (windowS <= 0) return false;
   const cutoff = new Date(now.getTime() - windowS * 1000).toISOString();
   const res = await env.DB.prepare("UPDATE meta SET value = ? WHERE key = 'tick_last_at' AND value < ?").bind(now.toISOString(), cutoff).run();
@@ -128,6 +162,9 @@ export async function tick(env: Env, now: Date = new Date()): Promise<TickResult
   const queued = await drainPendingRuns(env);
   const retries = await drainRetries(env, now);
   const expired_samples = await expireSamples(env, now);
+  // Completion stamp, distinct from the start stamp above: a tick that starts and then throws every
+  // invocation is observable as a stale tick_last_ok_at while tick_last_at stays fresh.
+  await env.DB.prepare("INSERT INTO meta (key, value) VALUES ('tick_last_ok_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(now.toISOString()).run();
   return { heartbeats, queued, retries, expired_samples };
 }
 

@@ -31,6 +31,9 @@ export interface CheckDoc {
   last_alerted_verdict: string | null;
   pending_retry: { due_at: string; claimed_new: number | null } | null;
   pending_runs: { run_id: string; claimed_new: number | null; body_note: string | null; queued_at: string }[];
+  /** Maintained, not computed: run inserts, heartbeat fires and heartbeat_hours changes keep it
+   *  current so the tick's heartbeat sweep is one indexed range scan. NULL = no heartbeat. */
+  next_heartbeat_due_at: string | null;
 }
 
 export function rowToCheck(row: any): CheckDoc {
@@ -53,6 +56,7 @@ export function rowToCheck(row: any): CheckDoc {
     last_alerted_verdict: row.last_alerted_verdict ?? null,
     pending_retry: row.pending_retry ? JSON.parse(row.pending_retry) : null,
     pending_runs: JSON.parse(row.pending_runs || "[]"),
+    next_heartbeat_due_at: row.next_heartbeat_due_at ?? null,
   };
 }
 
@@ -179,15 +183,35 @@ export async function insertCheck(env: Env, c: CheckDoc): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO checks (id, user_id, name, connector_kind, config, expectations, webhook_secret, created_at,
        retry_before_alert, heartbeat_hours, store_samples, alert_slack_webhook_encrypted, alert_channels,
-       public_token, snooze_until, last_alerted_verdict, pending_retry, pending_runs)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+       public_token, snooze_until, last_alerted_verdict, pending_retry, pending_runs, next_heartbeat_due_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       c.id, c.user_id, c.name, c.connector_kind, JSON.stringify(c.config), JSON.stringify(c.expectations), c.webhook_secret, c.created_at,
       c.retry_before_alert ? 1 : 0, c.heartbeat_hours, c.store_samples ? 1 : 0, c.alert_slack_webhook_encrypted, JSON.stringify(c.alert_channels),
       c.public_token, c.snooze_until, c.last_alerted_verdict, c.pending_retry ? JSON.stringify(c.pending_retry) : null, JSON.stringify(c.pending_runs),
+      c.heartbeat_hours ? new Date(Date.parse(c.created_at) + c.heartbeat_hours * 3600_000).toISOString() : null,
     )
     .run();
+}
+
+/** Recompute next_heartbeat_due_at from stored state (same expression as the 0003 backfill):
+ *  one window after the latest real run (or created_at), never earlier than one window after the
+ *  last fired heartbeat. Used when heartbeat_hours changes. */
+export async function recomputeHeartbeatDue(env: Env, id: string): Promise<void> {
+  await env.DB.prepare(
+    `UPDATE checks SET next_heartbeat_due_at = CASE
+       WHEN heartbeat_hours IS NULL OR heartbeat_hours <= 0 THEN NULL
+       ELSE strftime(
+         '%Y-%m-%dT%H:%M:%fZ',
+         MAX(
+           COALESCE((SELECT MAX(timestamp) FROM check_runs WHERE check_id = checks.id AND "trigger" != 'heartbeat'), created_at),
+           COALESCE((SELECT MAX(COALESCE(heartbeat_at, timestamp)) FROM check_runs WHERE check_id = checks.id AND "trigger" = 'heartbeat'), '')
+         ),
+         '+' || heartbeat_hours || ' hours')
+     END
+     WHERE id = ?`,
+  ).bind(id).run();
 }
 
 /** Set scalar/JSON columns; values that are objects/arrays are JSON-encoded, booleans become 0/1. */

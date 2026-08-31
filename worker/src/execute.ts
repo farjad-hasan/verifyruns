@@ -65,6 +65,12 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
       ),
     );
   }
+  // Every real run re-anchors the heartbeat: due one window from now, in the same batch as the run.
+  if (c.heartbeat_hours) {
+    stmts.push(
+      env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ?").bind(new Date(Date.parse(timestamp) + c.heartbeat_hours * 3600_000).toISOString(), checkId),
+    );
+  }
   await env.DB.batch(stmts);
   const run: RunResult = { id: runId, verdict, diff_message: message, timestamp };
 
