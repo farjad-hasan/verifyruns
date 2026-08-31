@@ -67,7 +67,9 @@ export async function encryptSecret(encKey: string, plain: string): Promise<stri
   return b64encode(out);
 }
 
-export async function decryptSecret(encKey: string, cipher: string | null | undefined): Promise<string> {
+/** `""` means "nothing stored" (legacy empty); `null` means "something is stored but unreadable"
+ *  (wrong key, corrupt ciphertext). Callers must treat `null` as a failure, never as absence. */
+export async function decryptSecret(encKey: string, cipher: string | null | undefined): Promise<string | null> {
   if (!cipher) return "";
   try {
     const key = await aesKey(encKey);
@@ -76,7 +78,7 @@ export async function decryptSecret(encKey: string, cipher: string | null | unde
     const ct = bytes.slice(12);
     return dec.decode(await crypto.subtle.decrypt({ name: "AES-GCM", iv }, key, ct));
   } catch {
-    return "";
+    return null;
   }
 }
 
