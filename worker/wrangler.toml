@@ -55,7 +55,7 @@ CORS_ORIGINS = "*"
 [[env.staging.d1_databases]]
 binding = "DB"
 database_name = "verifyruns-staging"
-database_id = "REPLACE_WITH_STAGING_D1_ID"   # from `wrangler d1 create verifyruns-staging`
+database_id = "a2cb5304-22a0-4c7e-ae7d-787bfde96908"
 migrations_dir = "migrations"
 
 [env.staging.triggers]
