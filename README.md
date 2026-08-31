@@ -29,14 +29,14 @@ Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/
 | Connector | Config | Count | Newest record |
 |---|---|---|---|
 | HTTP / JSON | GET URL, optional bearer token, optional JSON path to the array, optional `newest_key` | length of the array | max of `newest_key`, else the last element |
-| Airtable | base id, table, optional view, personal access token | true count via `offset` paging (ceiling 10,000) | newest `createdTime` |
+| Airtable | base id, table, optional view, personal access token | true count via `offset` paging (ceiling 4,000; beyond it the count is marked capped and growth rules stand down) | newest `createdTime` |
 | Postgres | connection string (TLS unless `sslmode=disable`; on the hosted build the certificate must be publicly trusted — see `docs/deploy.md`), a single read-only `SELECT`/`WITH` | `COUNT(*)` of the query | the query's own `ORDER BY … DESC`; without one, newest-record rules are skipped and the run says so |
 
-Secrets are Fernet-encrypted at rest and only ever shown masked to their last four characters. All destination reads happen server-side.
+Secrets are encrypted at rest with AES-256-GCM and only ever shown masked to their last four characters. All destination reads happen server-side.
 
 ## Verdict rules
 
-- **Growth** — the destination must gain at least `min_new_records` (default 1; `0` makes growth optional), or at least what the workflow claimed with `{"wrote": N}`.
+- **Growth** — the destination must gain at least `min_new_records` (the New Check form defaults to 0, "growth optional"; set 1 to assert every run adds a record), or at least what the workflow claimed with `{"wrote": N}`.
 - **Steady** — the count must not change (lookup tables, config rows).
 - **Claimed** — every webhook run must send `{"wrote": N}`; the destination must gain N.
 - **Required fields** must be present; a field present in every one of the last 30 good runs that disappears is a FAIL.
@@ -47,12 +47,9 @@ The engine is deterministic code — no model, no score you cannot inspect. Ever
 
 ## Run it yourself
 
-API: a Cloudflare Worker with D1 (`worker/`, TypeScript); the original FastAPI + MongoDB build lives in git history (tag `python-backend-final`). Frontend: React 19 + Tailwind + shadcn/ui. Deployment: [docs/deploy.md](docs/deploy.md) — Workers + D1 + Pages, $0.
+API: a Cloudflare Worker with D1 (`worker/`, TypeScript); the original FastAPI + MongoDB build lives in git history (tag `python-backend-final`). Frontend: React 19 + Tailwind + shadcn/ui (yarn — it is pinned via `packageManager`). Deployment: [docs/deploy.md](docs/deploy.md) — Workers + D1 + Pages, $0.
 
 ```bash
-# MongoDB
-docker run -d --name verifyruns-mongo -p 27017:27017 mongo:7
-
 # API (Cloudflare Worker, runs locally in workerd)
 cd worker && npm install
 cp .dev.vars.example .dev.vars      # replace the three placeholder secrets
@@ -60,9 +57,9 @@ npm run migrate:local
 npm run dev                         # http://localhost:8787
 
 # Frontend
-cd ../frontend && npm install --legacy-peer-deps
+cd ../frontend && yarn install
 echo 'REACT_APP_BACKEND_URL=http://localhost:8787' > .env
-PORT=3100 npm start
+PORT=3100 yarn start
 ```
 
 ## Tests

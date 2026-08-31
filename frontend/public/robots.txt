@@ -6,5 +6,6 @@ Disallow: /login
 Disallow: /signup
 Disallow: /forgot
 Disallow: /reset
+Disallow: /status/
 
 Sitemap: https://verifyruns.pages.dev/sitemap.xml

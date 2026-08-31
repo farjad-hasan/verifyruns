@@ -28,6 +28,16 @@ export default function PublicStatus() {
   const [data, setData] = useState(null);
   const [error, setError] = useState("");
 
+  // Shareable, not discoverable: robots.txt disallows /status/ and this backs it up for
+  // crawlers that reached a shared link some other way.
+  useEffect(() => {
+    const tag = document.createElement("meta");
+    tag.name = "robots";
+    tag.content = "noindex";
+    document.head.appendChild(tag);
+    return () => tag.remove();
+  }, []);
+
   const load = useCallback(async () => {
     try {
       const { data } = await axios.get(`${API}/public/checks/${token}`);

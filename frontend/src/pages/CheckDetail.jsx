@@ -850,6 +850,7 @@ function PublicStatusCard({ check, onSaved }) {
     : "";
 
   const enable = async () => {
+    if (!window.confirm(`Enable the public status page? Anyone with the link will see this check's name ("${check.name}"), its verdicts, and their diff sentences.`)) return;
     setBusy(true);
     try {
       await api.post(`/checks/${check.id}/public`);

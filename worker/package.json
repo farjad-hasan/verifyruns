@@ -10,6 +10,8 @@
     "typecheck": "tsc --noEmit",
     "migrate:local": "wrangler d1 migrations apply verifyruns --local",
     "migrate:remote": "wrangler d1 migrations apply verifyruns --remote",
+    "migrate:staging": "wrangler d1 migrations apply verifyruns-staging --remote --env staging",
+    "deploy:staging": "wrangler deploy --env staging",
     "bundle:pg": "esbuild node_modules/pg/lib/index.js --bundle --format=esm --platform=node --target=es2022 --conditions=workerd --banner:js=\"import { createRequire as __cr } from 'node:module'; const require = __cr('file:///');\" --outfile=src/vendor/pg.mjs"
   },
   "devDependencies": {
