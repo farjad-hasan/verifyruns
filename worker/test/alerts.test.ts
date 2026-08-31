@@ -58,9 +58,48 @@ describe("delivery durability", () => {
     expect((await getCheck(env, c.id))!.last_alerted_verdict).toBeNull();
     setFetchForTests(async () => new Response("ok"));
     const run2 = await insertRun(c.id, "af2", "FAIL");
+    const mid = await failureCounter();
     await maybeAlert(env, (await getCheck(env, c.id))!, run2, false);
     expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("FAIL");
     expect(await alertsSent("af2")).toEqual([{ kind: "slack", ok: true }]);
+    expect(await failureCounter()).toBe(mid); // healthy delivery does not move the counter
+  });
+
+  it("a stale doc cannot make the rollback re-assert this caller's own FAIL claim", async () => {
+    setFetchForTests(async () => new Response("no", { status: 500 }));
+    const u = await user();
+    const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }] });
+    // the doc is loaded while the stored value is still FAIL (an alerted streak)...
+    await env.DB.prepare("UPDATE checks SET last_alerted_verdict = 'FAIL' WHERE id = ?").bind(c.id).run();
+    const staleDoc = (await getCheck(env, c.id))!;
+    // ...then a concurrent recovery claims PASS before this run's verdict lands
+    await env.DB.prepare("UPDATE checks SET last_alerted_verdict = 'PASS' WHERE id = ?").bind(c.id).run();
+    const run = await insertRun(c.id, "as1", "FAIL");
+    await maybeAlert(env, staleDoc, run, false);
+    // the failed delivery must release the claim, not restore the stale 'FAIL'
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBeNull();
+    setFetchForTests(async () => new Response("ok"));
+    const run2 = await insertRun(c.id, "as2", "FAIL");
+    await maybeAlert(env, (await getCheck(env, c.id))!, run2, false);
+    expect(await alertsSent("as2")).toEqual([{ kind: "slack", ok: true }]);
+  });
+
+  it("a failed recovery delivery re-alerts on the next PASS even with a stale doc", async () => {
+    setFetchForTests(async () => new Response("no", { status: 500 }));
+    const u = await user();
+    const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }] });
+    await env.DB.prepare("UPDATE checks SET last_alerted_verdict = 'FAIL' WHERE id = ?").bind(c.id).run();
+    const staleDoc = { ...(await getCheck(env, c.id))!, last_alerted_verdict: null }; // doc predates the FAIL alert
+    const run = await insertRun(c.id, "ar1", "PASS");
+    await maybeAlert(env, staleDoc, run, false);
+    expect(await alertsSent("ar1")).toEqual([{ kind: "slack", ok: false, error: "500 no" }]);
+    // the rollback must restore 'FAIL' (guaranteed by the claim predicate), not the stale null
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("FAIL");
+    setFetchForTests(async () => new Response("ok"));
+    const run2 = await insertRun(c.id, "ar2", "PASS");
+    await maybeAlert(env, (await getCheck(env, c.id))!, run2, false);
+    expect(await alertsSent("ar2")).toEqual([{ kind: "slack", ok: true }]);
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("PASS");
   });
 
   it("one of two channels failing keeps the claim and records both outcomes", async () => {

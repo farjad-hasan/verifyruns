@@ -63,10 +63,6 @@ export async function maybeAlert(env: Env, c: CheckDoc, run: { id: string; verdi
   const chans = await channels(env, c);
   if (!chans.length) return;
   if (snoozed) return;
-  // Captured before the claim: what the rollback restores when no channel delivers. For a FAIL claim
-  // this may be stale (NULL vs 'PASS'), but either restores a non-FAIL state, so the next FAIL of the
-  // streak can claim again; a PASS claim guarantees the prior was 'FAIL'.
-  const prior = c.last_alerted_verdict === "FAIL" || c.last_alerted_verdict === "PASS" ? c.last_alerted_verdict : null;
   // Claim the transition before delivering: a predicated UPDATE changes exactly one caller's row.
   let next: "FAIL" | "PASS";
   let claim: D1Result;
@@ -78,6 +74,12 @@ export async function maybeAlert(env: Env, c: CheckDoc, run: { id: string; verdi
     claim = await env.DB.prepare("UPDATE checks SET last_alerted_verdict = 'PASS' WHERE id = ? AND last_alerted_verdict = 'FAIL'").bind(c.id).run();
   } else return;
   if (!claim.meta.changes) return; // not a transition, or another caller claimed it
+  // What the rollback restores when no channel delivers. Derived from the claim, never from the
+  // in-memory doc — the doc was loaded before the destination fetch and can be stale, and restoring
+  // a stale 'FAIL' would re-assert this caller's own claim and mute the streak. A PASS claim's
+  // predicate guarantees the prior was 'FAIL'; a FAIL claim restores NULL, which is behaviourally
+  // identical to 'PASS' for every predicate that reads this column.
+  const prior = next === "PASS" ? "FAIL" : null;
   const appUrl = (env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
   const link = appUrl ? `${appUrl}/checks/${c.id}` : "";
   const state: AlertState = next === "FAIL" ? "FAIL" : "Recovered";
@@ -105,6 +107,8 @@ export async function maybeAlert(env: Env, c: CheckDoc, run: { id: string; verdi
     // the claimed value — if another caller moved the state meanwhile, their state stands.
     stmts.push(env.DB.prepare("UPDATE checks SET last_alerted_verdict = ? WHERE id = ? AND last_alerted_verdict = ?").bind(prior, c.id, next));
   }
+  // If this batch throws (DB outage), the claim stands with nothing delivered and the streak stays
+  // muted until the next transition; execute.ts catches and logs. Accepted: rarer than channel failure.
   await env.DB.batch(stmts);
 }
 
