@@ -6,3 +6,9 @@
   Referrer-Policy: no-referrer
   Permissions-Policy: camera=(), microphone=(), geolocation=()
   X-Frame-Options: DENY
+
+# Status pages are shareable, not discoverable. The header (not a robots.txt Disallow) is what
+# de-indexes: a Disallow would stop crawlers from ever SEEING the noindex, leaving shared links
+# indexable URL-only. Crawling one status page costs nothing, and the header needs no JS.
+/status/*
+  X-Robots-Tag: noindex

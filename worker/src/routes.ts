@@ -404,12 +404,27 @@ export function rowToRun(row: any): Record<string, any> {
  *  request's own lazy tick runs (that is scheduled after the response), so a dead cron cannot hide behind the probe. */
 export async function health(env: Env): Promise<Response> {
   const maxAge = num(env.VR_HEALTH_MAX_TICK_AGE_SECONDS, 600);
-  const row = await env.DB.prepare("SELECT value FROM meta WHERE key = 'tick_last_at'").first<{ value: string }>();
+  const rows = (await env.DB.prepare("SELECT key, value FROM meta WHERE key IN ('tick_last_at', 'tick_last_ok_at', 'alert_delivery_failures')").all<{ key: string; value: string }>()).results;
+  const get = (k: string) => rows.find((r) => r.key === k)?.value;
   const now = Date.now();
-  const last = row ? new Date(row.value).getTime() : NaN;
-  const age = Number.isFinite(last) ? Math.max(0, Math.floor((now - last) / 1000)) : null;
-  const ok = age !== null && age <= maxAge;
-  return json({ ok, tick_age_seconds: age, max_tick_age_seconds: maxAge, checked_at: new Date(now).toISOString() }, ok ? 200 : 503);
+  const ageOf = (iso: string | undefined) => {
+    const t = iso ? new Date(iso).getTime() : NaN;
+    return Number.isFinite(t) ? Math.max(0, Math.floor((now - t) / 1000)) : null;
+  };
+  const age = ageOf(get("tick_last_at")); // start stamp: kept for existing probes
+  const okAge = ageOf(get("tick_last_ok_at")); // completion stamp: a tick that starts then throws goes stale here
+  const ok = okAge !== null && okAge <= maxAge;
+  return json(
+    {
+      ok,
+      tick_age_seconds: age,
+      tick_ok_age_seconds: okAge,
+      max_tick_age_seconds: maxAge,
+      alert_delivery_failures: Number(get("alert_delivery_failures") ?? 0), // visibility only; never flips ok
+      checked_at: new Date(now).toISOString(),
+    },
+    ok ? 200 : 503,
+  );
 }
 
 export function meta(env: Env): Response {

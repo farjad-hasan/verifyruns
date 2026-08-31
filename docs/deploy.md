@@ -49,7 +49,7 @@ The cron trigger (`* * * * *` in `wrangler.toml`) starts with the deploy: every 
 Either direct upload (what is live now — see the top of this page) or Git integration: Workers & Pages → Create → Pages → connect `farjad-hasan/verifyruns`:
 
 - Root directory: `frontend`
-- Build command: `npm install --legacy-peer-deps && npm run build`
+- Build command: `yarn install && yarn build` (yarn is the pinned package manager; `frontend/yarn.lock` is the one lockfile)
 - Output directory: `build`
 - Variables: `REACT_APP_BACKEND_URL` = the Worker URL from step 3 (**no trailing slash**), `NODE_VERSION` = `20`
 
@@ -65,7 +65,48 @@ Then point the API at the Pages origin: edit `PUBLIC_APP_URL` and `CORS_ORIGINS`
 2. `curl -X POST https://<worker-url>/api/hook/<secret>` → a JSON verdict in the response.
 3. `curl -X POST https://<worker-url>/api/internal/tick -H "X-Tick-Secret: …"` → `{"heartbeats":0,"queued":0,"retries":0,"expired_samples":0}`.
 4. Cloudflare dashboard → the Worker → Logs: a `tick` line appears whenever something was processed.
-5. `curl -f https://<worker-url>/api/health` → `{"ok":true,"tick_age_seconds":…}`; it answers 503 once the cron has been silent for `VR_HEALTH_MAX_TICK_AGE_SECONDS` (default 600). `.github/workflows/monitor.yml` probes it every 30 minutes and fails loudly; `ci.yml` runs the worker suite and a frontend build on every push.
+5. `curl -f https://<worker-url>/api/health` → `{"ok":true,"tick_ok_age_seconds":…}`; `ok` keys off the last *successfully completed* tick (`tick_last_ok_at`), so a cron that starts and then throws every run goes 503 once it exceeds `VR_HEALTH_MAX_TICK_AGE_SECONDS` (default 600). The response also reports `alert_delivery_failures` (a counter, for visibility — it never flips `ok`) and keeps the old `tick_age_seconds` field. `.github/workflows/monitor.yml` probes every 30 minutes as a second opinion — **GitHub disables scheduled workflows after 60 days without repository activity**, which is why the external monitor below is the primary; `ci.yml` runs the worker suite and a frontend build on every push.
+
+## External uptime monitor (primary)
+
+The primary monitor must live outside both this repository and the Cloudflare account. Any free uptime service (UptimeRobot, Better Stack, and similar) works; configure two checks, 5-minute interval, alerting to the owner's email:
+
+1. `GET https://<worker-url>/api/health` — alert unless the response is HTTP 200 **and** the body contains the keyword `"ok":true`.
+2. `GET https://verifyruns.pages.dev/` — alert unless HTTP 200.
+
+Verify the alert path once by forcing a failure (e.g. point a third throwaway check at a bogus path and watch the email arrive), then delete the throwaway.
+
+## Backups, keys, and restore
+
+**Key custody.** `ENC_KEY`, `JWT_SECRET` and `VR_TICK_SECRET` belong in a password manager, not only in a dotfile. Losing `ENC_KEY` makes **every stored connector credential and alert target permanently unreadable** — users would have to re-enter them all. Losing `JWT_SECRET` merely logs everyone out. Treat `~/.verifyruns-secrets.env` as a cache of the password-manager entry, never the only copy.
+
+**Scheduled export.** Weekly (calendar reminder or cron on any machine):
+
+```bash
+cd worker && npx wrangler d1 export verifyruns --remote --output backup-$(date +%Y%m%d).sql
+```
+
+Keep the last few exports somewhere that is not the laptop (cloud drive is fine — the dump contains only encrypted secrets, but treat it as production data).
+
+**D1 Time Travel** is the first response to a bad migration or data corruption: D1 keeps 30 days of point-in-time history on every database, no setup needed. Find a timestamp/bookmark and restore:
+
+```bash
+npx wrangler d1 time-travel info verifyruns --timestamp "2026-08-31T10:00:00Z"
+npx wrangler d1 time-travel restore verifyruns --timestamp "2026-08-31T10:00:00Z"
+```
+
+**Restore rehearsal** (do once, record the transcript here): create a scratch database `wrangler d1 create verifyruns-restore-test`, then `npx wrangler d1 execute verifyruns-restore-test --remote --file backup-<date>.sql`, then point a scratch Worker at it and confirm `/api/health` and one login work. A fresh clone plus the password-manager keys plus the latest export must be sufficient to reach a working deploy.
+
+## Staging
+
+`wrangler.toml` defines `[env.staging]` (`verifyruns-api-staging` + D1 `verifyruns-staging`). One-time setup: `wrangler d1 create verifyruns-staging`, paste the id into `wrangler.toml`, and set the three secrets with `wrangler secret put <NAME> --env staging`.
+
+Every migration goes through staging first, in this order:
+
+1. `npm run migrate:staging`
+2. `npm run deploy:staging`
+3. Smoke: `curl -f https://verifyruns-api-staging.<subdomain>.workers.dev/api/health`; one webhook round-trip (register a scratch user, create a Check against `https://jsonplaceholder.typicode.com/todos`, `POST /api/hook/<secret>` → verdict).
+4. Only then `npm run migrate:remote` and `npm run deploy`.
 
 ## Free-plan limits that shape behaviour
 

@@ -26,6 +26,7 @@ VerifyRuns is one Cloudflare Worker (`worker/`, TypeScript) with a D1 database a
 | `VR_RETRY_DELAY_SECONDS` | `30` | how long after a fresh FAIL the retry becomes due; it runs on the next tick |
 | `VR_LAZY_TICK_SECONDS` | `300` | any request this long after the last tick runs one in the background (`0` disables); it is the fallback for hosts without a cron trigger — with the every-minute cron configured it rarely fires. Was `60` before 2026-08-31 |
 | `VR_TICK_BATCH` | `25` | per-tick ceiling for each sweep (heartbeats, queued runs, retries); backlog beyond it drains on the following ticks |
+| `VR_HEALTH_MAX_TICK_AGE_SECONDS` | `600` | `/api/health` answers 503 once the last successfully completed tick is older than this |
 | `VR_PBKDF2_ITERATIONS` | `600000` | PBKDF2-SHA256 cost for new password hashes; stored hashes carry their own count and upgrade on the next successful login. Lowering it never weakens existing hashes. If the runtime refuses the count (Cloudflare has historically capped PBKDF2 at 100,000), the worker falls back to 100,000 and logs it rather than failing logins |
 | `VR_PG_CONNECT_TIMEOUT_MS` | `15000` | Postgres connection budget, one attempt, no reconnects. TLS is used unless the DSN says `sslmode=disable`; see the certificate note in `deploy.md` |
 | `VR_PG_COUNT_TIMEOUT_MS` / `VR_PG_SAMPLE_TIMEOUT_MS` | `15000` | Postgres `COUNT(*)` timeout (falls back to the sample length, `count_estimated: true`) and sample query timeout |
@@ -37,4 +38,4 @@ Destinations must be public addresses unless `VR_ALLOW_PRIVATE_EGRESS=1`; redire
 
 ## Backups
 
-`wrangler d1 export verifyruns --remote --output backup.sql` dumps the database; `ENC_KEY` must be backed up alongside it or the connector secrets inside are unreadable.
+`wrangler d1 export verifyruns --remote --output backup.sql` dumps the database; `ENC_KEY` must be backed up alongside it or the connector secrets inside are unreadable. D1 also keeps 30 days of point-in-time history for free (**Time Travel**): `wrangler d1 time-travel restore verifyruns --timestamp "<ISO>"` is the first response to a bad migration — no setup needed, but it does not replace off-account exports.

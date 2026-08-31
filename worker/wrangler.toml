@@ -31,3 +31,35 @@ crons = ["* * * * *"]
 
 [observability]
 enabled = true
+
+# Staging: its own Worker and D1 so every migration is applied and smoke-tested here first
+# (docs/deploy.md "Staging" checklist). Create the database once with
+# `wrangler d1 create verifyruns-staging` and paste its id below; set the same three secrets with
+# `wrangler secret put <NAME> --env staging`.
+[env.staging]
+name = "verifyruns-api-staging"
+
+[env.staging.vars]
+DB_NAME = "verifyruns-staging"
+VR_EARLY_ACCESS = "1"
+VR_ALLOW_PRIVATE_EGRESS = "0"
+VR_RETRY_DELAY_SECONDS = "30"
+VR_LAZY_TICK_SECONDS = "300"
+VR_TICK_BATCH = "25"
+VR_AIRTABLE_MAX_PAGES = "40"
+VR_MAX_RESPONSE_BYTES = "5242880"
+VR_PBKDF2_ITERATIONS = "600000"
+PUBLIC_APP_URL = ""
+CORS_ORIGINS = "*"
+
+[[env.staging.d1_databases]]
+binding = "DB"
+database_name = "verifyruns-staging"
+database_id = "REPLACE_WITH_STAGING_D1_ID"   # from `wrangler d1 create verifyruns-staging`
+migrations_dir = "migrations"
+
+[env.staging.triggers]
+crons = ["* * * * *"]
+
+[env.staging.observability]
+enabled = true

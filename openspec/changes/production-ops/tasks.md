@@ -1,16 +1,16 @@
 ## 0. Prerequisites
 
-- [ ] 0.1 `tick-run-durability` merged (provides `tick_last_ok_at`)
-- [ ] 0.2 `alert-delivery-durability` merged (provides `meta.alert_delivery_failures`)
+- [x] 0.1 `tick-run-durability` merged (provides `tick_last_ok_at`)
+- [x] 0.2 `alert-delivery-durability` merged (provides `meta.alert_delivery_failures`)
 
 ## 1. Tests first (worker/test/health.test.ts)
 
-- [ ] 1.1 health keys `ok` off `tick_last_ok_at`; start-stamp-only staleness → 503; response carries `tick_ok_age_seconds` and `alert_delivery_failures`; old `tick_age_seconds` field retained
+- [x] 1.1 health keys `ok` off `tick_last_ok_at`; start-stamp-only staleness → 503; response carries `tick_ok_age_seconds` and `alert_delivery_failures`; old `tick_age_seconds` field retained
 
 ## 2. Worker + config
 
-- [ ] 2.1 `routes.ts` health handler per spec
-- [ ] 2.2 `wrangler.toml`: `[env.staging]` (worker name, staging D1 id, same vars); `package.json`: `migrate:staging`, `deploy:staging`
+- [x] 2.1 `routes.ts` health handler per spec
+- [x] 2.2 `wrangler.toml`: `[env.staging]` (worker name, staging D1 id, same vars); `package.json`: `migrate:staging`, `deploy:staging`
 
 ## 3. Operations (outside the repo, documented inside it)
 
@@ -21,10 +21,10 @@
 
 ## 4. Frontend + docs
 
-- [ ] 4.1 `robots.txt`: `Disallow: /status/`; `PublicStatus.jsx` sets `noindex` meta; enable-confirm dialog in `CheckDetail.jsx`
-- [ ] 4.2 `docs/deploy.md`: Backups & restore section, key custody, staging checklist, external monitor config; note monitor.yml's auto-disable beside its description
-- [ ] 4.3 `docs/self-hosting.md`: mirror the backup/Time Travel guidance; add the missing `VR_HEALTH_MAX_TICK_AGE_SECONDS` row
-- [ ] 4.4 Rewrite `CLAUDE.md` (delete the FastAPI/Mongo/pytest/yarn sections; point at `worker/`, `openspec/specs/`, `docs/deploy.md`, `DESIGN.md`, `memory/PRD.md`) and fix `README.md` (drop the MongoDB setup block, Fernet → AES-256-GCM); resolve the npm/yarn lockfile split one way
+- [x] 4.1 `/status/*` sends `X-Robots-Tag: noindex` via `_headers` (robots.txt deliberately does NOT disallow the path — a Disallow would hide the noindex); `PublicStatus.jsx` sets `noindex` meta; enable-confirm dialog in `CheckDetail.jsx`
+- [x] 4.2 `docs/deploy.md`: Backups & restore section, key custody, staging checklist, external monitor config; note monitor.yml's auto-disable beside its description
+- [x] 4.3 `docs/self-hosting.md`: mirror the backup/Time Travel guidance; add the missing `VR_HEALTH_MAX_TICK_AGE_SECONDS` row
+- [x] 4.4 Rewrite `CLAUDE.md` (delete the FastAPI/Mongo/pytest/yarn sections; point at `worker/`, `openspec/specs/`, `docs/deploy.md`, `DESIGN.md`, `memory/PRD.md`) and fix `README.md` (drop the MongoDB setup block, Fernet → AES-256-GCM); resolve the npm/yarn lockfile split one way
 
 ## 5. Verify locally, then push
 
