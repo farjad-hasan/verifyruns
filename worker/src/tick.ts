@@ -67,7 +67,10 @@ export async function heartbeatTick(env: Env, now: Date): Promise<number> {
 
 export async function drainRetries(env: Env, now: Date): Promise<number> {
   let ran = 0;
-  const rows = (await env.DB.prepare("SELECT id, pending_retry FROM checks WHERE pending_retry IS NOT NULL LIMIT ?").bind(batchOf(env)).all<{ id: string; pending_retry: string }>()).results;
+  // The due filter keeps not-yet-due retries from occupying LIMIT slots and starving due ones.
+  const rows = (
+    await env.DB.prepare("SELECT id, pending_retry FROM checks WHERE pending_retry IS NOT NULL AND json_extract(pending_retry, '$.due_at') <= ? LIMIT ?").bind(now.toISOString(), batchOf(env)).all<{ id: string; pending_retry: string }>()
+  ).results;
   for (const row of rows) {
     const pr = JSON.parse(row.pending_retry);
     if (!pr?.due_at || new Date(pr.due_at).getTime() > now.getTime()) continue;
@@ -106,10 +109,15 @@ async function removeQueued(env: Env, checkId: string, runId: string): Promise<v
 export async function drainPendingRuns(env: Env, batch?: number, exec: typeof executeCheck = executeCheck): Promise<number> {
   const limit = batch ?? batchOf(env);
   let ran = 0;
+  // The item budget is shared across the whole sweep, not per Check — each execution is a
+  // destination fetch, and the Workers subrequest budget is per invocation.
+  let budget = limit;
   const rows = (await env.DB.prepare("SELECT id, pending_runs FROM checks WHERE pending_runs != '[]' LIMIT ?").bind(limit).all<{ id: string; pending_runs: string }>()).results;
   for (const row of rows) {
+    if (budget <= 0) break;
     const items = JSON.parse(row.pending_runs) as { run_id: string; claimed_new: number | null; body_note: string | null }[];
-    for (const item of items.slice(0, limit)) {
+    for (const item of items.slice(0, budget)) {
+      budget -= 1;
       const recorded = await env.DB.prepare("SELECT 1 AS x FROM check_runs WHERE id = ?").bind(item.run_id).first();
       if (!recorded) {
         try {

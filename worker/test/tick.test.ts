@@ -1,7 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { env } from "cloudflare:test";
 import { setFetchForTests } from "../src/net";
-import { claimLazyTick, drainPendingRuns, heartbeatDue, heartbeatMessage, tick } from "../src/tick";
+import { claimLazyTick, drainPendingRuns, heartbeatDue, heartbeatMessage, heartbeatTick, tick } from "../src/tick";
 import { executeCheck } from "../src/execute";
 import { api, jsonResponse, makeCheck, user } from "./helpers";
 
@@ -156,6 +156,65 @@ describe("tick (D1)", () => {
     expect((await tick(small)).queued).toBe(2);
     expect((await tick(small)).queued).toBe(1);
     expect((await runsOf(c.id, u.token)).length).toBe(5);
+  });
+
+  it("the item budget is shared across Checks: each execution is a destination fetch", async () => {
+    serve();
+    const u = await user();
+    const c1 = await makeCheck(u.token, { expectations: { min_new_records: 0 } });
+    const c2 = await makeCheck(u.token, { expectations: { min_new_records: 0 } });
+    for (let i = 0; i < 3; i++) await api(`/hook/${c1.webhook_secret}?wait=0`, { method: "POST" });
+    for (let i = 0; i < 3; i++) await api(`/hook/${c2.webhook_secret}?wait=0`, { method: "POST" });
+    const small = { ...env, VR_TICK_BATCH: "4" } as any;
+    expect((await tick(small)).queued).toBe(4); // not 3 + 3
+    expect((await tick(small)).queued).toBe(2);
+    expect((await runsOf(c1.id, u.token)).length).toBe(3);
+    expect((await runsOf(c2.id, u.token)).length).toBe(3);
+  });
+
+  it("the sweep's due-advance does not clobber a fresher value a run insert wrote mid-sweep", async () => {
+    serve();
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, heartbeat_hours: 1 });
+    const later = new Date(Date.now() + 2 * 3600_000);
+    const fresher = new Date(Date.now() + 9 * 3600_000).toISOString();
+    const db = new Proxy(env.DB, {
+      get(t, p) {
+        if (p === "prepare") {
+          return (sql: string) => {
+            const real = t.prepare(sql);
+            if (!sql.includes("trigger != 'heartbeat' ORDER BY")) return real;
+            // the anchor query is the seam: a webhook run lands here and re-anchors the due time
+            return {
+              bind: (...a: unknown[]) => {
+                const b = real.bind(...a);
+                return {
+                  async first() {
+                    await env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ?").bind(fresher, c.id).run();
+                    return b.first();
+                  },
+                };
+              },
+            } as any;
+          };
+        }
+        const v = (t as any)[p];
+        return typeof v === "function" ? v.bind(t) : v;
+      },
+    });
+    expect(await heartbeatTick({ ...env, DB: db } as any, later)).toBe(1); // the heartbeat still fires
+    const due = (await env.DB.prepare("SELECT next_heartbeat_due_at FROM checks WHERE id = ?").bind(c.id).first<{ next_heartbeat_due_at: string }>())!.next_heartbeat_due_at;
+    expect(due).toBe(fresher); // the predicated advance stood down
+  });
+
+  it("a stale due column on a Check without a cadence heals instead of firing", async () => {
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 } });
+    await env.DB.prepare("UPDATE checks SET heartbeat_hours = NULL, next_heartbeat_due_at = ? WHERE id = ?").bind(new Date(Date.now() - 3600_000).toISOString(), c.id).run();
+    expect(await heartbeatTick(env, new Date())).toBe(0);
+    const row = await env.DB.prepare("SELECT next_heartbeat_due_at FROM checks WHERE id = ?").bind(c.id).first<{ next_heartbeat_due_at: string | null }>();
+    expect(row!.next_heartbeat_due_at).toBeNull();
+    expect((await runsOf(c.id, u.token)).length).toBe(0);
   });
 
   it("heartbeats are selected via next_heartbeat_due_at, and every trigger maintains the column", async () => {
