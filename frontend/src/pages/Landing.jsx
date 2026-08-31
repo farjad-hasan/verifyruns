@@ -14,7 +14,7 @@ const SNIPPETS = {
       `URL: ${HOOK}?wait=30`,
       "Body (JSON): { \"wrote\": {{ $input.all().length }} }",
     ],
-    note: "Or install the VerifyRuns community node: one drag, and a FAIL turns the execution red.",
+    note: "Or install the community node (n8n-nodes-verifyruns, Settings → Community Nodes): one drag, and a FAIL turns the execution red.",
   },
   make: {
     label: "Make",

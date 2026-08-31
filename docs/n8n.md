@@ -31,7 +31,7 @@ The webhook runs the check inside the request and answers with the verdict (`?wa
 
 Put an **IF** node after the HTTP Request on `{{ $json.verdict === "FAIL" }}` and route it to a **Stop and Error** node with `{{ $json.diff_message }}` — the execution goes red with VerifyRuns' sentence. A slow destination means a slower reply, bounded by the connector timeouts.
 
-The **VerifyRuns community node** (`n8n-nodes-verifyruns`, private repo for now — validated in n8n 2.35.7 from the CLI and through the editor, see below) does all of this in one node: it sends the item count as `wrote`, waits for the verdict, and throws on FAIL.
+The **VerifyRuns community node** ([`n8n-nodes-verifyruns` on npm](https://www.npmjs.com/package/n8n-nodes-verifyruns) — install it in n8n via Settings → Community Nodes; validated in n8n 2.35.7 from the CLI and through the editor, see below) does all of this in one node: it sends the item count as `wrote`, waits for the verdict, and throws on FAIL.
 
 ## Validated
 
