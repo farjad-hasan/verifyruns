@@ -2,6 +2,8 @@ import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
 import Timeline from "../components/Timeline";
+import usePoll from "../lib/usePoll";
+import useTitle from "../lib/useTitle";
 import { Activity, AlertTriangle } from "lucide-react";
 import { connectorLabel } from "./CheckDetail";
 
@@ -30,17 +32,19 @@ export default function PublicStatus() {
     try {
       const { data } = await axios.get(`${API}/public/checks/${token}`);
       setData(data);
+      setError("");
     } catch (e) {
       if (e.response?.status === 404) setError("This status page doesn't exist or has been disabled.");
       else setError("Could not load status.");
+      throw e; // usePoll backs off on consecutive failures
     }
   }, [token]);
 
-  useEffect(() => { load(); }, [load]);
   useEffect(() => {
-    const t = setInterval(load, 10000);
-    return () => clearInterval(t);
+    load().catch(() => {});
   }, [load]);
+  usePoll(load, { interval: 30000 }); // a wall display should cost the Worker near-zero
+  useTitle(data?.name || "Status");
 
   if (error) {
     return (

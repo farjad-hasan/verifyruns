@@ -2,8 +2,10 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api, { formatError } from "../lib/api";
 import Nav from "../components/Nav";
+import useTitle from "../lib/useTitle";
 
 export default function ForgotPage() {
+  useTitle("Forgot password");
   const [email, setEmail] = useState("");
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);

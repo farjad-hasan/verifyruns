@@ -1,14 +1,20 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import { useAuth } from "../lib/auth";
 import { formatError } from "../lib/api";
+import { safeNext } from "../lib/nav";
 import Nav from "../components/Nav";
+import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 
 export default function AuthPage({ mode }) {
   const isLogin = mode === "login";
+  useTitle(isLogin ? "Log in" : "Sign up");
   const { login, register } = useAuth();
   const nav = useNavigate();
+  const [params] = useSearchParams();
+  const sessionExpired = params.get("expired") === "1";
+  const next = safeNext(params.get("next"));
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
@@ -22,7 +28,7 @@ export default function AuthPage({ mode }) {
       if (isLogin) await login(email, password);
       else await register(email, password);
       toast.success(isLogin ? "Welcome back" : "Account created");
-      nav("/dashboard");
+      nav(next || "/dashboard");
     } catch (err) {
       setError(formatError(err.response?.data?.detail) || err.message);
     } finally {
@@ -44,6 +50,12 @@ export default function AuthPage({ mode }) {
           <p className="text-zinc-400 mb-10">
             {isLogin ? "Pick up where you left off." : "No credit card. Add your first check in minutes."}
           </p>
+
+          {sessionExpired && (
+            <div className="text-sm text-zinc-300 border border-zinc-700 bg-zinc-900/60 rounded-md p-3 mb-6" data-testid="auth-expired-note">
+              Signed out — your session expired.
+            </div>
+          )}
 
           <form onSubmit={submit} className="space-y-4">
             <div>

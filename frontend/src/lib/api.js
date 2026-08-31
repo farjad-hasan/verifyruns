@@ -14,12 +14,12 @@ client.interceptors.request.use((cfg) => {
 client.interceptors.response.use(
   (r) => r,
   (err) => {
-    if (err?.response?.status === 401) {
-      const path = window.location.pathname;
-      if (path !== "/" && path !== "/login" && path !== "/signup") {
-        localStorage.removeItem("rp_token");
-        window.location.replace("/login");
-      }
+    // No navigation here: whether a 401 means "go to login" depends on the ROUTE, and only the
+    // router knows that. Drop the dead token and tell AuthProvider; Protected routes then redirect
+    // with the expiry reason, public routes (status pages, /reset, marketing) keep rendering.
+    if (err?.response?.status === 401 && localStorage.getItem("rp_token")) {
+      localStorage.removeItem("rp_token");
+      window.dispatchEvent(new Event("rp:unauthorized"));
     }
     return Promise.reject(err);
   }

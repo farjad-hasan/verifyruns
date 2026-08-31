@@ -1,31 +1,34 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import api from "../lib/api";
 import Nav from "../components/Nav";
+import usePoll from "../lib/usePoll";
+import useTitle from "../lib/useTitle";
 import { connectorLabel } from "./CheckDetail";
 import Timeline from "../components/Timeline";
 import { Plus, Globe, ArrowRight } from "lucide-react";
 
 export default function Dashboard() {
+  useTitle("Dashboard");
   const [checks, setChecks] = useState(null);
   const [error, setError] = useState("");
   const nav = useNavigate();
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const { data } = await api.get("/checks");
       setChecks(data);
       setError("");
     } catch (e) {
-      /* 401 handled by axios interceptor */
-      if (e.response?.status !== 401) setError("Could not reach VerifyRuns. Retrying in 10 s.");
+      /* the auth provider handles 401s route-side */
+      if (e.response?.status !== 401) setError("Could not reach VerifyRuns. Retrying automatically.");
+      throw e; // usePoll backs off on consecutive failures
     }
-  };
-  useEffect(() => {
-    load();
-    const t = setInterval(load, 10000);
-    return () => clearInterval(t);
   }, []);
+  useEffect(() => {
+    load().catch(() => {});
+  }, [load]);
+  usePoll(load, { interval: 10000 });
 
   return (
     <div className="min-h-screen">

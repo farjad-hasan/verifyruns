@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import Nav from "../components/Nav";
+import useTitle from "../lib/useTitle";
 import { ArrowRight, ShieldCheck, Zap, Eye } from "lucide-react";
 
 const HOOK = "https://<your-host>/api/hook/<secret>";
@@ -62,6 +63,7 @@ function SetupTabs() {
 }
 
 export default function Landing() {
+  useTitle(null); // the marketing base title
   return (
     <div className="min-h-screen">
       <Nav />

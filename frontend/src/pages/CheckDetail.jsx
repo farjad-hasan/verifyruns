@@ -1,9 +1,12 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../lib/api";
+import ErrorBoundary from "../components/ErrorBoundary";
 import Nav from "../components/Nav";
 import Timeline from "../components/Timeline";
 import CopyButton from "../components/CopyButton";
+import usePoll from "../lib/usePoll";
+import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save, Pencil, Globe2, Filter, Moon, Sun, ChevronDown } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetClose } from "@/components/ui/sheet";
@@ -44,6 +47,9 @@ export default function CheckDetail() {
 
   const backendUrl = process.env.REACT_APP_BACKEND_URL;
 
+  // The run id a manual "Run check now" is waiting on; cleared when it shows up in the run list.
+  const pendingRunRef = useRef(null);
+
   const load = useCallback(async () => {
     try {
       const [c, r] = await Promise.all([
@@ -53,29 +59,30 @@ export default function CheckDetail() {
       setCheck(c.data);
       setRuns(r.data);
       setError("");
+      // The manual run reached a terminal state once its row exists with a verdict; a 60 s deadline
+      // stops the fast lane if the run never lands (the 10 s poll still picks it up later).
+      const pending = pendingRunRef.current;
+      if (pending && (r.data.some((run) => run.id === pending.id && run.verdict) || Date.now() - pending.at > 60_000)) {
+        pendingRunRef.current = null;
+        setRunning(false);
+      }
     } catch (e) {
-      /* 401 handled by axios interceptor */
+      /* the auth provider handles 401s route-side */
       const status = e.response?.status;
       if (status === 404) setError("This check doesn't exist or was deleted.");
-      else if (status !== 401) setError("Could not reach VerifyRuns. Retrying in 10 s.");
+      else if (status !== 401) setError("Could not reach VerifyRuns. Retrying automatically.");
+      throw e; // usePoll backs off on consecutive failures
     }
   }, [id]);
 
-  useEffect(() => { load(); }, [load]);
-
-  // Live refresh every 10s while the page is open
   useEffect(() => {
-    const t = setInterval(load, 10000);
-    return () => clearInterval(t);
+    load().catch(() => {});
   }, [load]);
 
-  // Poll while a run is queued
-  useEffect(() => {
-    if (!running) return;
-    let alive = true;
-    const t = setInterval(() => { if (alive) load(); }, 1500);
-    return () => { alive = false; clearInterval(t); };
-  }, [running, load]);
+  // Live refresh while the page is open and visible; fast lane only while a manual run is in flight.
+  usePoll(load, { interval: 10000 });
+  usePoll(load, { interval: 1500, enabled: running });
+  useTitle(check?.name || "Check");
 
   const webhookUrl = useMemo(
     () => (check ? `${backendUrl}/api/hook/${check.webhook_secret}` : ""),
@@ -95,8 +102,8 @@ export default function CheckDetail() {
     try {
       const { data } = await api.post(`/checks/${id}/run`);
       toast.success("Check queued");
-      // Stop polling after a few seconds
-      setTimeout(async () => { await load(); setRunning(false); }, 4000);
+      // The fast poll stops when this run's row appears with a verdict — terminal state, not a timer.
+      pendingRunRef.current = { id: data.run_id, at: Date.now() };
       return data;
     } catch {
       setRunning(false);
@@ -333,7 +340,7 @@ export default function CheckDetail() {
         <RunPanel
           run={selectedRun}
           steady={steady}
-          previousPassFingerprint={findPreviousPassFingerprint(runs, selectedRun)}
+          runs={runs}
           onClose={closeRun}
           onCloseAutoFocus={returnFocus}
         />
@@ -364,8 +371,7 @@ export function connectorLabel(kind) {
   return CONNECTOR_LABELS[kind] || "HTTP / JSON";
 }
 
-function RunPanel({ run, steady, previousPassFingerprint, onClose, onCloseAutoFocus }) {
-  const diff = previousPassFingerprint ? computeFpDiff(previousPassFingerprint, run.fingerprint || {}) : null;
+function RunPanel({ run, steady, runs, onClose, onCloseAutoFocus }) {
   // Radix Dialog: focus trap, Escape to close, scroll lock, focus returned to the square that opened it.
   return (
     <Sheet open onOpenChange={(open) => { if (!open) onClose(); }}>
@@ -378,7 +384,22 @@ function RunPanel({ run, steady, previousPassFingerprint, onClose, onCloseAutoFo
         data-testid="run-panel"
       >
         <SheetTitle className="sr-only">{run.verdict}: {run.diff_message}</SheetTitle>
-        <div className="p-6 sm:p-8">
+        {/* One malformed run payload — the fingerprint diff computation included — breaks only this
+            sheet, never the page behind it, which is why the body (and its derivations) live in a
+            child component under the boundary. */}
+        <ErrorBoundary inline key={run.id}>
+          <RunPanelBody run={run} steady={steady} runs={runs} />
+        </ErrorBoundary>
+      </SheetContent>
+    </Sheet>
+  );
+}
+
+function RunPanelBody({ run, steady, runs }) {
+  const previousPassFingerprint = findPreviousPassFingerprint(runs, run);
+  const diff = previousPassFingerprint ? computeFpDiff(previousPassFingerprint, run.fingerprint || {}) : null;
+  return (
+    <div className="p-6 sm:p-8">
           <div className="flex items-center justify-between mb-6">
             <span className={run.verdict === "PASS" ? "badge-pass" : "badge-fail"}>{run.verdict}</span>
             <SheetClose asChild>
@@ -479,9 +500,7 @@ function RunPanel({ run, steady, previousPassFingerprint, onClose, onCloseAutoFo
               <div className="mono-block text-red-300">{run.error_details}</div>
             </>
           )}
-        </div>
-      </SheetContent>
-    </Sheet>
+    </div>
   );
 }
 
