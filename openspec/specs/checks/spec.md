@@ -2,9 +2,7 @@
 
 ## Purpose
 A Check is one destination plus expectations, owned by a user, with a secret webhook URL and a history of runs. As built in `backend/server.py` (Check CRUD, runs, webhook).
-
 ## Requirements
-
 ### Requirement: Create a Check
 The system SHALL create a Check with a name (1–120 chars), a `connector_kind` (`http_json` | `airtable` | `postgres`), a per-connector `config`, `expectations`, an optional Slack webhook, a `retry_before_alert` flag (default true), and a 32-byte urlsafe `webhook_secret`. Connector secrets in `config` SHALL be stored encrypted with AES-256-GCM under `ENC_KEY` and never returned in full.
 
@@ -169,3 +167,15 @@ A Check SHALL carry `store_samples` (boolean, default false), settable at creati
 #### Scenario: Two ticks race
 - **WHEN** two ticks run at the same moment
 - **THEN** the queued runs execute once, not twice
+
+### Requirement: Creation defaults cannot manufacture a first-run FAIL
+The New Check form SHALL default `min_new_records` to 0 ("growth optional") with helper copy explaining that 1 asserts every run adds a record; growth mode remains the default mode. A user who changes nothing SHALL get a PASS on an honest run that wrote nothing.
+
+#### Scenario: Untouched defaults, zero-growth run
+- **WHEN** a Check is created with untouched expectation defaults and its first webhook run finds an unchanged destination
+- **THEN** the verdict is PASS
+
+#### Scenario: User asserts growth
+- **WHEN** the user sets `min_new_records` to 1
+- **THEN** behaviour is exactly today's: an unchanged destination FAILs
+

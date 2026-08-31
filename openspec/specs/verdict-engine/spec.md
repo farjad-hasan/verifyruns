@@ -2,9 +2,7 @@
 
 ## Purpose
 Deterministic code (no AI) that fingerprints a record set and compares it with the trailing window of PASS runs to produce PASS/FAIL and a human-readable diff. As built in `_fingerprint` and `_compute_verdict`.
-
 ## Requirements
-
 ### Requirement: Fingerprint a record set
 The system SHALL compute `record_count`, the sorted union of field names, `null_pct` per field (percentage of records where the value is None, blank string, or empty list/dict), and `newest_record` = the first element of the sample after connector-defined ordering (Airtable: `createdTime` desc; Postgres: the query's own ORDER BY; HTTP/JSON: max of `config.newest_key` when set, else the last element). The fingerprint SHALL also store `newest_window`, the first 5 ordered records, and `newest_defined: true|false`.
 
@@ -28,7 +26,7 @@ The system SHALL load up to 30 most recent runs with `verdict == "PASS"` (oldest
 - **THEN** the run is compared only against expectations, and a PASS message reads "First successful check. Destination has N records across M fields."
 
 ### Requirement: Record-growth rule
-The system SHALL compute `delta = record_count − last PASS record_count`. In `growth` mode it SHALL FAIL when `delta < expected`, where `expected` is `claimed_new` when the run carries one, else `min_new_records`. In `steady` mode it SHALL FAIL when `delta ≠ 0`. In `claimed` mode a missing `claimed_new` is itself a FAIL. On the first run the comparison uses `record_count` in place of `delta`.
+The system SHALL compute `delta = record_count − last PASS record_count`. In `growth` mode it SHALL FAIL when `delta < expected`, where `expected` is `claimed_new` when the run carries one, else `min_new_records`. In `steady` mode it SHALL FAIL when `delta ≠ 0`. In `claimed` mode a missing `claimed_new` is itself a FAIL. On the first run the comparison uses `record_count` in place of `delta`. A claim SHALL be read only from the body keys `wrote` and `expected_new`; a bare `count` key SHALL be ignored with a body note. A negative claim SHALL be treated as absent with a body note. When either side of the comparison carries an inexact count (`count_capped` or `count_estimated`, this run or the baseline PASS), the growth rule SHALL contribute no reason and the run message SHALL say record-count checks were skipped; field rules still apply.
 
 #### Scenario: Silent no-op run
 - **WHEN** the last PASS had 40 records, this run has 40, and `min_new_records` is 1
@@ -36,7 +34,7 @@ The system SHALL compute `delta = record_count − last PASS record_count`. In `
 
 #### Scenario: Count plateau from a connector cap
 - **WHEN** the table has grown past what a single connector page returns
-- **THEN** the connector's true count is used and there is no plateau; the growth rule sees the real delta
+- **THEN** the growth rule is skipped with a note instead of failing on a saturated delta, and field rules still run
 
 #### Scenario: Large table keeps growing
 - **WHEN** the last PASS had 2,400 records and this run has 2,403
@@ -61,6 +59,22 @@ The system SHALL compute `delta = record_count − last PASS record_count`. In `
 #### Scenario: Steady table unchanged
 - **WHEN** `growth_mode` is `steady` and the count is still 12
 - **THEN** the verdict is PASS with "Destination unchanged at 12 records. All expectations met."
+
+#### Scenario: Passthrough payload with a count key
+- **WHEN** the webhook body is `{"count": 0}` from a forwarded node payload and `min_new_records` is 1 with no growth
+- **THEN** no claim is read, the verdict is FAIL on the growth rule, and the run notes the ignored key
+
+#### Scenario: Deliberate zero claim
+- **WHEN** the body is `{"wrote": 0}` and the destination gained 0
+- **THEN** the verdict is PASS — the workflow's report and the destination agree
+
+#### Scenario: Negative claim
+- **WHEN** the body is `{"wrote": -2}`
+- **THEN** the claim is treated as absent and the run notes the ignored value
+
+#### Scenario: Postgres count timed out
+- **WHEN** the baseline PASS counted 5,000,000 and this run's COUNT timed out (`count_estimated`)
+- **THEN** the growth rule is skipped with a note; there is no FAIL from the collapsed count
 
 ### Requirement: Field rules
 The system SHALL FAIL when any `required_fields` entry is absent from the field set, when a field present in every baseline PASS run is absent now ("disappeared"), or when a `non_empty_fields` entry is present but empty in `newest_record` and in the majority of `newest_window`. When `newest_defined` is false the non-empty rule SHALL be skipped and the run message SHALL say how to enable it.
@@ -116,3 +130,4 @@ The fingerprint written to a run SHALL include `newest_hash` — SHA-256 of the 
 #### Scenario: Verdict still uses the rows
 - **WHEN** `non_empty_fields` is configured
 - **THEN** the rule is evaluated on the in-memory newest window exactly as before, regardless of `store_samples`
+

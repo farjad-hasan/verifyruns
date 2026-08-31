@@ -2,9 +2,7 @@
 
 ## Purpose
 An unauthenticated, shareable status page per Check, keyed by a revocable token. As built in `enable_public`, `disable_public`, `public_check` and `frontend/src/pages/PublicStatus.jsx`.
-
 ## Requirements
-
 ### Requirement: Owner toggles public status
 `POST /api/checks/{id}/public` SHALL create (or reuse) a 24-byte urlsafe `public_token`; `DELETE` removes it and the page stops resolving.
 
@@ -34,3 +32,15 @@ An unauthenticated, shareable status page per Check, keyed by a revocable token.
 #### Scenario: Alert delivery is visible, targets are not
 - **WHEN** the latest run is a FAIL whose Slack alert succeeded and email alert failed
 - **THEN** the page shows "alerted: slack ✓ · email ✗" and the response body contains no webhook URL or email address
+
+### Requirement: Public status pages are shareable, not discoverable
+`/status/*` responses SHALL carry an `X-Robots-Tag: noindex` header (`frontend/public/_headers`), and the public status route SHALL also set a `noindex` robots meta tag, so status pages reach only people given the link. `robots.txt` SHALL NOT disallow `/status/` — a Disallow would stop crawlers from ever seeing the noindex, leaving shared links indexable URL-only. Enabling a public page SHALL require the same confirmation the disable action already has, naming what becomes visible (check name, verdicts, diff sentences).
+
+#### Scenario: Crawler finds a shared link
+- **WHEN** a public status URL appears on a crawled page
+- **THEN** the crawler fetches it, reads the noindex header, and drops it from the index — it never becomes searchable
+
+#### Scenario: Owner enables sharing
+- **WHEN** the owner clicks Enable on the public status card
+- **THEN** a confirmation states that the check name and its diff sentences become visible to anyone with the link
+

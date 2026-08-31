@@ -2,9 +2,7 @@
 
 ## Purpose
 How VerifyRuns reads records from a destination. Three paste-a-token connectors, all fetched server-side, none via OAuth. As built in `_fetch_records` and `_prepare_config_for_storage`.
-
 ## Requirements
-
 ### Requirement: HTTP/JSON connector
 The system SHALL GET `config.url` with an optional `Authorization: Bearer` header (20 s timeout), parse JSON, and resolve `config.json_path` (dotted keys) to an array; only dict elements are kept as records. When `config.newest_key` is set, records SHALL be ordered by that field descending for the sample. There is no cap on records beyond what the endpoint returns.
 
@@ -25,7 +23,7 @@ The system SHALL GET `config.url` with an optional `Authorization: Bearer` heade
 - **THEN** the run FAILs with "Destination fetch failed with HTTP <code>" and the first 500 chars of the body are stored in `error_details`
 
 ### Requirement: Airtable connector reads at most 100 records
-The system SHALL GET `https://api.airtable.com/v0/{base_id}/{table}` with `pageSize=100` (plus `&view=` when set) and the PAT as bearer, follow the `offset` cursor until the response has none or `VR_AIRTABLE_MAX_PAGES` (default 40, i.e. 4,000 records — sized to the Workers free plan's 50 subrequests per request) is reached, and report the true number of records fetched as the count. Page one SHALL be fetched with all fields and is the sample; later pages SHALL request a single field (`fields[]` = the first field seen on page one) so counting stays cheap. The newest record SHALL be chosen by `createdTime` across all pages and, when it is not on page one, fetched individually so it heads the sample. When the ceiling is hit the run SHALL be marked `count_capped` and the message SHALL say so.
+The system SHALL GET `https://api.airtable.com/v0/{base_id}/{table}` with `pageSize=100` (plus `&view=` when set) and the PAT as bearer, follow the `offset` cursor until the response has none or `VR_AIRTABLE_MAX_PAGES` (default 40, i.e. 4,000 records — sized to the Workers free plan's 50 subrequests per request) is reached, and report the true number of records fetched as the count. Page one SHALL be fetched with all fields and is the sample; later pages SHALL request a single field (`fields[]` = the first field seen on page one) so counting stays cheap. The newest record SHALL be chosen by `createdTime` across all pages and, when it is not on page one, fetched individually so it heads the sample. When the ceiling is hit the run SHALL be marked `count_capped` and the message SHALL say so, and the fingerprint SHALL carry `count_capped` so the verdict engine treats the count as inexact rather than failing on a saturated delta.
 
 #### Scenario: Table larger than 100 rows
 - **WHEN** the table holds 250 records
@@ -37,7 +35,7 @@ The system SHALL GET `https://api.airtable.com/v0/{base_id}/{table}` with `pageS
 
 #### Scenario: Ceiling reached
 - **WHEN** the table holds more than `VR_AIRTABLE_MAX_PAGES × 100` records
-- **THEN** `record_count` equals the ceiling and the diff message notes "count capped at <ceiling>"
+- **THEN** `record_count` equals the ceiling, the diff message notes "count capped at <ceiling>", and the growth rule is skipped per the verdict-engine spec
 
 #### Scenario: Missing records array
 - **WHEN** the response lacks a `records` list
@@ -88,3 +86,4 @@ The system SHALL perform all destination reads server-side and SHALL refuse, bot
 #### Scenario: Self-hosted internal database
 - **WHEN** `VR_ALLOW_PRIVATE_EGRESS=1` and a Check points at 10.0.0.5
 - **THEN** the Check saves and fetches normally
+

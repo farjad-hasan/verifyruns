@@ -49,6 +49,7 @@ Tagline: "Your automation said Done. RunProof checks if that's true."
 - Egress lockdown (2026-08-27): destinations must resolve to public addresses (save time + fetch time; `VR_ALLOW_PRIVATE_EGRESS=1` to allow), HTTP/JSON reads streamed and capped at `VR_MAX_RESPONSE_BYTES`, in-memory rate limits on auth (per IP), webhook (per secret), Check creation (per user) → 429 + Retry-After
 - Data minimisation (2026-08-27): runs store `newest_hash` + `sample_stored` instead of rows; opt-in `store_samples` per Check keeps rows + error bodies in `run_samples` with a 30-day TTL index; `GET /api/runs/{id}` attaches `sample`; `DELETE /api/auth/me` purges everything
 - Heartbeat (2026-08-27): `heartbeat_hours` per Check; in-process ticker records a `trigger="heartbeat"` FAIL run once per missed window (anchored on the last real run), straight to alert routing; next real PASS recovers
+- Production readiness (2026-08-31, deployed 2026-09-01 — Worker 5096069c, Pages 62964528; seven changes as stacked PRs #1–#7, each blind-reviewed): at-least-once alert delivery with claim-then-deliver + predicated rollback and an `alert_delivery_failures` counter surfaced on `/api/health`; verdict engine skips count-based rules when the count is inexact (capped/estimated) and only reads claim keys `wrote`/`expected_new`; tick durability — maintained `next_heartbeat_due_at` column + partial indexes (migration 0003), per-sweep `VR_TICK_BATCH` budget, at-least-once queued-run drain with recorded-run reconcile, due-filtered retries; auth hardening — JWT `token_version` (migration 0004, reset kills stolen sessions), PBKDF2 600k with live-verified 100k runtime-cap fallback (Cloudflare still refuses >100k as of 2026-09-01), CAS rehash-on-login, dummy-verify timing parity, `CF-Connecting-IP` only; run retention — age 90d AND newest-35 AND newest-30-PASS floors, 10-min paced sweeps, ≤200 row-deletes/pass; app resilience — expired-session redirect flow, `usePoll` (hidden-tab pause, error backoff), ErrorBoundaries, NotFound route, react-query removed, yarn pinned; production ops — honest `/api/health` keyed off completed ticks, staging env (`verifyruns-api-staging` + D1, live), backup/restore runbook, first `d1 export` taken 2026-09-01, `/status/*` de-indexed via `X-Robots-Tag`. Still owed by the operator: external uptime monitors + forced-failure alert test, restore rehearsal, keys into password manager.
 
 ## Roadmap and specs — OpenSpec (added 2026-08-26)
 The source of truth for behaviour and planned work is `openspec/`:
@@ -64,6 +65,11 @@ Done: `fix-record-cap-paging`, `postgres-detail-card`, `claimed-count-reconcilia
 billing deferred to `billing-paddle`) (all 2026-08-27), `serverless-ready` (2026-08-28; Farjad chose
 to keep building before distribution, overriding the deferred triggers). Development is local since 2026-08-27 (Emergent credits
 exhausted): Docker Mongo :27017, Postgres :5434, uvicorn :8000, craco :3100.
+Also done: the seven production-readiness changes (2026-08-31, archived 2026-09-01 after deploy):
+`alert-delivery-durability`, `verdict-correctness`, `tick-run-durability`, `auth-session-hardening`,
+`run-retention`, `app-resilience`, `production-ops`. Parallel-session coordination lives in
+`AGENTS.md` + `openspec/CLAIMS.md` (claim before code). `pricing-tiers` (billing) stays deferred
+until ≥10 external live Checks.
 
 ## Backlog / Next (superseded by openspec/changes/ — kept for history)
 - P1: Postgres connector (typed config already supports it)
