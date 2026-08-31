@@ -14,9 +14,13 @@ True as of 2026-08-29 (`deletion-purges-everything` shipped). The privacy policy
 - The claimed count from the webhook body, if one was sent, and which alert channels were attempted — per channel, its kind, whether it delivered, and a short error string on failure. A single service-wide counter of failed alert deliveries is also kept (a number only — no targets, no message bodies).
 - **No destination rows and no upstream response bodies** — unless the Check has **"Store raw samples"** turned on.
 
+## How long runs are kept
+
+Run rows are deleted once they are **older than 90 days** (`VR_RUN_RETENTION_DAYS`) — except that every Check always keeps its **newest 35 runs** and its **newest 30 PASS runs**, regardless of age, so the verdict engine's comparison baseline and the 30-square timeline are never touched by retention. The sweep runs as part of the periodic tick; when the tick is not running (dead cron on a self-host), neither retention nor sample expiry happens.
+
 ## When "Store raw samples" is on (off by default)
 
-A separate `run_samples` record keeps, per run, the newest record, the five newest records, and up to 500 characters of an upstream error body. The database deletes it automatically about 30 days after the run. Turning the setting off stops new samples; existing ones expire on schedule.
+A separate `run_samples` record keeps, per run, the newest record, the five newest records, and up to 500 characters of an upstream error body. The database deletes it automatically about 30 days after the run — expiry, like run retention, depends on the tick running. Turning the setting off stops new samples; existing ones expire on schedule.
 
 ## Deletion
 

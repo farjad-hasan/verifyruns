@@ -136,6 +136,35 @@ export async function drainPendingRuns(env: Env, batch?: number, exec: typeof ex
   return ran;
 }
 
+/** Bounded run history: delete rows older than VR_RUN_RETENTION_DAYS that sit beyond BOTH the
+ *  newest VR_RUN_RETENTION_MIN rows and the newest 30 PASS rows of their Check. The explicit PASS
+ *  floor matters because the newest rows can be FAILs (a heartbeat streak), which would otherwise
+ *  push a quiet Check's verdict baseline past the row floor into deletion. A rotating cursor in
+ *  meta.retention_cursor spreads the work: VR_TICK_BATCH Checks per tick, full rotation every few
+ *  ticks — ample against a 90-day horizon. */
+export async function retentionSweep(env: Env, now: Date): Promise<number> {
+  const days = num(env.VR_RUN_RETENTION_DAYS, 90);
+  if (days <= 0) return 0; // 0 disables retention entirely
+  const floor = Math.max(0, num(env.VR_RUN_RETENTION_MIN, 35));
+  const cutoff = new Date(now.getTime() - days * 86400_000).toISOString();
+  const batch = batchOf(env);
+  const cursor = (await env.DB.prepare("SELECT value FROM meta WHERE key = 'retention_cursor'").first<{ value: string }>())?.value ?? "";
+  const checks = (await env.DB.prepare("SELECT id FROM checks WHERE id > ? ORDER BY id LIMIT ?").bind(cursor, batch).all<{ id: string }>()).results;
+  let deleted = 0;
+  for (const c of checks) {
+    const res = await env.DB.prepare(
+      `DELETE FROM check_runs WHERE check_id = ?1 AND timestamp < ?2
+         AND id NOT IN (SELECT id FROM check_runs WHERE check_id = ?1 ORDER BY timestamp DESC LIMIT ?3)
+         AND id NOT IN (SELECT id FROM check_runs WHERE check_id = ?1 AND verdict = 'PASS' ORDER BY timestamp DESC LIMIT 30)`,
+    ).bind(c.id, cutoff, floor).run();
+    deleted += res.meta.changes || 0;
+  }
+  // An empty cursor restarts the rotation; a short page means the rotation just finished.
+  const next = checks.length < batch ? "" : checks[checks.length - 1].id;
+  await env.DB.prepare("INSERT INTO meta (key, value) VALUES ('retention_cursor', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(next).run();
+  return deleted;
+}
+
 /** Expired samples and spent/expired password-reset tokens leave in the same sweep. */
 export async function expireSamples(env: Env, now: Date): Promise<number> {
   const res = await env.DB.prepare("DELETE FROM run_samples WHERE expires_at < ?").bind(now.toISOString()).run();
@@ -162,6 +191,7 @@ export interface TickResult {
   queued: number;
   retries: number;
   expired_samples: number;
+  expired_runs: number;
 }
 
 export async function tick(env: Env, now: Date = new Date()): Promise<TickResult> {
@@ -170,16 +200,17 @@ export async function tick(env: Env, now: Date = new Date()): Promise<TickResult
   const queued = await drainPendingRuns(env);
   const retries = await drainRetries(env, now);
   const expired_samples = await expireSamples(env, now);
+  const expired_runs = await retentionSweep(env, now);
   // Completion stamp, distinct from the start stamp above: a tick that starts and then throws every
   // invocation is observable as a stale tick_last_ok_at while tick_last_at stays fresh.
   await env.DB.prepare("INSERT INTO meta (key, value) VALUES ('tick_last_ok_at', ?) ON CONFLICT(key) DO UPDATE SET value = excluded.value").bind(now.toISOString()).run();
-  return { heartbeats, queued, retries, expired_samples };
+  return { heartbeats, queued, retries, expired_samples, expired_runs };
 }
 
 export async function tickSafely(env: Env): Promise<void> {
   try {
     const res = await tick(env);
-    if (res.heartbeats || res.queued || res.retries || res.expired_samples) console.log("tick", JSON.stringify(res));
+    if (res.heartbeats || res.queued || res.retries || res.expired_samples || res.expired_runs) console.log("tick", JSON.stringify(res));
   } catch (e) {
     console.error("tick failed", e);
   }

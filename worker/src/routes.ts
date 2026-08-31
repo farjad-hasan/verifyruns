@@ -104,6 +104,8 @@ export async function me(env: Env, request: Request): Promise<Response> {
   return json(await currentUser(env, request));
 }
 
+const DELETE_CHUNK = 90; // stays under D1's per-batch statement and bind limits
+
 export async function deleteMe(env: Env, request: Request): Promise<Response> {
   const user = await currentUser(env, request);
   const ids = (await env.DB.prepare("SELECT id FROM checks WHERE user_id = ?").bind(user.id).all<{ id: string }>()).results.map((r) => r.id);
@@ -116,7 +118,9 @@ export async function deleteMe(env: Env, request: Request): Promise<Response> {
   stmts.push(env.DB.prepare("DELETE FROM interest WHERE user_id = ? OR email = ?").bind(user.id, user.email));
   stmts.push(env.DB.prepare("DELETE FROM password_resets WHERE user_id = ?").bind(user.id));
   stmts.push(env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id));
-  await env.DB.batch(stmts);
+  // Sequential chunks; the user row is the last statement of the last chunk, so a failure at any
+  // point leaves a loginable, retryable account — never orphaned rows without an owner.
+  for (let i = 0; i < stmts.length; i += DELETE_CHUNK) await env.DB.batch(stmts.slice(i, i + DELETE_CHUNK));
   return json({ ok: true, deleted_checks: ids.length });
 }
 

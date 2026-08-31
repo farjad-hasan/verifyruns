@@ -299,7 +299,7 @@ describe("tick (D1)", () => {
     expect((await api("/internal/tick", { method: "POST", headers: { "x-tick-secret": "wrong" } })).status).toBe(401);
     const r = await api("/internal/tick", { method: "POST", headers: { "x-tick-secret": "test-tick-secret" } });
     expect(r.status).toBe(200);
-    expect(Object.keys(r.data).sort()).toEqual(["expired_samples", "heartbeats", "queued", "retries"]);
+    expect(Object.keys(r.data).sort()).toEqual(["expired_runs", "expired_samples", "heartbeats", "queued", "retries"]);
     await env.DB.prepare("INSERT INTO run_samples (run_id, check_id, newest_record, newest_window, error_details, expires_at) VALUES ('old', 'c', '{}', '[]', NULL, ?)").bind(new Date(Date.now() - 1000).toISOString()).run();
     const swept = await tick(env);
     expect(swept.expired_samples).toBeGreaterThanOrEqual(1);
