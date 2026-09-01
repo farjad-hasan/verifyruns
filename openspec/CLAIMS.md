@@ -19,9 +19,10 @@ All seven production-readiness changes were implemented as a **stacked PR chain*
 session, sequential — the overlap table below made parallel claims impractical for this set) and
 merged to main on 2026-09-01 and **deployed the same day** (Worker `5096069c`, Pages `62964528`;
 staging first per `docs/deploy.md`, migrations before code, smoke green in both envs). All seven
-changes are archived under `openspec/changes/archive/2026-08-31-*`. Remaining items are operator
-actions only: external uptime monitors + forced-failure alert test, restore rehearsal, keys into
-the password manager (see `docs/deploy.md`).
+changes are archived under `openspec/changes/archive/2026-08-31-*`. The operator actions are all
+done too (see `docs/deploy.md` for the records): restore rehearsal 2026-09-02, external uptime
+monitor + forced-failure verification 2026-09-01 (UptimeRobot), keys into Bitwarden 2026-09-02.
+Nothing on the production-readiness board remains open.
 
 ## File overlaps (from each proposal's Impact list — check before claiming in parallel)
 
