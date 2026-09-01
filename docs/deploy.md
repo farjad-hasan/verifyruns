@@ -97,6 +97,18 @@ npx wrangler d1 time-travel restore verifyruns --timestamp "2026-08-31T10:00:00Z
 
 **Restore rehearsal** (do once, record the transcript here): create a scratch database `wrangler d1 create verifyruns-restore-test`, then `npx wrangler d1 execute verifyruns-restore-test --remote --file backup-<date>.sql`, then point a scratch Worker at it and confirm `/api/health` and one login work. A fresh clone plus the password-manager keys plus the latest export must be sufficient to reach a working deploy.
 
+*Rehearsed 2026-09-02 with `backup-20260901.sql` (15.6 KB):* remote import into a scratch D1
+succeeded (114 rows, 8 tables; users/checks/check_runs/d1_migrations counts matched the backup's
+point in time — production had one newer run, as expected). Full-fidelity check ran the Worker
+locally against the same dump (`wrangler d1 execute … --local --persist-to <scratch> --file …`
+then `wrangler dev --persist-to <scratch>`): `/api/` ok, the restored user's email was refused
+on re-register (row live), a fresh register + login round-tripped, `/api/health` reached
+`ok:true`. One instructive side effect: the rehearsal used *fresh* secrets, so the tick's alert
+delivery couldn't decrypt the restored alert targets (`alert_delivery_failures` climbed) —
+restoring with a different `ENC_KEY` keeps all data but makes stored connector credentials and
+alert targets unreadable, exactly as the key-custody note above warns. Scratch D1 and local
+state deleted afterwards.
+
 ## CI/CD (push to main deploys)
 
 `.github/workflows/deploy.yml` mechanizes this runbook: every push to `main` touching
