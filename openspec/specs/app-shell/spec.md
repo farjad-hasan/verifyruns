@@ -1,7 +1,7 @@
 # app-shell Specification
 
 ## Purpose
-TBD - created by archiving change app-resilience. Update Purpose after archive.
+The frontend's shared shell behaviour: how the SPA treats expired sessions on protected vs public routes, contains render errors with an error boundary, serves a real 404, titles each route, and paces its polling with tab visibility and API health. As built in `frontend/src/lib/api.js`, `lib/auth.jsx`, `App.js` and the page-level `usePoll` hook by the `app-resilience` change (2026-09-01).
 ## Requirements
 ### Requirement: Expired sessions never hijack public routes
 A 401 response SHALL cause a redirect to `/login` only when it arose from a protected surface. Public routes — `/status/:token`, `/reset`, `/forgot`, `/pricing`, `/data`, `/security`, `/terms`, `/privacy`, and the landing page — SHALL render fully with an expired or absent token. The redirect SHALL carry `?expired=1` and a same-origin `next` path; `/login` SHALL show "Signed out — your session expired." and return the user to `next` after login.
