@@ -84,6 +84,10 @@ real DOWN email at 21:24 UTC, and the test DOWN/UP pair on the Pages URL arrived
 
 **Key custody.** `ENC_KEY`, `JWT_SECRET` and `VR_TICK_SECRET` belong in a password manager, not only in a dotfile. Losing `ENC_KEY` makes **every stored connector credential and alert target permanently unreadable** — users would have to re-enter them all. Losing `JWT_SECRET` merely logs everyone out. Treat `~/.verifyruns-secrets.env` as a cache of the password-manager entry, never the only copy.
 
+*Done 2026-09-02:* all three keys live in Bitwarden as the secure note "VerifyRuns worker
+secrets" (with the ENC_KEY warning and recovery recipe in the note body); verified in the web
+vault. The dotfile is now the cache.
+
 **Scheduled export.** Weekly (calendar reminder or cron on any machine):
 
 ```bash
