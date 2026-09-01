@@ -44,9 +44,11 @@ These rules exist so that never repeats. `CLAUDE.md` is a one-line import of thi
   rerun it alone before assuming a regression. Frontend: `cd frontend && yarn build` must
   compile clean — **yarn is the pinned package manager** (`packageManager` in package.json;
   `yarn.lock` is the one lockfile, `package-lock.json` was removed).
-- Deploy (only when asked): `cd worker && npm run deploy`, then build the frontend with
-  `REACT_APP_BACKEND_URL=https://verifyruns-api.farjad-developer.workers.dev` and
-  `npx wrangler pages deploy ../frontend/build --project-name verifyruns --branch main`.
-  Worker and Pages deploy together.
+- Deploy: pushing to `main` (worker/frontend paths) deploys via `.github/workflows/deploy.yml`
+  — tests, then staging migrate+deploy+smoke gating production, then Pages. **A push to main is
+  a deploy**; keep main green. Manual fallback (`docs/deploy.md`): `cd worker && npm run deploy`,
+  then build the frontend with `REACT_APP_BACKEND_URL=https://verifyruns-api.farjad-developer.workers.dev`
+  and `npx wrangler pages deploy ../frontend/build --project-name verifyruns --branch main`.
+  Migrations always before code: `migrate:staging` → `deploy:staging` → smoke → `migrate:remote` → deploy.
 - Local dev: worker `cd worker && npm run dev` (:8787, local D1); frontend must be served on
   **:3100** — the dev CORS allowlist (`worker/.dev.vars`) accepts only that origin.

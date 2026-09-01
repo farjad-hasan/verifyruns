@@ -1,0 +1,124 @@
+# CD for main: the deploy runbook (docs/deploy.md) mechanized. Staging is the gate for
+# production — a failed staging migration, deploy, or smoke stops the pipeline before any
+# production write. Migrations always run before the code that reads them.
+#
+# Needs two repository secrets (Settings → Secrets and variables → Actions):
+#   CLOUDFLARE_API_TOKEN   — scopes: Workers Scripts:Edit, D1:Edit, Cloudflare Pages:Edit
+#   CLOUDFLARE_ACCOUNT_ID  — from `wrangler whoami`
+# Without them the deploy jobs fail fast at the first wrangler call; ci.yml still guards the code.
+name: deploy
+on:
+  push:
+    branches: [main]
+    paths:
+      - "worker/**"
+      - "frontend/**"
+      - ".github/workflows/deploy.yml"
+  workflow_dispatch:
+
+# One deploy at a time; a newer push supersedes a pending one (the latest commit always
+# deploys; skipped intermediates show as cancelled). Never cancels a deploy mid-flight.
+concurrency:
+  group: deploy-main
+  cancel-in-progress: false
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: worker } }
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: worker/package-lock.json }
+      - run: npm ci
+      - run: npm run typecheck
+      - run: npm test
+
+  deploy-api:
+    needs: test
+    # workflow_dispatch can be invoked from any branch carrying this file — only main deploys.
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    defaults: { run: { working-directory: worker } }
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: npm, cache-dependency-path: worker/package-lock.json }
+      - run: npm ci
+
+      - name: Migrate staging
+        run: npm run migrate:staging
+      - name: Deploy staging
+        run: npm run deploy:staging
+      - name: Smoke staging
+        run: |
+          base=https://verifyruns-api-staging.farjad-developer.workers.dev
+          curl -sf "$base/api/" | grep -q '"ok":true'
+          # Health must prove a tick COMPLETED after this deploy — ok:true alone can ride the
+          # previous deployment's stamp for up to VR_HEALTH_MAX_TICK_AGE_SECONDS. Require
+          # tick_ok_age_seconds < seconds since this step began (cron fires every minute).
+          t0=$(date +%s)
+          for i in $(seq 1 18); do
+            h=$(curl -sf "$base/api/health" || true)
+            ok=$(jq -r '.ok' <<<"$h" 2>/dev/null || echo false)
+            age=$(jq -r '.tick_ok_age_seconds // empty' <<<"$h" 2>/dev/null); age=${age%.*}
+            now=$(date +%s)
+            if [ "$ok" = "true" ] && [ -n "$age" ] && [ "$age" -lt $((now - t0)) ]; then exit 0; fi
+            sleep 10
+          done
+          echo "staging: no completed tick observed after deploy" >&2
+          curl -s "$base/api/health" >&2 || true
+          exit 1
+
+      - name: Migrate production
+        run: npm run migrate:remote
+      - name: Deploy production
+        run: npm run deploy
+      - name: Smoke production
+        run: |
+          base=https://verifyruns-api.farjad-developer.workers.dev
+          curl -sf "$base/api/" | grep -q '"ok":true'
+          # Same post-deploy-tick proof as staging.
+          t0=$(date +%s)
+          for i in $(seq 1 18); do
+            h=$(curl -sf "$base/api/health" || true)
+            ok=$(jq -r '.ok' <<<"$h" 2>/dev/null || echo false)
+            age=$(jq -r '.tick_ok_age_seconds // empty' <<<"$h" 2>/dev/null); age=${age%.*}
+            now=$(date +%s)
+            if [ "$ok" = "true" ] && [ -n "$age" ] && [ "$age" -lt $((now - t0)) ]; then exit 0; fi
+            sleep 10
+          done
+          echo "production: no completed tick observed after deploy" >&2
+          curl -s "$base/api/health" >&2 || true
+          exit 1
+
+  deploy-frontend:
+    needs: deploy-api
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    env:
+      CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+      CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with: { node-version: 22, cache: yarn, cache-dependency-path: frontend/yarn.lock }
+      - run: yarn install --frozen-lockfile
+        working-directory: frontend
+      - run: yarn build
+        working-directory: frontend
+        env:
+          CI: "false" # CRA treats warnings as errors under CI=true; ci.yml is the lint gate
+          REACT_APP_BACKEND_URL: https://verifyruns-api.farjad-developer.workers.dev
+          REACT_APP_POSTHOG_KEY: phc_pvRHXAdUAzreQzCNxcu6b7JezduKoE4BXgTMvSBSesau
+          INLINE_RUNTIME_CHUNK: "false"
+      # From the repo root so worker/wrangler.toml (no pages_build_output_dir) isn't consulted.
+      - name: Deploy Pages
+        run: npx --yes wrangler@4.127.0 pages deploy frontend/build --project-name verifyruns --branch main
+      - name: Smoke Pages
+        run: |
+          curl -sfo /dev/null https://verifyruns.pages.dev/
+          curl -sfI https://verifyruns.pages.dev/status/probe | grep -qi 'x-robots-tag: noindex'
