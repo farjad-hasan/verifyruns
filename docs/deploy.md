@@ -76,6 +76,10 @@ The primary monitor must live outside both this repository and the Cloudflare ac
 
 Verify the alert path once by forcing a failure (e.g. point a third throwaway check at a bogus path and watch the email arrive), then delete the throwaway.
 
+*Set up 2026-09-01 (UptimeRobot, alerting farjad.developer@gmail.com):* both monitors live; the
+alert path was verified the same evening — a throwaway monitor on a bogus API route produced a
+real DOWN email at 21:24 UTC, and the test DOWN/UP pair on the Pages URL arrived at 21:03 UTC.
+
 ## Backups, keys, and restore
 
 **Key custody.** `ENC_KEY`, `JWT_SECRET` and `VR_TICK_SECRET` belong in a password manager, not only in a dotfile. Losing `ENC_KEY` makes **every stored connector credential and alert target permanently unreadable** — users would have to re-enter them all. Losing `JWT_SECRET` merely logs everyone out. Treat `~/.verifyruns-secrets.env` as a cache of the password-manager entry, never the only copy.
