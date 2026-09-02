@@ -330,8 +330,6 @@ export default function CheckDetail() {
         {/* Public status card */}
         <PublicStatusCard check={check} onSaved={load} />
 
-        {!latest && runHistory}
-
         {latest && (
           <details className="mt-10 group" data-testid="setup-details">
             <summary className="cursor-pointer select-none list-none inline-flex items-center gap-2 text-xs uppercase tracking-widest text-quiet hover:text-zinc-300">
