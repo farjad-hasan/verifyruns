@@ -14,6 +14,8 @@ by flipping `status` to `done` in your merge commit. Rules in [`AGENTS.md`](../A
 | app-resilience | claude/prod-readiness | [PR #6](https://github.com/farjad-hasan/verifyruns/pull/6) | 2026-08-31 | done — merged 2026-09-01 |
 | production-ops | claude/prod-readiness | [PR #7](https://github.com/farjad-hasan/verifyruns/pull/7) | 2026-08-31 | done — merged 2026-09-01 |
 | pricing-tiers | — | — | — | deferred (activation: ≥10 external live Checks) |
+| check-detail-phone | claude/design-audit (Mac) | worktree `../verifyruns-check-detail-phone`, branch `check-detail-phone` | 2026-09-03 | in progress |
+| public-page-shell | — | — | — | queued: after check-detail-phone merges (both touch `PublicStatus.jsx`); findings in `docs/design-audit-2026-09-02.md` Part 1 |
 
 All seven production-readiness changes were implemented as a **stacked PR chain** (#1→#7, one
 session, sequential — the overlap table below made parallel claims impractical for this set) and
