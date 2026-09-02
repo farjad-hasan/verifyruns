@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-08-29T06:00:00+05:00",
+  "generatedAt": "2026-09-03T03:20:00+05:00",
   "title": "Design System: VerifyRuns",
   "extensions": {
     "colorMeta": {
@@ -175,8 +175,8 @@
       },
       {
         "name": "fade-up",
-        "value": "500ms ease-out both (translateY 8px \u2192 0)",
-        "purpose": "Entrance on landing hero blocks, staggered 60\u2013300ms."
+        "value": "500ms ease-out both (translateY 8px → 0)",
+        "purpose": "Entrance on landing hero blocks, staggered 60–300ms."
       }
     ],
     "breakpoints": [
@@ -220,6 +220,22 @@
       "css": ".ds-btn-danger{background:transparent;color:#FCA5A5;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:8px 14px;font:500 13px Manrope,system-ui,sans-serif;cursor:pointer;transition:background-color 160ms ease}.ds-btn-danger:hover{background:rgba(239,68,68,0.1)}"
     },
     {
+      "name": "Ghost Button (xs)",
+      "kind": "button",
+      "refersTo": "button-ghost-xs",
+      "description": "Card-header action (Copy, Edit, Enable, Rename): the ghost button at 6 × 12 px and 12 px type. Never a filled primary in a card header.",
+      "html": "<button class=\"ds-btn-ghost ds-btn-xs\">Edit</button>",
+      "css": ".ds-btn-ghost{background:transparent;color:#FAFAFA;border:1px solid #27272A;border-radius:8px;padding:10px 18px;font:500 14px Manrope,system-ui,sans-serif;display:inline-flex;align-items:center;gap:8px;cursor:pointer;transition:background-color 160ms ease,border-color 160ms ease}.ds-btn-ghost:hover{background:#18181B;border-color:#3F3F46}.ds-btn-ghost:focus-visible{outline:2px solid #52525B;outline-offset:2px}.ds-btn-xs{padding:6px 12px;font-size:12px}"
+    },
+    {
+      "name": "Danger Button (xs)",
+      "kind": "button",
+      "refersTo": "button-danger-xs",
+      "description": "Destructive card-header action (Disable, Remove) at the same 6 × 12 px size as its ghost sibling.",
+      "html": "<button class=\"ds-btn-danger ds-btn-xs\">Remove</button>",
+      "css": ".ds-btn-danger{background:transparent;color:#FCA5A5;border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:8px 14px;font:500 13px Manrope,system-ui,sans-serif;cursor:pointer;transition:background-color 160ms ease}.ds-btn-danger:hover{background:rgba(239,68,68,0.1)}.ds-btn-xs{padding:6px 12px;font-size:12px}"
+    },
+    {
       "name": "Input",
       "kind": "input",
       "refersTo": "input",
@@ -240,7 +256,7 @@
       "kind": "card",
       "refersTo": "card",
       "description": "Flat panel: #121214 with a 1px hairline, 12px radius, no shadow at rest.",
-      "html": "<div class=\"ds-card\"><p class=\"ds-card-eyebrow\">Reality</p><p class=\"ds-card-title\">Zapier says \u2713</p><p class=\"ds-card-body\">Task completed. 200 OK. All nodes green.</p></div>",
+      "html": "<div class=\"ds-card\"><p class=\"ds-card-eyebrow\">Reality</p><p class=\"ds-card-title\">Zapier says ✓</p><p class=\"ds-card-body\">Task completed. 200 OK. All nodes green.</p></div>",
       "css": ".ds-card{background:#121214;border:1px solid #27272A;border-radius:12px;padding:24px;max-width:320px}.ds-card-eyebrow{margin:0 0 12px;font:400 10px Manrope,system-ui,sans-serif;letter-spacing:.1em;text-transform:uppercase;color:#8A8A93}.ds-card-title{margin:0 0 8px;font:400 18px Outfit,system-ui,sans-serif;letter-spacing:-.02em;color:#FAFAFA}.ds-card-body{margin:0;font:400 14px/1.625 Manrope,system-ui,sans-serif;color:#A1A1AA}"
     },
     {
@@ -270,7 +286,7 @@
   ],
   "narrative": {
     "northStar": "The Verdict Slip",
-    "overview": "VerifyRuns looks like the receipt a careful engineer would print: near-black paper, one typeface for the claim, one for the evidence, and a single row of thirty squares that says everything before a word is read. The system is dark, flat and Swiss in temperament \u2014 solid surfaces, one-pixel hairlines, generous whitespace, no gradients, no glass, no decoration that is not data. Colour is rationed to two meanings: emerald means landed, red means did not. Everything else is a grey.",
+    "overview": "VerifyRuns looks like the receipt a careful engineer would print: near-black paper, one typeface for the claim, one for the evidence, and a single row of thirty squares that says everything before a word is read. The system is dark, flat and Swiss in temperament — solid surfaces, one-pixel hairlines, generous whitespace, no gradients, no glass, no decoration that is not data. Colour is rationed to two meanings: emerald means landed, red means did not. Everything else is a grey.",
     "keyCharacteristics": [
       "Two-tone status vocabulary (emerald / red) on an otherwise achromatic zinc scale.",
       "Three faces with fixed jobs: Outfit for claims, Manrope for prose and UI, JetBrains Mono for evidence.",
@@ -286,17 +302,17 @@
       },
       {
         "name": "The Two-Meaning Rule",
-        "body": "Emerald and red mean PASS and FAIL and nothing else. Do not use emerald for primary action or red for delete \u2014 the primary button is white, and danger is a red-edged ghost so the filled reds stay reserved for verdicts.",
+        "body": "Emerald and red mean PASS and FAIL and nothing else. Do not use emerald for primary action or red for delete — the primary button is white, and danger is a red-edged ghost so the filled reds stay reserved for verdicts.",
         "section": "colors"
       },
       {
         "name": "The Wash-Not-Fill Rule",
-        "body": "Status colour appears as a 10% wash with a 20\u201325% edge, except on the timeline square, where it is the only solid fill in the system.",
+        "body": "Status colour appears as a 10% wash with a 20–25% edge, except on the timeline square, where it is the only solid fill in the system.",
         "section": "colors"
       },
       {
         "name": "The Evidence-Is-Mono Rule",
-        "body": "Anything the system observed \u2014 a timestamp, a count, a URL, a field name, a fingerprint \u2014 is set in JetBrains Mono. Anything the system says is set in Manrope.",
+        "body": "Anything the system observed — a timestamp, a count, a URL, a field name, a fingerprint — is set in JetBrains Mono. Anything the system says is set in Manrope.",
         "section": "typography"
       },
       {
@@ -322,11 +338,15 @@
       "Do separate surfaces with a 1px hairline and a tonal step.",
       "Do use the grey second clause for two-part headlines and a coloured eyebrow above them.",
       "Do wrap verdict sentences in full; they are never truncated.",
-      "Do keep transitions specific at 140\u2013160ms and entrance fades at 500ms.",
+      "Do keep transitions specific at 140–160ms and entrance fades at 500ms.",
       "Do keep data-testid on every interactive and key informational element.",
       "Do teach the 3-step setup in empty states.",
       "Do keep every colour behind a semantic token: dark-only is the current look, not a commitment.",
-      "Do render empty timeline slots as ghost squares (#1C1C1F) and caption the strip 'N of 30 runs' while N < 30."
+      "Do render empty timeline slots as ghost squares (#1C1C1F) and caption the strip 'N of 30 runs' while N < 30.",
+      "Do size every card-header action as rp-btn-xs (6 × 12 px, 12 px type): ghost for Copy, Edit, Enable, Rename; danger for Disable, Remove. Filled primary buttons belong to page headers, forms and empty states.",
+      "Do set every sentence the product speaks — Loading, empty states, hints — in Manrope; mono is for observed values only, and a page shows one empty-state sentence per condition.",
+      "Do stack verdict rows and page headers below sm (640 px): badge + sentence, then timestamp · trigger on one mono line; actions on their own row under the name.",
+      "Do keep interactive content out of links and buttons: a dashboard row is one link and its strip is Timeline in static mode (aria-hidden spans), never buttons in a button."
     ],
     "donts": [
       "Don't load Inter.",
@@ -337,7 +357,7 @@
       "Don't use emoji as icons.",
       "Don't seed empty states or examples with fake customers, logos or numbers.",
       "Don't apply transition: all, bounce / elastic easing, or centre the whole app container.",
-      "Don't follow design_guidelines.json's rounded-none md:rounded-lg \u2014 the shipped system is 8 / 12px and that file is retired."
+      "Don't follow design_guidelines.json's rounded-none md:rounded-lg — the shipped system is 8 / 12px and that file is retired."
     ]
   }
 }

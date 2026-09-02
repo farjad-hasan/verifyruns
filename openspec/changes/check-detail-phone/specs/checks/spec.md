@@ -1,5 +1,12 @@
 ## MODIFIED Requirements
 
+### Requirement: Manual run
+`POST /api/checks/{id}/run` SHALL queue a run with `trigger="manual"` for the owner.
+
+#### Scenario: Run now
+- **WHEN** the owner clicks "Run Check now"
+- **THEN** a run is queued and `{run_id, status: "queued"}` is returned
+
 ### Requirement: Detail view is connector-aware
 The Check detail page SHALL label the Check with its connector kind and SHALL render a Destination card specific to that connector: HTTP/JSON (URL with every query-string value masked to its last four characters, JSON path, masked bearer), Airtable (base, table, view, masked PAT), Postgres (query, masked DSN). The label spells the entity "Check", as `PRODUCT.md` records.
 

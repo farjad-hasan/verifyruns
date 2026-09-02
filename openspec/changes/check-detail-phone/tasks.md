@@ -7,8 +7,8 @@
 
 ## 2. No nested interactive content
 
-- [x] 2.1 `Timeline.jsx`: `static` prop; real squares render as `<span role="img" aria-label title>`; empties unchanged
-- [x] 2.2 `Dashboard.jsx`: the row is `<Link to="/checks/{id}">` with the same classes and `data-testid`; both strips pass `static`. Verified in the live DOM (1720 px and 386 px): each row is an `<a href="/checks/…">` containing 0 `<button>` elements and 10 / 0 `role="img"` squares; `useNavigate` import removed
+- [x] 2.1 `Timeline.jsx`: `static` prop; real squares render as plain `<span title>`s and the strip root is `aria-hidden`, so the row's link name stays name + connector + badge + sentence instead of gaining thirty square labels; empties unchanged
+- [x] 2.2 `Dashboard.jsx`: the row is `<Link to="/checks/{id}">` with the same classes and `data-testid`; both strips pass `static`. Verified in the live DOM (1720 px and 386 px): each row is an `<a href="/checks/…">` containing 0 `<button>` elements; the strip inside is `aria-hidden`; `useNavigate` import removed
 - [x] 2.3 `CheckDetail.jsx` `CheckNameHeader`: `<h1>` and a visible ghost-xs "Rename" button (`aria-label`, `data-testid="rename-check-trigger"`) are siblings in a `flex-wrap` row; verified `document.querySelector('button h1') === null`. Side effect worth keeping: the rename affordance is now visible on touch (08-29 audit, Nielsen #6)
 
 ## 3. One expectations form
@@ -30,6 +30,6 @@
 
 - [x] 5.1 `cd frontend && CI=true corepack yarn build` — 2026-09-03: compiles; `main.js` 233.73 kB gzipped. The only warnings are "Failed to parse source map" from `node_modules/browser-common` (a dependency's missing `.mjs` sourcemaps), identical on `main` built with the same `node_modules` (`git stash` → 125 → `git stash pop` → 125), so no new warnings
 - [x] 5.2 Edge walk on the local stack (worker `npm run dev` on :8787 with the local D1 migrated to 0004, frontend on :3100 from this worktree, a throwaway local account seeded through the API with two Checks and five runs incl. two FAILs, public page enabled) at 1720 px and in a 386 px frame: dashboard, Check with runs, Check with none, New Check, public status — every item above recorded with what was seen
-- [x] 5.3 `openspec validate check-detail-phone --strict` passes; `DESIGN.md` changed in the same commit
+- [x] 5.3 `openspec validate --all --strict`: 17 passed, 0 failed; `DESIGN.md` changed in the same commit and `.impeccable/design.json` refreshed (two xs components, four Do's) — `context.mjs` reports no `CONTEXT_STALE`; no test outside `frontend/src` references `check-row-`, `tl-square-` or `rename-check-trigger`
 - [ ] 5.4 Blind review of the diff (`.claude/agents/blind-reviewer.md`); fix or record every finding here before opening the PR
 - [ ] 5.5 PR from `check-detail-phone` to `main`; merge is a deploy (`docs/deploy.md`) — flip the `CLAIMS.md` row to `done` in the merge commit

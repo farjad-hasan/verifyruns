@@ -88,6 +88,7 @@ body {
     gap: 8px;
 }
 .rp-btn-ghost:hover { background: #18181B; border-color: #3F3F46; }
+.rp-btn-ghost:disabled { opacity: 0.5; cursor: not-allowed; }
 
 .rp-btn-danger {
     background: transparent;

@@ -25,11 +25,11 @@ Run history rows (Check detail and the public status page) SHALL lay out as badg
 - **THEN** the name spans the full content width and Snooze, Run Check now and Delete appear on a row beneath it
 
 ### Requirement: Interactive content is never nested
-No `<button>` or `<a>` SHALL contain another interactive element. A dashboard row SHALL be a single link; timeline squares rendered inside a link or button SHALL be non-interactive (`Timeline` `static` mode); a heading SHALL NOT be wrapped in a button.
+No `<button>` or `<a>` SHALL contain another interactive element. A dashboard row SHALL be a single link; timeline squares rendered inside a link or button SHALL be non-interactive (`Timeline` `static` mode) and the static strip SHALL be hidden from assistive technology (`aria-hidden`), because the row's badge and sentence already carry the verdict and a labelled square would otherwise join the link's accessible name; a heading SHALL NOT be wrapped in a button.
 
 #### Scenario: Dashboard row in the DOM
 - **WHEN** the dashboard renders a Check with 30 runs
-- **THEN** the row element contains no `<button>` descendants and is itself an `<a>` to the Check
+- **THEN** the row element contains no `<button>` descendants, is itself an `<a>` to the Check, and its accessible name is the Check name, connector, badge and sentence — not thirty square labels
 
 ### Requirement: Card-header actions share one size
 An action placed in a card header (Copy, Edit, Enable, Disable, Remove) SHALL use the xs button size (`rp-btn-xs`): ghost for neutral actions, danger for destructive ones. Filled primary buttons are reserved for page headers, forms and empty states.
