@@ -22,7 +22,7 @@ import NotFound from "@/pages/NotFound";
 function Protected({ children }) {
   const { user, ready, expired } = useAuth();
   const location = useLocation();
-  if (!ready) return <div className="min-h-screen flex items-center justify-center text-zinc-500 font-mono text-sm">Loading…</div>;
+  if (!ready) return <div className="min-h-screen flex items-center justify-center text-quiet text-sm">Loading…</div>;
   if (!user) {
     // `expired` distinguishes a session that stopped working from never having logged in; the login
     // page turns it into a sentence, and `next` returns the user here after login either way.

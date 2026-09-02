@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link } from "react-router-dom";
 import api from "../lib/api";
 import Nav from "../components/Nav";
 import usePoll from "../lib/usePoll";
@@ -12,7 +12,6 @@ export default function Dashboard() {
   useTitle("Dashboard");
   const [checks, setChecks] = useState(null);
   const [error, setError] = useState("");
-  const nav = useNavigate();
 
   const load = useCallback(async () => {
     try {
@@ -40,13 +39,13 @@ export default function Dashboard() {
           </div>
           {checks && checks.length > 0 && (
             <Link to="/checks/new" className="rp-btn-primary" data-testid="new-check-btn">
-              <Plus size={16} /> New check
+              <Plus size={16} /> New Check
             </Link>
           )}
         </div>
 
         {checks === null && !error && (
-          <div className="rp-card p-10 text-quiet font-mono text-sm">Loading…</div>
+          <div className="rp-card p-10 text-quiet text-sm">Loading…</div>
         )}
         {error && (
           <div className="rp-card p-8 flex flex-wrap items-center justify-between gap-4" data-testid="dashboard-error">
@@ -63,8 +62,8 @@ export default function Dashboard() {
           <ul className="space-y-3">
             {checks.map((c) => (
               <li key={c.id}>
-                <button
-                  onClick={() => nav(`/checks/${c.id}`)}
+                <Link
+                  to={`/checks/${c.id}`}
                   className="w-full text-left rp-card p-6 hover:border-hairline-hover transition-colors flex items-center gap-6"
                   data-testid={`check-row-${c.id}`}
                 >
@@ -87,14 +86,14 @@ export default function Dashboard() {
                       <p className="text-sm text-zinc-300 mt-3 break-words" data-testid={`latest-${c.id}`}>{latestSentence(c)}</p>
                     )}
                     <div className="sm:hidden mt-3">
-                      <Timeline runs={(c.recent_runs || []).slice(-10)} total={10} testid={`timeline-sm-${c.id}`} />
+                      <Timeline runs={(c.recent_runs || []).slice(-10)} total={10} testid={`timeline-sm-${c.id}`} static />
                     </div>
                   </div>
                   <div className="hidden sm:block shrink-0">
-                    <Timeline runs={c.recent_runs || []} testid={`timeline-${c.id}`} />
+                    <Timeline runs={c.recent_runs || []} testid={`timeline-${c.id}`} static />
                   </div>
                   <ArrowRight size={16} className="text-quiet" />
-                </button>
+                </Link>
               </li>
             ))}
           </ul>
@@ -132,7 +131,7 @@ function EmptyState() {
         ))}
       </ol>
       <Link to="/checks/new" className="rp-btn-primary" data-testid="empty-new-check-btn">
-        <Plus size={16} /> Create your first check
+        <Plus size={16} /> Create your first Check
       </Link>
     </div>
   );

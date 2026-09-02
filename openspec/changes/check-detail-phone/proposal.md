@@ -35,6 +35,7 @@ and the dashboard but "check" everywhere in the app.
 ## Capabilities
 
 ### Modified Capabilities
+- `checks`: "Detail view is connector-aware" — the header label reads "{connector} Check".
 - `design-system`: "Every form control has a visible, associated label" gains the shared
   component clause; new requirements for stacking below `sm`, no nested interactive content,
   card-header action sizes, sentence typeface, and the product noun.

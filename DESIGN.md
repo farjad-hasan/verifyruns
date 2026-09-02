@@ -112,6 +112,18 @@ components:
     padding: "8px 14px"
   button-danger-hover:
     backgroundColor: "{colors.verdict-fail-wash}"
+  button-ghost-xs:
+    backgroundColor: "transparent"
+    textColor: "{colors.text-primary}"
+    rounded: "{rounded.control}"
+    padding: "6px 12px"
+    fontSize: "12px"
+  button-danger-xs:
+    backgroundColor: "transparent"
+    textColor: "{colors.verdict-fail-soft}"
+    rounded: "{rounded.control}"
+    padding: "6px 12px"
+    fontSize: "12px"
   card:
     backgroundColor: "{colors.surface-panel}"
     textColor: "{colors.text-primary}"
@@ -393,6 +405,18 @@ steps with mono `01 / 02 / 03` numerals in emerald, then one primary button. No 
 - **Do** render the empty timeline slots as ghost squares one tonal step above the panel
   (`#1C1C1F`), never as hairline-grey chips, so the real runs read as figure and the empties as
   ground; caption the strip "N of 30 runs" while N < 30.
+- **Do** size every card-header action as `rp-btn-xs` (6 × 12 px, 12 px type): ghost for Copy,
+  Edit, Enable and Rename; danger for Disable and Remove. Filled primary buttons belong to page
+  headers, forms and empty states, never to a card header (added 2026-09-03, `check-detail-phone`).
+- **Do** set every sentence the product speaks — "Loading…", empty states, hints — in Manrope;
+  JetBrains Mono is for observed values only, and a page shows one empty-state sentence per
+  condition, not two (2026-09-03).
+- **Do** stack verdict rows and page headers below `sm` (640 px): badge + sentence, then
+  timestamp · trigger on one mono line; actions on their own row under the name. The sentence
+  never yields width to its metadata (2026-09-03).
+- **Do** keep interactive content out of links and buttons: a dashboard row is one `<Link>`, and
+  the strip inside it is `Timeline` in `static` mode (spans, `role="img"`), never buttons in a
+  button (2026-09-03).
 
 ### Don't:
 - **Don't** load Inter. `public/index.html` still requests it (line 10) — a leftover from the

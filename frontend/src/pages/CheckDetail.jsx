@@ -10,6 +10,7 @@ import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save, Pencil, Globe2, Filter, Moon, Sun, ChevronDown } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetClose } from "@/components/ui/sheet";
+import { ExpectationsFields, HeartbeatField } from "../components/ExpectationsFields";
 
 // The engine appends "…checks were skipped: …" sentences to the verdict message when a rule sat
 // out (inexact count, no ORDER BY). The panel shows those as notes, not as part of the verdict.
@@ -69,7 +70,7 @@ export default function CheckDetail() {
     } catch (e) {
       /* the auth provider handles 401s route-side */
       const status = e.response?.status;
-      if (status === 404) setError("This check doesn't exist or was deleted.");
+      if (status === 404) setError("This Check doesn't exist or was deleted.");
       else if (status !== 401) setError("Could not reach VerifyRuns. Retrying automatically.");
       throw e; // usePoll backs off on consecutive failures
     }
@@ -112,7 +113,7 @@ export default function CheckDetail() {
   };
 
   const remove = async () => {
-    if (!window.confirm("Delete this check and all its runs?")) return;
+    if (!window.confirm("Delete this Check and all its runs?")) return;
     await api.delete(`/checks/${id}`);
     toast.success("Check deleted");
     nav("/dashboard");
@@ -133,7 +134,7 @@ export default function CheckDetail() {
               <button className="rp-btn-ghost" onClick={load} data-testid="check-retry">Retry now</button>
             </div>
           ) : (
-            <p className="text-quiet font-mono">Loading…</p>
+            <p className="text-quiet text-sm">Loading…</p>
           )}
         </div>
       </div>
@@ -144,33 +145,37 @@ export default function CheckDetail() {
   const latest = runs.length ? runs[0] : null;
   const steady = check.expectations?.growth_mode === "steady";
 
-  const runHistory = (
+  // With no runs the state card already carries the one "No runs yet" sentence, so the list is
+  // not rendered at all (design-system spec: one empty-state sentence per condition).
+  const runHistory = runs.length === 0 ? null : (
     <>
         {/* Run history */}
       <div className="mt-10">
-        <div className="flex items-center justify-between mb-3">
+        <div className="flex flex-wrap items-center justify-between gap-3 mb-3">
           <p className="text-xs uppercase tracking-widest text-quiet">Run history</p>
           <RunFilters filters={filters} setFilters={setFilters} />
         </div>
         {filteredRuns.length === 0 ? (
-          <div className="rp-card p-8 text-center text-quiet text-sm">
-            {runs.length === 0
-              ? "No runs yet. Verdicts will show up here after your workflow posts to the webhook."
-              : "No runs match the current filters."}
-          </div>
+          <div className="rp-card p-8 text-center text-quiet text-sm">No runs match the current filters.</div>
         ) : (
           <ul className="rp-card divide-y divide-hairline">
             {filteredRuns.map((r) => (
               <li key={r.id}>
+                {/* Below `sm` the row stacks: badge + sentence, then timestamp · trigger on one
+                    mono line, so the sentence keeps the full card width on a phone. */}
                 <button
                   onClick={() => openRun(r)}
-                  className="w-full text-left p-5 hover:bg-raised transition-colors flex items-center gap-5"
+                  className="w-full text-left p-5 hover:bg-raised transition-colors flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-5"
                   data-testid={`run-row-${r.id}`}
                 >
-                  <span className={r.verdict === "PASS" ? "badge-pass" : "badge-fail"}>{r.verdict}</span>
-                  <span className="text-sm text-zinc-300 flex-1 break-words">{r.diff_message}</span>
-                  <span className="text-xs text-quiet font-mono whitespace-nowrap">{formatDate(r.timestamp)}</span>
-                  <span className="text-[11px] text-quiet font-mono uppercase">{r.trigger}</span>
+                  <span className="flex items-start gap-3 sm:items-center sm:gap-5 flex-1 min-w-0">
+                    <span className={`shrink-0 ${r.verdict === "PASS" ? "badge-pass" : "badge-fail"}`}>{r.verdict}</span>
+                    <span className="text-sm text-zinc-300 flex-1 break-words">{r.diff_message}</span>
+                  </span>
+                  <span className="flex items-center gap-3 shrink-0 text-xs text-quiet font-mono whitespace-nowrap sm:gap-5">
+                    <span>{formatDate(r.timestamp)}</span>
+                    <span className="text-[11px] uppercase">{r.trigger}</span>
+                  </span>
                 </button>
               </li>
             ))}
@@ -185,7 +190,7 @@ export default function CheckDetail() {
         {/* Webhook */}
       <div className="rp-card p-6 sm:p-8 mt-6">
         <div className="flex items-center justify-between mb-2">
-          <p className="font-display text-lg">Webhook URL</p>
+          <h2 className="font-display text-lg">Webhook URL</h2>
           <CopyButton text={webhookUrl} testid="copy-webhook-url" />
         </div>
         <p className="text-sm text-quiet mb-4">
@@ -213,7 +218,7 @@ export default function CheckDetail() {
       {/* Config + Expectations */}
       <div className="grid md:grid-cols-2 gap-6 mt-6">
         <div className="rp-card p-6 sm:p-8">
-          <p className="font-display text-lg mb-4">Destination</p>
+          <h2 className="font-display text-lg mb-4">Destination</h2>
           <dl className="space-y-3 text-sm">
             {check.connector_kind === "postgres" ? (
               <>
@@ -261,10 +266,11 @@ export default function CheckDetail() {
           <ArrowLeft size={14} /> Back to dashboard
         </Link>
 
-        <div className="flex flex-wrap items-start justify-between gap-4 mb-2">
-          <div className="min-w-0 flex-1">
+        {/* Below `sm` the actions drop under the name so the name keeps the full width. */}
+        <div className="flex flex-col gap-4 sm:flex-row sm:flex-wrap sm:items-start sm:justify-between mb-2">
+          <div className="min-w-0 sm:flex-1">
             <p className="text-xs uppercase tracking-widest text-quiet mb-2">
-              {connectorLabel(check.connector_kind)} check
+              {connectorLabel(check.connector_kind)} Check
             </p>
             <CheckNameHeader check={check} onSaved={load} />
           </div>
@@ -273,7 +279,7 @@ export default function CheckDetail() {
             <SnoozeControl check={check} onSaved={load} />
             <button className="rp-btn-ghost" onClick={runNow} disabled={running} data-testid="run-now-btn">
               {running ? <RefreshCw size={14} className="animate-spin" /> : <Play size={14} />}
-              {running ? "Running…" : "Run check now"}
+              {running ? "Running…" : "Run Check now"}
             </button>
             <button className="rp-btn-danger" onClick={remove} data-testid="delete-check-btn">
               <Trash2 size={13} className="inline mr-1" /> Delete
@@ -307,7 +313,7 @@ export default function CheckDetail() {
           </div>
           {timelineRuns.length === 0 ? (
             <div className="py-8 text-center">
-              <p className="text-quiet font-mono text-sm">No runs yet. Trigger your workflow, or click &ldquo;Run check now&rdquo;.</p>
+              <p className="text-sm text-zinc-400">No runs yet. Trigger your workflow, or click &ldquo;Run Check now&rdquo;.</p>
             </div>
           ) : (
             <Timeline runs={timelineRuns} hero onRunClick={openRun} testid="detail-timeline" />
@@ -563,10 +569,10 @@ function AlertChannelsCard({ check, onSaved }) {
     <div className="rp-card p-6 sm:p-8 mt-6" data-testid="alert-channels-card">
       <div className="flex items-center gap-2 mb-2">
         {channels.length ? <Bell size={18} className="text-emerald-400" /> : <BellOff size={18} className="text-quiet" />}
-        <p className="font-display text-lg">Alert channels</p>
+        <h2 className="font-display text-lg">Alert channels</h2>
       </div>
       <p className="text-sm text-quiet mb-4">
-        Every channel gets one message on the first FAIL and one when the check recovers — never one per red run.
+        Every channel gets one message on the first FAIL and one when the Check recovers — never one per red run.
       </p>
 
       {channels.length > 0 && (
@@ -577,7 +583,7 @@ function AlertChannelsCard({ check, onSaved }) {
                 <span className="text-[11px] uppercase tracking-widest text-quiet mr-3">{ch.kind}</span>
                 {ch.last4}
               </span>
-              <button className="rp-link text-xs text-quiet hover:text-red-400" onClick={() => remove(ch)} data-testid={`remove-channel-${ch.id}`}>
+              <button className="rp-btn-danger rp-btn-xs" onClick={() => remove(ch)} data-testid={`remove-channel-${ch.id}`}>
                 Remove
               </button>
             </li>
@@ -658,10 +664,10 @@ function ExpectationsCard({ check, onSaved }) {
   return (
     <div className="rp-card p-6 sm:p-8" data-testid="expectations-card">
       <div className="flex items-center justify-between mb-4">
-        <p className="font-display text-lg">Expectations</p>
+        <h2 className="font-display text-lg">Expectations</h2>
         {!editing && (
           <button
-            className="rp-btn-ghost !py-1.5 !px-3 !text-xs"
+            className="rp-btn-ghost rp-btn-xs"
             onClick={startEdit}
             data-testid="edit-expectations-btn"
           >
@@ -681,60 +687,14 @@ function ExpectationsCard({ check, onSaved }) {
         </dl>
       ) : (
         <div className="space-y-3">
-          <div>
-            <label className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Heartbeat — expect a run every … hours (blank = off)</label>
-            <input
-              type="number"
-              min="1"
-              max="720"
-              className="rp-input font-mono"
-              placeholder="24"
-              value={heartbeat}
-              onChange={(e) => setHeartbeat(e.target.value)}
-              data-testid="edit-heartbeat-input"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Growth mode</label>
-            <select className="rp-input font-mono" value={mode} onChange={(e) => setMode(e.target.value)} data-testid="edit-mode-select">
-                <option value="growth">Growth — must gain at least the minimum (or what the workflow claims)</option>
-                <option value="steady">Steady — the count must not change</option>
-                <option value="claimed">Claimed — every run must send {"{"}"wrote": N{"}"} and the destination must gain N</option>
-              </select>
-          </div>
-          <div>
-            <label className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Minimum new records per run (0 = growth optional)</label>
-            <input
-              type="number"
-              min="0"
-              className="rp-input font-mono"
-              value={minNew}
-              onChange={(e) => setMinNew(e.target.value)}
-              data-testid="edit-minnew-input"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Required fields (comma-separated)</label>
-            <input
-              type="text"
-              className="rp-input font-mono"
-              placeholder="id, price, created_at"
-              value={required}
-              onChange={(e) => setRequired(e.target.value)}
-              data-testid="edit-required-input"
-            />
-          </div>
-          <div>
-            <label className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Fields that must be non-empty</label>
-            <input
-              type="text"
-              className="rp-input font-mono"
-              placeholder="email, customer_id"
-              value={nonEmpty}
-              onChange={(e) => setNonEmpty(e.target.value)}
-              data-testid="edit-nonempty-input"
-            />
-          </div>
+          <ExpectationsFields
+            idPrefix="edit" testidPrefix="edit"
+            mode={mode} setMode={setMode}
+            minNew={minNew} setMinNew={setMinNew}
+            required={required} setRequired={setRequired}
+            nonEmpty={nonEmpty} setNonEmpty={setNonEmpty}
+          />
+          <HeartbeatField idPrefix="edit" testidPrefix="edit" value={heartbeat} onChange={setHeartbeat} />
           <label className="flex items-start gap-2 cursor-pointer select-none pt-1">
             <input type="checkbox" className="w-4 h-4 mt-0.5 accent-emerald-500" checked={storeSamples} onChange={(e) => setStoreSamples(e.target.checked)} data-testid="edit-store-samples" />
             <span className="text-sm text-zinc-300">Store raw samples for 30 days
@@ -821,7 +781,7 @@ function RunFilters({ filters, setFilters }) {
   const set = (k, v) => setFilters({ ...filters, [k]: v });
   const selectCls = "bg-ink border border-hairline text-zinc-200 text-xs rounded-md px-2 py-1.5 font-mono focus:outline-none focus:border-focus";
   return (
-    <div className="flex items-center gap-2" data-testid="run-filters">
+    <div className="flex flex-wrap items-center gap-2" data-testid="run-filters">
       <Filter size={13} className="text-quiet" />
       <select className={selectCls} aria-label="Filter by verdict" value={filters.verdict} onChange={(e) => set("verdict", e.target.value)} data-testid="filter-verdict">
         <option value="all">All verdicts</option>
@@ -850,7 +810,7 @@ function PublicStatusCard({ check, onSaved }) {
     : "";
 
   const enable = async () => {
-    if (!window.confirm(`Enable the public status page? Anyone with the link will see this check's name ("${check.name}"), its verdicts, and their diff sentences.`)) return;
+    if (!window.confirm(`Enable the public status page? Anyone with the link will see this Check's name ("${check.name}"), its verdicts, and their diff sentences.`)) return;
     setBusy(true);
     try {
       await api.post(`/checks/${check.id}/public`);
@@ -881,14 +841,14 @@ function PublicStatusCard({ check, onSaved }) {
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-2">
           <Globe2 size={16} className={check.is_public ? "text-emerald-400" : "text-quiet"} />
-          <p className="font-display text-lg">Public status page</p>
+          <h2 className="font-display text-lg">Public status page</h2>
         </div>
         {check.is_public ? (
-          <button className="rp-btn-danger" onClick={disable} disabled={busy} data-testid="disable-public-btn">
+          <button className="rp-btn-danger rp-btn-xs" onClick={disable} disabled={busy} data-testid="disable-public-btn">
             Disable
           </button>
         ) : (
-          <button className="rp-btn-primary !py-1.5 !px-3 !text-xs" onClick={enable} disabled={busy} data-testid="enable-public-btn">
+          <button className="rp-btn-ghost rp-btn-xs" onClick={enable} disabled={busy} data-testid="enable-public-btn">
             {busy ? "Enabling…" : "Enable"}
           </button>
         )}
@@ -905,7 +865,7 @@ function PublicStatusCard({ check, onSaved }) {
         </>
       ) : (
         <p className="text-sm text-quiet">
-          Generate a shareable read-only URL so teammates can debug a failing check without an account.
+          Generate a shareable read-only URL so teammates can debug a failing Check without an account.
         </p>
       )}
     </div>
@@ -932,7 +892,7 @@ function CheckNameHeader({ check, onSaved }) {
       setEditing(false);
       await onSaved();
     } catch {
-      toast.error("Could not rename check");
+      toast.error("Could not rename Check");
       setName(check.name);
     } finally {
       setBusy(false);
@@ -959,32 +919,33 @@ function CheckNameHeader({ check, onSaved }) {
           }}
           data-testid="rename-check-input"
         />
-        <button className="rp-btn-primary !py-1.5 !px-3 !text-xs" onClick={save} disabled={busy} data-testid="rename-check-save">
+        <button className="rp-btn-primary rp-btn-xs" onClick={save} disabled={busy} data-testid="rename-check-save">
           {busy ? "Saving…" : "Save"}
         </button>
-        <button className="rp-btn-ghost !py-1.5 !px-3 !text-xs" onClick={cancel} disabled={busy} data-testid="rename-check-cancel">
+        <button className="rp-btn-ghost rp-btn-xs" onClick={cancel} disabled={busy} data-testid="rename-check-cancel">
           Cancel
         </button>
       </div>
     );
   }
 
+  // The heading is a sibling of the rename control, never its child (interactive content is
+  // never nested), and the control is visible rather than hover-only so it exists on touch.
   return (
-    <button
-      type="button"
-      onClick={() => setEditing(true)}
-      className="group flex items-center gap-3 text-left"
-      title="Click to rename"
-      data-testid="rename-check-trigger"
-    >
-      <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight break-words" data-testid="check-name">
+    <div className="flex flex-wrap items-center gap-3">
+      <h1 className="font-display text-2xl sm:text-3xl font-semibold tracking-tight break-words min-w-0" data-testid="check-name">
         {check.name}
       </h1>
-      <Pencil
-        size={16}
-        className="text-quiet opacity-0 group-hover:opacity-100 transition-opacity"
-      />
-    </button>
+      <button
+        type="button"
+        onClick={() => setEditing(true)}
+        className="rp-btn-ghost rp-btn-xs shrink-0"
+        aria-label="Rename this Check"
+        data-testid="rename-check-trigger"
+      >
+        <Pencil size={13} /> Rename
+      </button>
+    </div>
   );
 }
 

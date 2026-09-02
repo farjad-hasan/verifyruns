@@ -100,6 +100,10 @@ body {
 }
 .rp-btn-danger:hover { background: rgba(239,68,68,0.1); }
 
+/* Card-header size: Copy, Edit, Enable (ghost) and Disable, Remove (danger). Composes with the
+   three button classes above and must stay below them so it wins on padding and size. */
+.rp-btn-xs { padding: 6px 12px; font-size: 12px; }
+
 /* Timeline squares */
 .tl-square {
     width: 12px;
