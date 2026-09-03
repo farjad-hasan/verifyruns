@@ -20,12 +20,14 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
   let message = "";
   let fp: Fingerprint = { record_count: 0, sample_size: 0, fields: [], newest_record: null, newest_window: [], newest_defined: true, null_pct: {} };
   let errorDetails: string | null = null;
+  let readFailed = false;
   let meta: FetchMeta = { total: 0, capped: false, count_estimated: false };
   try {
     const res = await fetchRecords(env, c.connector_kind, c.config);
     if (res.records === null) {
       message = res.error || "Destination fetch failed.";
       errorDetails = res.details;
+      readFailed = true;
     } else {
       meta = res.meta || { total: res.records.length, capped: false, count_estimated: false };
       fp = fingerprint(res.records, meta.total, meta.newest_defined ?? true);
@@ -48,6 +50,7 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
     verdict = "FAIL";
     message = `Unexpected error while checking destination: ${e?.name || "Error"}.`;
     errorDetails = String(e?.message || e).slice(0, 500);
+    readFailed = true;
     console.error("executeCheck error", e);
   }
 
@@ -56,7 +59,8 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
   const reportedFailure = !!reported?.failed;
   if (reportedFailure) {
     verdict = "FAIL";
-    message = reportedFailureMessage(reported?.error ?? null);
+    const sentence = reportedFailureMessage(reported?.error ?? null);
+    message = readFailed ? `${sentence} Destination could not be read: ${message}` : sentence;
   }
   const [storedFp, sample] = await splitSample(fp, errorDetails, c.store_samples, num(env.VR_SAMPLE_TTL_DAYS, 30));
   const timestamp = nowIso();
@@ -79,6 +83,9 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
       env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ?").bind(nextHeartbeatDue(new Date(timestamp), c.heartbeat_hours, c.heartbeat_window).toISOString(), checkId),
     );
   }
+  // A reported failure also cancels a retry left by an earlier ordinary FAIL: that retry would read a
+  // healthy destination, PASS, and send a false Recovered seconds after the failure alert.
+  if (reportedFailure) stmts.push(env.DB.prepare("UPDATE checks SET pending_retry = NULL WHERE id = ?").bind(checkId));
   await env.DB.batch(stmts);
   const run: RunResult = { id: runId, verdict, diff_message: message, timestamp };
 

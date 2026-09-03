@@ -298,11 +298,13 @@ export async function disablePublic(env: Env, request: Request, id: string): Pro
   return json({ is_public: false });
 }
 
+export const PUBLIC_REPORTED_FAILURE = "Your workflow reported failure.";
+
 export async function publicCheck(env: Env, token: string): Promise<Response> {
   const row = await env.DB.prepare("SELECT * FROM checks WHERE public_token = ?").bind(token).first();
   if (!row) throw new HttpError(404, "Not found");
   const c = rowToCheck(row);
-  const rows = (await env.DB.prepare("SELECT id, verdict, timestamp, diff_message, trigger, alerts_sent FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results as any[];
+  const rows = (await env.DB.prepare("SELECT id, verdict, timestamp, diff_message, trigger, alerts_sent, reported_failure FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results as any[];
   // Verdicts only: no config, secrets, fingerprints or error_details, and alert delivery is
   // reduced to {kind, ok} so neither the target nor a delivery error (which can quote the
   // destination's response) ever reaches a viewer without an account.
@@ -310,7 +312,8 @@ export async function publicCheck(env: Env, token: string): Promise<Response> {
     id: r.id,
     verdict: r.verdict,
     timestamp: r.timestamp,
-    diff_message: r.diff_message,
+    // The workflow-supplied reason stays with the owner; viewers without an account get the fact only.
+    diff_message: r.reported_failure ? PUBLIC_REPORTED_FAILURE : r.diff_message,
     trigger: r.trigger,
     alerts_sent: publicAlerts(r.alerts_sent),
   }));
@@ -476,8 +479,9 @@ export async function webhook(env: Env, request: Request, ctx: ExecutionContext,
   } catch {
     body = null;
   }
-  const [claimedNew, bodyNote] = parseClaimed(body);
-  const reported = parseReported(body);
+  const [claimedNew, claimNote] = parseClaimed(body);
+  const [reported, reportNote] = parseReported(body);
+  const bodyNote = [claimNote, reportNote].filter(Boolean).join("; ") || null;
   const runId = uuid();
   const wait = new URL(request.url).searchParams.get("wait");
   if (wait !== null && Number(wait) === 0) {

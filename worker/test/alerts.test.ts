@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it } from "vitest";
 import { env } from "cloudflare:test";
-import { deliver, formatAlert, maybeAlert } from "../src/alerts";
+import { deliver, formatAlert, maybeAlert, slackEscape } from "../src/alerts";
+import { tick } from "../src/tick";
 import { getCheck } from "../src/checks";
 import { setFetchForTests } from "../src/net";
 import { api, jsonResponse, makeCheck, user } from "./helpers";
@@ -224,7 +225,7 @@ describe("reported failure alerts without a retry", () => {
     const u = await user();
     const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, retry_before_alert: true, alert_channels: [{ kind: "discord", target: DISCORD }] });
     expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("PASS");
-    const f = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { status: "failed", error: "exit 143" } });
+    const f = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { failed: true, error: "exit 143" } });
     expect(f.data.verdict).toBe("FAIL");
     expect(posts.length).toBe(1);
     expect(posts[0].content).toContain("Your workflow reported failure: exit 143.");
@@ -234,6 +235,58 @@ describe("reported failure alerts without a retry", () => {
     expect(ok.data.verdict).toBe("PASS");
     expect(posts.length).toBe(2);
     expect(posts[1].content.startsWith("✅ **Recovered**")).toBe(true);
+  });
+});
+
+describe("reported failure cancels a pending retry", () => {
+  it("ordinary FAIL sets a retry → reported failure inside the window → drain sends no false Recovered", async () => {
+    let n = 200;
+    const posts: any[] = [];
+    setFetchForTests(async (url, init) => {
+      if (url.startsWith("https://discord")) {
+        posts.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 204 });
+      }
+      return jsonResponse(Array.from({ length: n }, (_, i) => ({ id: i + 1 })));
+    });
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 1 }, retry_before_alert: true, alert_channels: [{ kind: "discord", target: DISCORD }] });
+    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("PASS");
+    const f1 = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { wrote: 5 } }); // destination gained 0 → ordinary FAIL, retry scheduled
+    expect(f1.data.verdict).toBe("FAIL");
+    expect(posts.length).toBe(0);
+    const due = (await api(`/checks/${c.id}`, { token: u.token })).data.pending_retry_at;
+    expect(typeof due).toBe("string");
+    n = 205; // the destination catches up: a retry would now PASS
+    const f2 = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { failed: true, error: "exit 1" } });
+    expect(f2.data.verdict).toBe("FAIL");
+    expect(posts.length).toBe(1);
+    expect(posts[0].content).toContain("🚨 **FAIL**");
+    expect((await api(`/checks/${c.id}`, { token: u.token })).data.pending_retry_at).toBeNull();
+    expect((await tick(env, new Date(Date.parse(due) + 60_000))).retries).toBe(0);
+    expect(posts.length).toBe(1); // no Recovered
+    const runs = (await api(`/checks/${c.id}/runs`, { token: u.token })).data;
+    expect(runs.some((r: any) => r.trigger === "retry")).toBe(false);
+  });
+});
+
+describe("reported error text is inert in chat channels", () => {
+  it("discord payloads carry allowed_mentions: {parse: []}", async () => {
+    let sent: any = null;
+    setFetchForTests(async (url, init) => {
+      sent = JSON.parse(String(init?.body));
+      return new Response(null, { status: 204 });
+    });
+    expect(await deliver(env, "discord", DISCORD, "@everyone hi")).toEqual({ ok: true });
+    expect(sent.allowed_mentions).toEqual({ parse: [] });
+    expect(sent.content).toBe("@everyone hi");
+  });
+  it("slack text escapes <, > and & in the name and message, keeps the link markup", () => {
+    const t = formatAlert("slack", { state: "FAIL", name: "a & b", message: "Your workflow reported failure: <!channel> <https://evil|x>.", timestamp: "2026-09-04T00:00:00.000Z", link: "https://app/checks/1" });
+    expect(t).toContain("a &amp; b");
+    expect(t).toContain("&lt;!channel&gt; &lt;https://evil|x&gt;.");
+    expect(t).toContain("<https://app/checks/1|Open in VerifyRuns>");
+    expect(slackEscape("<&>")).toBe("&lt;&amp;&gt;");
   });
 });
 
