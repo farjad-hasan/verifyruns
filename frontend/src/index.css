@@ -178,7 +178,19 @@ body {
 }
 .rp-link:hover { color: #FAFAFA; }
 
+/* Inline link inside prose (documentation pages, auth notes, hints): underlined at rest, one
+   step lighter on hover. Chrome links (nav, footer, back links) use .rp-link instead. */
+.rp-inline { text-decoration: underline; text-underline-offset: 4px; transition: color 160ms ease; }
+.rp-inline:hover { color: #D4D4D8; }
+
 .rp-divider { border-top: 1px solid #27272A; }
+
+/* Page root: nav, content, footer stacked to at least the viewport height so the footer sits at
+   the bottom of short pages. Children are forced to full width because a centred (`mx-auto`)
+   content column inside a flex column would otherwise shrink to its content and overflow on
+   phones — auto margins override the cross-axis stretch. */
+.rp-page { min-height: 100vh; display: flex; flex-direction: column; }
+.rp-page > * { width: 100%; }
 
 /* Entrance fade */
 @keyframes rp-fade-up {

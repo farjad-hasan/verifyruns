@@ -1,10 +1,12 @@
 import { useEffect, useState, useCallback } from "react";
 import { useParams, Link } from "react-router-dom";
 import axios from "axios";
+import Nav from "../components/Nav";
+import Footer from "../components/Footer";
 import Timeline from "../components/Timeline";
 import usePoll from "../lib/usePoll";
 import useTitle from "../lib/useTitle";
-import { Activity, AlertTriangle } from "lucide-react";
+import { AlertTriangle } from "lucide-react";
 import { connectorLabel } from "./CheckDetail";
 
 const API = `${process.env.REACT_APP_BACKEND_URL}/api`;
@@ -73,18 +75,8 @@ export default function PublicStatus() {
   const timelineRuns = [...data.runs].reverse(); // oldest -> newest for right-anchored strip
 
   return (
-    <div className="min-h-screen">
-      <header className="border-b border-raised bg-ink/80 backdrop-blur-sm sticky top-0 z-30">
-        <div className="max-w-4xl mx-auto px-6 lg:px-10 py-4 flex items-center justify-between">
-          <Link to="/" className="flex items-center gap-2.5" data-testid="public-nav-logo">
-            <div className="w-7 h-7 rounded-md bg-emerald-500/15 border border-emerald-500/30 flex items-center justify-center">
-              <Activity size={15} className="text-emerald-400" strokeWidth={2.5} />
-            </div>
-            <span className="font-display text-lg font-semibold tracking-tight">VerifyRuns</span>
-          </Link>
-          <span className="text-[11px] uppercase tracking-widest text-quiet font-mono">Public status</span>
-        </div>
-      </header>
+    <div className="rp-page">
+      <Nav variant="public" />
 
       <div className="max-w-4xl mx-auto px-6 lg:px-10 py-16">
         <div className="flex items-center justify-between mb-2">
@@ -129,10 +121,8 @@ export default function PublicStatus() {
           </div>
         )}
 
-        <p className="text-xs text-quiet mt-10 text-center">
-          Read-only status page powered by <Link to="/" className="underline underline-offset-4 hover:text-zinc-300">VerifyRuns</Link>.
-        </p>
       </div>
+      <Footer slim />
     </div>
   );
 }

@@ -1,7 +1,7 @@
 import { Link } from "react-router-dom";
 import LegalPage from "./LegalPage";
 
-const MAIL = <a className="underline underline-offset-4 hover:text-zinc-300" href="mailto:farjad.developer@gmail.com?subject=VerifyRuns%20privacy">farjad.developer@gmail.com</a>;
+const MAIL = <a className="rp-inline" href="mailto:farjad.developer@gmail.com?subject=VerifyRuns%20privacy">farjad.developer@gmail.com</a>;
 
 const SECTIONS = [
   { title: "Who runs VerifyRuns", paras: [<>VerifyRuns is operated by Farjad Hasan, an individual developer, from Pakistan. Questions and requests about your data go to {MAIL}.</>] },
@@ -11,7 +11,7 @@ const SECTIONS = [
     list: [
       <><strong className="text-zinc-300">Account:</strong> your email address and a salted PBKDF2 hash of your password, so you can log in. We never see the password itself.</>,
       <><strong className="text-zinc-300">Checks:</strong> the name, destination and expectations you configure. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets (Slack/Discord webhook URLs, email addresses) are encrypted with AES-256-GCM before they are stored and are only ever shown back masked to the last four characters. They are used solely to read the destination and to deliver your alerts.</>,
-      <><strong className="text-zinc-300">Runs:</strong> per run, a timestamp, the verdict, the diff sentence, the count your workflow claimed, and a fingerprint of the destination — record count, field names, per-field empty rates and a SHA-256 hash of the newest record. Not the rows. See <Link className="underline underline-offset-4" to="/data">What we store</Link> for the exact list.</>,
+      <><strong className="text-zinc-300">Runs:</strong> per run, a timestamp, the verdict, the diff sentence, the count your workflow claimed, and a fingerprint of the destination — record count, field names, per-field empty rates and a SHA-256 hash of the newest record. Not the rows. See <Link className="rp-inline" to="/data">What we store</Link> for the exact list.</>,
       <><strong className="text-zinc-300">Raw samples, only if you turn them on:</strong> the five newest records and up to 500 characters of an upstream error, kept about 30 days and then deleted automatically.</>,
       <><strong className="text-zinc-300">Pricing interest:</strong> if you click a plan on the pricing page, the plan and any note you type, with your email.</>,
       <><strong className="text-zinc-300">Password resets:</strong> a hash of the one-time token, for one hour.</>,
@@ -46,7 +46,7 @@ const SECTIONS = [
   },
   {
     title: "If something goes wrong",
-    paras: [<>If we learn that stored credentials or account data were exposed, we will email affected accounts within 72 hours with what happened and what to rotate. Security details and the disclosure address are on the <Link className="underline underline-offset-4" to="/security">Security</Link> page.</>],
+    paras: [<>If we learn that stored credentials or account data were exposed, we will email affected accounts within 72 hours with what happened and what to rotate. Security details and the disclosure address are on the <Link className="rp-inline" to="/security">Security</Link> page.</>],
   },
   {
     title: "Changes",

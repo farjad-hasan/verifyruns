@@ -3,6 +3,7 @@ import { Link, useNavigate, useSearchParams } from "react-router-dom";
 import api, { formatError } from "../lib/api";
 import { useAuth } from "../lib/auth";
 import Nav from "../components/Nav";
+import Footer from "../components/Footer";
 import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 
@@ -39,7 +40,7 @@ export default function ResetPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="rp-page">
       <Nav />
       <div className="flex-1 flex items-center justify-center px-6 py-16">
         <div className="w-full max-w-md rp-fade">
@@ -47,7 +48,7 @@ export default function ResetPage() {
           <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-2">Choose a new password</h1>
           {!token ? (
             <p className="text-zinc-400 mb-10" data-testid="reset-no-token">
-              This page needs the link from the reset email. <Link to="/forgot" className="text-zinc-200 underline underline-offset-4 hover:text-white">Request a new one</Link>.
+              This page needs the link from the reset email. <Link to="/forgot" className="text-zinc-200 rp-inline">Request a new one</Link>.
             </p>
           ) : (
             <>
@@ -63,7 +64,7 @@ export default function ResetPage() {
                 </div>
                 {error && (
                   <div className="text-sm text-red-400 border border-red-500/25 bg-red-500/5 rounded-md p-3" data-testid="reset-error">
-                    {error} {/expired/i.test(error) && <Link to="/forgot" className="underline underline-offset-4">Request a new link</Link>}
+                    {error} {/expired/i.test(error) && <Link to="/forgot" className="rp-inline">Request a new link</Link>}
                   </div>
                 )}
                 <button type="submit" className="rp-btn-primary w-full justify-center" disabled={busy} data-testid="reset-submit-btn">
@@ -74,6 +75,7 @@ export default function ResetPage() {
           )}
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

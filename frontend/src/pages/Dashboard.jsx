@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api from "../lib/api";
 import Nav from "../components/Nav";
+import Footer from "../components/Footer";
 import usePoll from "../lib/usePoll";
 import useTitle from "../lib/useTitle";
 import { connectorLabel } from "./CheckDetail";
@@ -30,7 +31,7 @@ export default function Dashboard() {
   usePoll(load, { interval: 10000 });
 
   return (
-    <div className="min-h-screen">
+    <div className="rp-page">
       <Nav />
       <div className="max-w-6xl mx-auto px-6 lg:px-10 py-12">
         <div className="flex items-center justify-between mb-10">
@@ -99,6 +100,7 @@ export default function Dashboard() {
           </ul>
         )}
       </div>
+      <Footer />
     </div>
   );
 }

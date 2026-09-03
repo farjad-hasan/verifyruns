@@ -3,6 +3,7 @@ import { useNavigate, Link } from "react-router-dom";
 import posthog from "posthog-js";
 import api, { formatError } from "../lib/api";
 import Nav from "../components/Nav";
+import Footer from "../components/Footer";
 import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
@@ -90,7 +91,7 @@ export default function NewCheck() {
   };
 
   return (
-    <div className="min-h-screen">
+    <div className="rp-page">
       <Nav />
       <div className="max-w-3xl mx-auto px-6 lg:px-10 py-12">
         <Link to="/dashboard" className="rp-link text-sm inline-flex items-center gap-1.5 mb-6" data-testid="back-to-dashboard">
@@ -162,7 +163,7 @@ export default function NewCheck() {
                 </Field>
                 <p className="text-xs text-quiet leading-relaxed">
                   VerifyRuns lists up to 100 records at a time. Create a PAT at
-                  <a className="underline underline-offset-4 hover:text-zinc-300 ml-1" href="https://airtable.com/create/tokens" target="_blank" rel="noreferrer">airtable.com/create/tokens</a>
+                  <a className="rp-inline ml-1" href="https://airtable.com/create/tokens" target="_blank" rel="noreferrer">airtable.com/create/tokens</a>
                   &nbsp;with <span className="font-mono">data.records:read</span> for the base.
                 </p>
               </div>
@@ -249,6 +250,7 @@ export default function NewCheck() {
           </div>
         </form>
       </div>
+      <Footer />
     </div>
   );
 }
