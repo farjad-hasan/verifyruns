@@ -26,7 +26,7 @@ A Check MAY carry `heartbeat_window` (`start`, `end` as `HH:MM`, `tz` as an IANA
 
 #### Scenario: Overnight gap is not a miss
 - **WHEN** an hourly Check with window 13:00–23:00 records a run at 22:30 local
-- **THEN** its next due time is 14:00 local the next day, and no heartbeat fires overnight
+- **THEN** its next due time is 13:30 local the next day (the 30 min left before close plus 30 min after it reopens), and no heartbeat fires overnight
 
 #### Scenario: Missed run inside the window still fires
 - **WHEN** the same Check records nothing after its 14:00 due time

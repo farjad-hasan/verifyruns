@@ -1,6 +1,6 @@
 ## 1. Tests first (worker/test/)
 
-- [ ] 1.1 `schedule.test.ts`: `nextHeartbeatDue` pure cases — no window equals `+N h`; overnight gap (22:30 → 14:00 next day); miss inside window (13:00 run, 1 h → 14:00); Mon–Fri weekend skip (Fri 16:00, 2 h → Mon 10:00); wrapping 22:00–06:00; anchor outside window (run at 03:00, window 09–17 → 09:00 + N); DST boundary in `Europe/London` (walk stays on wall-clock hours)
+- [x] 1.1 `schedule.test.ts`: `nextHeartbeatDue` pure cases — no window equals `+N h`; overnight gap (22:30 → 14:00 next day); miss inside window (13:00 run, 1 h → 14:00); Mon–Fri weekend skip (Fri 16:00, 2 h → Mon 10:00); wrapping 22:00–06:00; anchor outside window (run at 03:00, window 09–17 → 09:00 + N); DST boundary in `Europe/London` (walk stays on wall-clock hours)
 - [ ] 1.2 `checks.test.ts`: create/patch validation scenarios from the spec (window without cadence → 400 `heartbeat_hours`; bad tz → 400 `heartbeat_window.tz`; bad `days`; clearing cadence clears window); field round-trips on detail and list
 - [ ] 1.3 `tick.test.ts`: windowed Check does not fire during its closed hours (tick at 03:00 local with last run 22:30) and does fire after 14:00; message carries the "(active …)" suffix
 - [ ] 1.4 migration 0005 applies over 0001–0004 in the harness (`apply-migrations.ts` picks it up)
