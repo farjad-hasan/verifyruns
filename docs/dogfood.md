@@ -68,4 +68,5 @@ record count.
    should print `{"sink": 201, "verifyruns": 200}` and the Check should show a PASS.
 
 The wrapper and its tests live in `farjad-world/scripts/report_run.py`; the brand jobs'
-`brand_state.report_run` delegates to it, so there is one implementation.
+`brand_state.report_run` delegates to it, so there is one implementation. The pattern written
+up for anyone else's job is [docs/unreachable-destination.md](unreachable-destination.md).
