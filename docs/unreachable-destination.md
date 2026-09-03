@@ -68,8 +68,9 @@ curl -s -X POST "https://<project>.supabase.co/rest/v1/job_runs" \
   -H "Content-Type: application/json" -H "Prefer: return=minimal" \
   -d "{\"job\":\"nightly-export\",\"exit\":$code,\"at\":\"$(date -u +%FT%TZ)\"}" \
   && wrote=1 || wrote=0
+if [ "$code" -eq 0 ]; then body="{\"wrote\":$wrote}"; else body="{\"wrote\":$wrote,\"status\":\"failed\",\"error\":\"exit $code\"}"; fi
 curl -s -X POST "https://<your-host>/api/hook/<secret>" \
-  -H "Content-Type: application/json" -d "{\"wrote\":$wrote}"
+  -H "Content-Type: application/json" -d "$body"
 exit $code
 ```
 
@@ -81,9 +82,9 @@ treating the run as silent.
 A ready-made Python version (stdlib only, `report_run.py --job <label> -- <command>`) and a
 live example of the whole pattern are in [docs/dogfood.md](dogfood.md).
 
-## Known limit
+## What a failed command looks like
 
-A run whose command **fails** still writes its row and still PASSes: the exit code sits in
-the row for a person to read, but no rule reads it. Today only the run that never reports
-becomes a FAIL. If you need "the job reported failure" to be a FAIL as well, say so — it is
-the most-asked-for extension of this pattern and is not built yet.
+The `status: failed` body above makes a non-zero exit a FAIL in its own right — "Your workflow
+reported failure: exit 1." — alerted immediately and recovered by the next clean run. Without
+it, a job that fails but still writes its row would PASS: the row proves the job reached its
+end, not that it succeeded. Send the status; the exit code in the row is for humans.

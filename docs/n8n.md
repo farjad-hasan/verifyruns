@@ -16,10 +16,14 @@ Leave the body empty if you only want VerifyRuns to check growth against the Che
 
 Don't want the node to wait for the destination read? Append `?wait=0` to the URL: VerifyRuns answers `202` immediately and runs the check within a minute.
 
+## Telling VerifyRuns the workflow failed
+
+Point your **Error Workflow** (Workflow settings → Error workflow) at the same webhook with the body `{ "status": "failed", "error": "{{ $json.execution.error.message }}" }`. That run is a FAIL with the sentence "Your workflow reported failure: …", is alerted straight away (no retry — re-reading the destination cannot change what the workflow said), and the next normal run recovers it. Without this, an n8n execution that dies before the last node is only caught by the heartbeat.
+
 ## What the verdict means
 
 - **PASS** — the destination gained at least what the workflow claimed (or the Check's minimum) and every field rule held.
-- **FAIL** — the run said "done" but the destination disagrees. The message says exactly how: `your workflow said it wrote 3 records; the destination gained 0`.
+- **FAIL** — the run said "done" but the destination disagrees. The message says exactly how: `your workflow said it wrote 3 records; the destination gained 0`. Or the workflow said it failed: `Your workflow reported failure: step 4 timed out.`
 
 ## Making the n8n execution fail too
 

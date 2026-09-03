@@ -14,8 +14,8 @@
 
 ## 3. Docs
 
-- [ ] 3.1 `README.md` step 2 gains the failure body; `docs/n8n.md` error-workflow recipe; `docs/make.md`, `docs/zapier.md` one line each; `docs/what-we-store.md` lists the error string
-- [ ] 3.2 `docs/dogfood.md` and `docs/unreachable-destination.md`: replace the known-limit paragraphs with the feature
+- [x] 3.1 `README.md` step 2 gains the failure body; `docs/n8n.md` error-workflow recipe; `docs/make.md`, `docs/zapier.md` one line each; `docs/what-we-store.md` lists the error string
+- [x] 3.2 `docs/dogfood.md` and `docs/unreachable-destination.md`: replace the known-limit paragraphs with the feature
 
 ## 4. Wrapper (farjad-world)
 
@@ -24,6 +24,6 @@
 
 ## 5. Verify locally, then push
 
-- [ ] 5.1 `cd worker && npm test && npm run typecheck` green; `cd frontend && CI=true yarn build` clean (no frontend change expected)
+- [x] 5.1 `cd worker && npm test && npm run typecheck` green; `cd frontend && CI=true yarn build` clean (no frontend change expected)
 - [ ] 5.2 Blind review of the diff before merge
 - [ ] 5.3 Merge to `main` (migration before code, as the pipeline does); live: run the wrapper with `/usr/bin/false` on `kb-reindex` → FAIL "Your workflow reported failure: exit 1." + Discord alert; then `/usr/bin/true` → PASS + Recovered; flip the claim; remove the worktree
