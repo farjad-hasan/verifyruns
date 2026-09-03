@@ -1,5 +1,5 @@
 import { useEffect, useState, useCallback } from "react";
-import { useParams, Link } from "react-router-dom";
+import { useParams } from "react-router-dom";
 import axios from "axios";
 import Nav from "../components/Nav";
 import Footer from "../components/Footer";
@@ -58,18 +58,30 @@ export default function PublicStatus() {
   usePoll(load, { interval: 30000 }); // a wall display should cost the Worker near-zero
   useTitle(data?.name || "Status");
 
+  // The revoked-link and loading states keep the shell too, so a dead share link still offers a
+  // way onward (app-shell spec: one footer and one nav on every route).
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center px-6">
-        <div className="rp-card p-10 max-w-md text-center">
-          <AlertTriangle size={22} className="text-red-400 mx-auto mb-3" />
-          <p className="text-zinc-200">{error}</p>
+      <div className="rp-page">
+        <Nav variant="public" />
+        <div className="flex-1 flex items-center justify-center px-6 py-16">
+          <div className="rp-card p-10 max-w-md text-center">
+            <AlertTriangle size={22} className="text-red-400 mx-auto mb-3" />
+            <p className="text-zinc-200">{error}</p>
+          </div>
         </div>
+        <Footer slim />
       </div>
     );
   }
   if (!data) {
-    return <div className="min-h-screen flex items-center justify-center text-quiet text-sm">Loading…</div>;
+    return (
+      <div className="rp-page">
+        <Nav variant="public" />
+        <div className="flex-1 flex items-center justify-center text-quiet text-sm">Loading…</div>
+        <Footer slim />
+      </div>
+    );
   }
 
   const timelineRuns = [...data.runs].reverse(); // oldest -> newest for right-anchored strip

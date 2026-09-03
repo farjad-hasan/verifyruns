@@ -9,7 +9,7 @@ import { toast } from "sonner";
 export default function Nav({ variant = "app" }) {
   const { user, logout } = useAuth();
   const nav = useNavigate();
-  const { pathname } = useLocation();
+  const pathname = useLocation().pathname.replace(/\/+$/, "") || "/"; // "/login/" is the login page too
   const onLogout = () => { nav("/", { replace: true }); logout(); };
   const onDeleteAccount = async () => {
     if (!window.confirm("Delete your account? This removes every Check, run, stored sample and pricing note. There is no undo.")) return;
