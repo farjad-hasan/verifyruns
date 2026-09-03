@@ -16,7 +16,7 @@ export default function CopyButton({ text, label = "Copy", testid = "copy-btn" }
     <button
       onClick={onClick}
       data-testid={testid}
-      className="rp-btn-ghost !py-1.5 !px-3 !text-xs"
+      className="rp-btn-ghost rp-btn-xs"
       type="button"
     >
       {copied ? <Check size={13} className="text-emerald-400" /> : <Copy size={13} />}

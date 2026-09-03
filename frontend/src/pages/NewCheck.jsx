@@ -6,9 +6,10 @@ import Nav from "../components/Nav";
 import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
+import { ExpectationsFields, HeartbeatField } from "../components/ExpectationsFields";
 
 export default function NewCheck() {
-  useTitle("New check");
+  useTitle("New Check");
   const nav = useNavigate();
   const [name, setName] = useState("");
   const [kind, setKind] = useState("http_json");
@@ -95,7 +96,7 @@ export default function NewCheck() {
         <Link to="/dashboard" className="rp-link text-sm inline-flex items-center gap-1.5 mb-6" data-testid="back-to-dashboard">
           <ArrowLeft size={14} /> Back to dashboard
         </Link>
-        <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-10">Create a check</h1>
+        <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-10">Create a Check</h1>
 
         <form onSubmit={submit} className="space-y-10" autoComplete="off">
           <Section title="Name">
@@ -192,36 +193,16 @@ export default function NewCheck() {
           </Section>
 
           <Section title="Expectations" subtitle="All optional. VerifyRuns will use these to decide PASS or FAIL.">
-            <div className="mb-3">
-              <label htmlFor="check-mode" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Growth mode</label>
-              <select id="check-mode" className="rp-input font-mono" value={mode} onChange={(e) => setMode(e.target.value)} data-testid="check-mode-select">
-                <option value="growth">Growth</option>
-                <option value="steady">Steady</option>
-                <option value="claimed">Claimed</option>
-              </select>
-              <p className="text-xs text-quiet mt-2 leading-relaxed">{MODE_HINT[mode]}</p>
-            </div>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div>
-                <label htmlFor="check-minnew" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Minimum new records per run</label>
-                <input id="check-minnew" type="number" min="0" className="rp-input font-mono" value={minNew} onChange={(e) => setMinNew(e.target.value)} data-testid="check-minnew-input" />
-                <p className="text-xs text-quiet mt-2 leading-relaxed">0 = growth optional; 1 asserts every run adds a record.</p>
-              </div>
-              <div>
-                <label htmlFor="check-required" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Required fields (comma-separated)</label>
-                <input id="check-required" type="text" className="rp-input font-mono" placeholder="id, price, created_at" value={required} onChange={(e) => setRequired(e.target.value)} data-testid="check-required-input" />
-              </div>
-            </div>
-            <div className="mt-3">
-              <label htmlFor="check-nonempty" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Fields that must be non-empty</label>
-              <input id="check-nonempty" type="text" className="rp-input font-mono" placeholder="email, customer_id" value={nonEmpty} onChange={(e) => setNonEmpty(e.target.value)} data-testid="check-nonempty-input" />
-            </div>
+            <ExpectationsFields
+              mode={mode} setMode={setMode}
+              minNew={minNew} setMinNew={setMinNew}
+              required={required} setRequired={setRequired}
+              nonEmpty={nonEmpty} setNonEmpty={setNonEmpty}
+            />
           </Section>
 
           <Section title="Heartbeat" subtitle="Optional. Catch the workflow that never ran: if no run arrives within this many hours, VerifyRuns records a FAIL and alerts.">
-            <label htmlFor="check-heartbeat" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Expect a run every … hours (blank = off)</label>
-            <input id="check-heartbeat" type="number" min="1" max="720" className="rp-input font-mono" placeholder="24" value={heartbeatHours} onChange={(e) => setHeartbeatHours(e.target.value)} data-testid="check-heartbeat-input" />
-            <p className="text-xs text-quiet mt-2">Pick a little longer than your workflow's longest normal gap — a daily job wants 26–30, not 24.</p>
+            <HeartbeatField value={heartbeatHours} onChange={setHeartbeatHours} />
           </Section>
 
           <Section title="Alert channel" subtitle="Optional. VerifyRuns will POST a message here when a run FAILs and again when it recovers.">
@@ -241,7 +222,7 @@ export default function NewCheck() {
                 data-testid="check-slack-input"
               />
             </div>
-            <p className="text-xs text-quiet mt-2">Email and more channels can be added from the check page.</p>
+            <p className="text-xs text-quiet mt-2">Email and more channels can be added from the Check page.</p>
             <p className="text-xs text-quiet leading-relaxed mt-2">
               Stored encrypted; only the last 4 characters are shown afterwards.
             </p>
@@ -262,7 +243,7 @@ export default function NewCheck() {
 
           <div className="flex gap-3">
             <button type="submit" className="rp-btn-primary" disabled={busy} data-testid="create-check-submit">
-              {busy ? "Creating…" : "Create check"}
+              {busy ? "Creating…" : "Create Check"}
             </button>
             <Link to="/dashboard" className="rp-btn-ghost" data-testid="cancel-new-check">Cancel</Link>
           </div>
@@ -271,12 +252,6 @@ export default function NewCheck() {
     </div>
   );
 }
-
-const MODE_HINT = {
-  growth: "The destination must gain at least the minimum below, or at least what the workflow claimed with {\"wrote\": N}.",
-  steady: "The count must not change between runs — for lookup tables and config rows.",
-  claimed: "Every run must send {\"wrote\": N} and the destination must gain exactly that many.",
-};
 
 function Field({ id, label, optional = false, hint, children }) {
   return (
@@ -325,7 +300,7 @@ function SecretInput({ id, value, onChange, placeholder, required = false, testi
 function Section({ title, subtitle, children }) {
   return (
     <div>
-      <p className="font-display text-lg mb-1">{title}</p>
+      <h2 className="font-display text-lg mb-1">{title}</h2>
       {subtitle && <p className="text-sm text-quiet mb-4">{subtitle}</p>}
       {children}
     </div>

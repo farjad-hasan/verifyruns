@@ -67,7 +67,7 @@ export default function PublicStatus() {
     );
   }
   if (!data) {
-    return <div className="min-h-screen flex items-center justify-center text-quiet font-mono text-sm">Loading…</div>;
+    return <div className="min-h-screen flex items-center justify-center text-quiet text-sm">Loading…</div>;
   }
 
   const timelineRuns = [...data.runs].reverse(); // oldest -> newest for right-anchored strip
@@ -88,7 +88,7 @@ export default function PublicStatus() {
 
       <div className="max-w-4xl mx-auto px-6 lg:px-10 py-16">
         <div className="flex items-center justify-between mb-2">
-          <p className="text-xs uppercase tracking-widest text-quiet">{connectorLabel(data.connector_kind)} check</p>
+          <p className="text-xs uppercase tracking-widest text-quiet">{connectorLabel(data.connector_kind)} Check</p>
           {data.last_verdict === "PASS" && <span className="badge-pass" data-testid="public-last-verdict">Pass</span>}
           {data.last_verdict === "FAIL" && <span className="badge-fail" data-testid="public-last-verdict">Fail</span>}
         </div>
@@ -100,7 +100,7 @@ export default function PublicStatus() {
             <p className="text-xs text-quiet font-mono">newest →</p>
           </div>
           {timelineRuns.length === 0 ? (
-            <p className="text-quiet font-mono text-sm py-6 text-center">No runs recorded yet.</p>
+            <p className="text-sm text-zinc-400 py-6 text-center">No runs recorded yet.</p>
           ) : (
             <Timeline runs={timelineRuns} hero testid="public-timeline" />
           )}
@@ -111,22 +111,23 @@ export default function PublicStatus() {
           </div>
         </div>
 
-        <div className="mt-10">
-          <p className="text-xs uppercase tracking-widest text-quiet mb-3">Recent verdicts</p>
-          {data.runs.length === 0 ? (
-            <div className="rp-card p-8 text-center text-quiet text-sm">Nothing to show yet.</div>
-          ) : (
+        {/* One empty-state sentence per page: with no runs the timeline card already says so. */}
+        {data.runs.length > 0 && (
+          <div className="mt-10">
+            <p className="text-xs uppercase tracking-widest text-quiet mb-3">Recent verdicts</p>
             <ul className="rp-card divide-y divide-hairline">
               {data.runs.map((r) => (
-                <li key={r.id} className="p-5 flex items-start gap-5" data-testid={`public-run-${r.id}`}>
-                  <span className={r.verdict === "PASS" ? "badge-pass" : "badge-fail"}>{r.verdict}</span>
-                  <span className="text-sm text-zinc-300 flex-1 break-words">{r.diff_message}</span>
-                  <span className="text-xs text-quiet font-mono whitespace-nowrap">{new Date(r.timestamp).toLocaleString()}</span>
+                <li key={r.id} className="p-5 flex flex-col gap-2 sm:flex-row sm:items-center sm:gap-5" data-testid={`public-run-${r.id}`}>
+                  <span className="flex items-start gap-3 sm:items-center sm:gap-5 flex-1 min-w-0">
+                    <span className={`shrink-0 ${r.verdict === "PASS" ? "badge-pass" : "badge-fail"}`}>{r.verdict}</span>
+                    <span className="text-sm text-zinc-300 flex-1 break-words">{r.diff_message}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-quiet font-mono whitespace-nowrap">{new Date(r.timestamp).toLocaleString()}</span>
                 </li>
               ))}
             </ul>
-          )}
-        </div>
+          </div>
+        )}
 
         <p className="text-xs text-quiet mt-10 text-center">
           Read-only status page powered by <Link to="/" className="underline underline-offset-4 hover:text-zinc-300">VerifyRuns</Link>.
