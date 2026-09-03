@@ -230,6 +230,8 @@ describe("parseReported", () => {
     expect(parseReported({ failed: true, error: "line one\nline two\r\n@everyone" })).toEqual([{ failed: true, error: "line one line two @everyone" }, null]);
     expect(parseReported({ failed: true, error: 42 })).toEqual([{ failed: true, error: null }, null]);
     expect(parseReported({ failed: true, error: "   " })).toEqual([{ failed: true, error: null }, null]);
+    expect(parseReported({ failed: true, error: "..." })).toEqual([{ failed: true, error: null }, null]);
+    expect(parseReported({ failed: true, error: "timed out. " })).toEqual([{ failed: true, error: "timed out" }, null]);
   });
   it("only a boolean counts: strings and numbers are noted, not read; false, absent, non-object bodies and error alone are ignored", () => {
     expect(parseReported({ failed: "true" })).toEqual([none, "webhook body ignored: `failed` is not a boolean"]);

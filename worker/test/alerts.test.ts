@@ -290,3 +290,43 @@ describe("reported error text is inert in chat channels", () => {
   });
 });
 
+describe("a claimed retry overtaken by a reported failure", () => {
+  it("retry PASS during which a reported failure lands sends no Recovered", async () => {
+    let n = 200;
+    const posts: any[] = [];
+    let gate: (() => void) | null = null;
+    let gated: Promise<void> | null = null;
+    setFetchForTests(async (url, init) => {
+      if (url.startsWith("https://discord")) {
+        posts.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 204 });
+      }
+      if (gated) {
+        const g = gated;
+        gated = null;
+        await g; // hold the retry's destination read until the reported failure has landed
+      }
+      return jsonResponse(Array.from({ length: n }, (_, i) => ({ id: i + 1 })));
+    });
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 1 }, retry_before_alert: true, alert_channels: [{ kind: "discord", target: DISCORD }] });
+    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("PASS");
+    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { wrote: 5 } })).data.verdict).toBe("FAIL");
+    const due = (await api(`/checks/${c.id}`, { token: u.token })).data.pending_retry_at;
+    n = 205; // the retry would PASS
+    gated = new Promise<void>((res) => (gate = res));
+    const draining = tick(env, new Date(Date.parse(due) + 60_000)); // claims the retry, blocks in its read
+    await new Promise((r) => setTimeout(r, 50));
+    const f = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { failed: true, error: "exit 1" } });
+    expect(f.data.verdict).toBe("FAIL");
+    expect(posts.length).toBe(1);
+    gate!();
+    expect((await draining).retries).toBe(1);
+    const runs = (await api(`/checks/${c.id}/runs`, { token: u.token })).data;
+    const retry = runs.find((r: any) => r.trigger === "retry");
+    expect(retry.verdict).toBe("PASS");
+    expect(posts.length).toBe(1); // no Recovered
+    expect(retry.alerts_sent).toBeUndefined();
+  });
+});
+

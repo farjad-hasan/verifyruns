@@ -14,6 +14,7 @@ export interface RunResult {
 }
 
 export async function executeCheck(env: Env, checkId: string, trigger: string, runId: string, isRetry = false, claimedNew: number | null = null, bodyNote: string | null = null, reported: Reported | null = null): Promise<RunResult | null> {
+  const startedAt = nowIso();
   const c = await getCheck(env, checkId);
   if (!c) return null;
   let verdict: "PASS" | "FAIL" = "FAIL";
@@ -92,6 +93,15 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
   try {
     const snoozed = !!(c.snooze_until && c.snooze_until > nowIso());
     const freshFail = verdict === "FAIL" && c.last_alerted_verdict !== "FAIL";
+    // A retry is claimed (pending_retry cleared) before it reads the destination, so a reported
+    // failure landing during that read cannot cancel it. If one did, this PASS must not say Recovered.
+    if (isRetry && verdict === "PASS") {
+      const overtaken = await env.DB.prepare("SELECT 1 AS x FROM check_runs WHERE check_id = ? AND reported_failure = 1 AND timestamp >= ? LIMIT 1").bind(checkId, startedAt).first();
+      if (overtaken) {
+        console.warn("retry PASS overtaken by a reported failure; not alerting", checkId, runId);
+        return run;
+      }
+    }
     // A reported failure is never retried: re-reading the destination cannot change what the
     // workflow said, and a passing retry would swallow the alert.
     if (!isRetry && freshFail && c.retry_before_alert && !snoozed && !reportedFailure) {

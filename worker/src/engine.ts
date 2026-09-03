@@ -175,7 +175,7 @@ export function parseReported(body: unknown): [Reported, string | null] {
   if (!("failed" in b)) return [none, null];
   if (typeof b.failed !== "boolean") return [none, "webhook body ignored: `failed` is not a boolean"];
   if (!b.failed) return [none, null];
-  const error = typeof b.error === "string" ? b.error.replace(/[\r\n]+/g, " ").trim().slice(0, 500) : "";
+  const error = typeof b.error === "string" ? b.error.replace(/[\r\n]+/g, " ").trim().slice(0, 500).replace(/\.+$/, "").trim() : "";
   return [{ failed: true, error: error || null }, null];
 }
 

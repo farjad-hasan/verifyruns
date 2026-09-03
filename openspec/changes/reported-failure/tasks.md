@@ -37,4 +37,6 @@
 - [x] 6.5 Discord `allowed_mentions: {parse: []}`; Slack escapes `<>&` in name + message; newlines in the reason collapse to spaces
 - [x] 6.6 destination unreadable during a reported failure → " Destination could not be read: …" suffix
 - [x] 6.7 no double full stop in the sentence
+- [x] 6.8 a retry already claimed by the tick that PASSes after a reported failure landed during its read does not alert (gated-fetch race test)
+- [x] 6.9 migration header + runs.test.ts title say `failed: true`; public-page sentence moved to the "Public status pages" section of what-we-store.md; a reason of only full stops counts as no reason
 

@@ -186,7 +186,7 @@ describe("webhook + runs (parity with test_serverless / test_claimed_api / test_
   });
 });
 
-describe("reported failure (status: failed in the webhook body)", () => {
+describe("reported failure (failed: true in the webhook body)", () => {
   it("is a FAIL with the sentence even when the destination is healthy; fields on the run read; fingerprint stored; heartbeat re-anchored", async () => {
     serve();
     const u = await user();
