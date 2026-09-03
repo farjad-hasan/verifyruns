@@ -3,6 +3,7 @@ import { env } from "cloudflare:test";
 import { setFetchForTests } from "../src/net";
 import { claimLazyTick, drainPendingRuns, heartbeatDue, heartbeatMessage, heartbeatTick, tick } from "../src/tick";
 import { executeCheck } from "../src/execute";
+import { recomputeHeartbeatDue } from "../src/checks";
 import { nextHeartbeatDue } from "../src/schedule";
 import { api, jsonResponse, makeCheck, user } from "./helpers";
 
@@ -72,6 +73,52 @@ describe("heartbeat window (D1)", () => {
     const due = (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(c.id).first<{ d: string }>())!.d;
     expect(due).toBe(nextHeartbeatDue(new Date(ts), 1, W).toISOString());
     expect(new Date(due).getTime()).toBeGreaterThanOrEqual(new Date(ts).getTime() + 3600_000);
+  });
+
+  it("recompute is compare-and-set: a shorter cadence pulls the due earlier, a run that lands mid-recompute keeps its own due (review 4)", async () => {
+    serve();
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, heartbeat_hours: 24 });
+    await api(`/hook/${c.webhook_secret}`, { method: "POST" });
+    const ts = (await env.DB.prepare("SELECT MAX(timestamp) AS ts FROM check_runs WHERE check_id = ?").bind(c.id).first<{ ts: string }>())!.ts;
+    const dueOf = async () => (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(c.id).first<{ d: string }>())!.d;
+    expect(await dueOf()).toBe(new Date(new Date(ts).getTime() + 24 * 3600_000).toISOString());
+    await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_hours: 2 } });
+    expect(await dueOf()).toBe(new Date(new Date(ts).getTime() + 2 * 3600_000).toISOString());
+    // Simulate a run landing between the recompute's read and its write: a DB whose first UPDATE of the
+    // due column is preceded by a fresher run insert + due update, as execute.ts would do.
+    const fresh = new Date(Date.now() + 60_000).toISOString();
+    const freshDue = new Date(Date.parse(fresh) + 2 * 3600_000).toISOString();
+    let intercepted = 0;
+    const realPrepare = env.DB.prepare.bind(env.DB);
+    const racy = {
+      ...env,
+      DB: {
+        prepare(sql: string) {
+          const stmt = realPrepare(sql);
+          if (sql.startsWith("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ? AND next_heartbeat_due_at IS ?") && intercepted === 0) {
+            intercepted += 1;
+            const origBind = stmt.bind.bind(stmt);
+            return {
+              bind: (...args: unknown[]) => {
+                const bound = origBind(...args);
+                return {
+                  run: async () => {
+                    await realPrepare("INSERT INTO check_runs (id, check_id, timestamp, trigger, verdict, diff_message, fingerprint) VALUES (?, ?, ?, 'webhook', 'PASS', 'x', '{}')").bind("race-" + c.id, c.id, fresh).run();
+                    await realPrepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ?").bind(freshDue, c.id).run();
+                    return bound.run();
+                  },
+                };
+              },
+            };
+          }
+          return stmt;
+        },
+      },
+    } as any;
+    await recomputeHeartbeatDue(racy, c.id);
+    expect(intercepted).toBe(1);
+    expect(await dueOf()).toBe(freshDue); // the mid-flight run's due survived; the retry recomputed from it
   });
 
   it("PATCHing the window recomputes the due time from the latest real run in TS", async () => {

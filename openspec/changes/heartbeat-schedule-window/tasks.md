@@ -32,5 +32,5 @@
 
 - [x] 6.1 HIGH — flat fallback reachable for long cadences: `WALK_CAP_DAYS` 60 → 400; `validateHeartbeatCapacity` refuses on create/patch (effective pair) with 422 naming `heartbeat_window`; tests for 400 h Mon–Fri, 100 h over 1 h/day, 720 h max; spec deltas updated
 - [x] 6.2 MEDIUM — spring-forward gap: `fromWallClockMs` resolves non-existent wall times to the transition instant (monotone), walk clamps `avail`/`t`; tests for Europe/London 2026-03-29 and America/New_York 2026-03-08, straddling and inside the gap
-- [ ] 6.3 MEDIUM — CheckDetail save dropped a non-weekday `days` list
-- [ ] 6.4 LOW — `recomputeHeartbeatDue` SELECT-then-UPDATE could clobber a concurrent run's due
+- [x] 6.3 MEDIUM — CheckDetail save dropped a non-weekday `days` list: form state carries `days` verbatim, the checkbox only replaces it when toggled, a custom set shows as read-only text (`*-heartbeat-window-days`)
+- [x] 6.4 LOW — `recomputeHeartbeatDue` is compare-and-set with retry (predicated on the due it read), so a run landing mid-recompute keeps its own due while a shortened cadence can still pull the due earlier; race test in `tick.test.ts`

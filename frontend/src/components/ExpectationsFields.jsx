@@ -71,18 +71,21 @@ export function browserZone() {
 const WEEKDAYS = [1, 2, 3, 4, 5];
 const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
-/** Form state for the window: `null` = every hour counts. */
+const isWeekdays = (days) => Array.isArray(days) && days.length === 5 && WEEKDAYS.every((d) => days.includes(d));
+
+/** Form state for the window: `null` = every hour counts. `days` is carried through verbatim so a
+ *  day set the API accepted (e.g. [1,3,5]) survives a save that never touched it. */
 export function windowFromCheck(check) {
   const w = check?.heartbeat_window;
   if (!w) return null;
-  return { start: w.start, end: w.end, tz: w.tz, weekdays: Array.isArray(w.days) && w.days.length === 5 && WEEKDAYS.every((d) => w.days.includes(d)) };
+  return { start: w.start, end: w.end, tz: w.tz, days: Array.isArray(w.days) && w.days.length ? [...w.days] : null };
 }
 
 /** API payload from form state; a blank cadence sends no window at all. */
 export function windowToPayload(hours, w) {
   if (hours === "" || hours === null || hours === undefined || !w) return null;
   const out = { start: w.start, end: w.end, tz: w.tz.trim() };
-  if (w.weekdays) out.days = WEEKDAYS;
+  if (Array.isArray(w.days) && w.days.length) out.days = w.days;
   return out;
 }
 
@@ -95,7 +98,7 @@ export function describeHeartbeat(check) {
     s += `, ${w.start}–${w.end} ${w.tz}`;
     if (Array.isArray(w.days) && w.days.length && w.days.length < 7) {
       const sorted = [...w.days].sort((a, b) => a - b);
-      s += sorted.length === 5 && WEEKDAYS.every((d) => sorted.includes(d)) ? ", weekdays" : `, ${sorted.map((d) => DAY_NAMES[d]).join("/")}`;
+      s += isWeekdays(sorted) ? ", weekdays" : `, ${sorted.map((d) => DAY_NAMES[d]).join("/")}`;
     }
   }
   return s;
@@ -105,8 +108,10 @@ export function HeartbeatField({ idPrefix = "check", testidPrefix = "check", val
   const windowed = !!win;
   const toggleWindow = (on) => {
     if (!onWindowChange) return;
-    onWindowChange(on ? { start: "09:00", end: "17:00", tz: browserZone(), weekdays: false } : null);
+    onWindowChange(on ? { start: "09:00", end: "17:00", tz: browserZone(), days: null } : null);
   };
+  const weekdays = windowed && isWeekdays(win.days);
+  const customDays = windowed && Array.isArray(win.days) && win.days.length && !weekdays ? [...win.days].sort((a, b) => a - b).map((d) => DAY_NAMES[d]).join(", ") : null;
   const set = (k, v) => onWindowChange && onWindowChange({ ...win, [k]: v });
   return (
     <div>
@@ -141,8 +146,12 @@ export function HeartbeatField({ idPrefix = "check", testidPrefix = "check", val
                 </div>
               </div>
               <label className="flex items-start gap-2 cursor-pointer select-none">
-                <input type="checkbox" className="w-4 h-4 mt-0.5 accent-emerald-500" checked={!!win.weekdays} onChange={(e) => set("weekdays", e.target.checked)} data-testid={`${testidPrefix}-heartbeat-window-weekdays`} />
-                <span className="text-sm text-zinc-300">Weekdays only <span className="text-xs text-quiet">(Mon–Fri)</span></span>
+                <input type="checkbox" className="w-4 h-4 mt-0.5 accent-emerald-500" checked={weekdays} onChange={(e) => set("days", e.target.checked ? WEEKDAYS : null)} data-testid={`${testidPrefix}-heartbeat-window-weekdays`} />
+                <span className="text-sm text-zinc-300">Weekdays only <span className="text-xs text-quiet">(Mon–Fri)</span>
+                  {customDays && (
+                    <span className="block text-xs text-quiet font-mono" data-testid={`${testidPrefix}-heartbeat-window-days`}>Currently {customDays} (set via the API; ticking the box replaces it)</span>
+                  )}
+                </span>
               </label>
               <p className="text-xs text-quiet">"To" earlier than "From" means the window runs past midnight.</p>
             </div>

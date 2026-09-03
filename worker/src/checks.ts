@@ -203,23 +203,30 @@ export async function insertCheck(env: Env, c: CheckDoc): Promise<void> {
 /** Recompute next_heartbeat_due_at from stored state: one window of active time after the
  *  latest real run (or created_at), never earlier than one window after the last fired heartbeat.
  *  Same function as the run-insert and heartbeat-fire sites (schedule.ts), so the four agree.
- *  Used when heartbeat_hours or heartbeat_window changes. */
+ *  Used when heartbeat_hours or heartbeat_window changes.
+ *
+ *  Compare-and-set, not MAX: a shortened cadence must be able to pull the due time *earlier*, but a
+ *  webhook run landing between our read and our write has already set a due computed from its own
+ *  timestamp, and that must win — so the write is predicated on the value we read and retried from
+ *  fresh state when it loses. */
 export async function recomputeHeartbeatDue(env: Env, id: string): Promise<void> {
-  const c = await getCheck(env, id);
-  if (!c) return;
-  if (!c.heartbeat_hours || c.heartbeat_hours <= 0) {
-    await env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = NULL WHERE id = ?").bind(id).run();
-    return;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    const c = await getCheck(env, id);
+    if (!c) return;
+    const stored = (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(id).first<{ d: string | null }>())?.d ?? null;
+    let due: string | null = null;
+    if (c.heartbeat_hours && c.heartbeat_hours > 0) {
+      const row = await env.DB.prepare(
+        `SELECT
+           (SELECT MAX(timestamp) FROM check_runs WHERE check_id = ? AND "trigger" != 'heartbeat') AS last_real,
+           (SELECT MAX(COALESCE(heartbeat_at, timestamp)) FROM check_runs WHERE check_id = ? AND "trigger" = 'heartbeat') AS last_hb`,
+      ).bind(id, id).first<{ last_real: string | null; last_hb: string | null }>();
+      const candidates = [row?.last_real || c.created_at, row?.last_hb || ""].filter(Boolean).sort();
+      due = nextHeartbeatDue(new Date(candidates[candidates.length - 1]), c.heartbeat_hours, c.heartbeat_window).toISOString();
+    }
+    const res = await env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ? AND next_heartbeat_due_at IS ?").bind(due, id, stored).run();
+    if (res.meta.changes) return;
   }
-  const row = await env.DB.prepare(
-    `SELECT
-       (SELECT MAX(timestamp) FROM check_runs WHERE check_id = ? AND "trigger" != 'heartbeat') AS last_real,
-       (SELECT MAX(COALESCE(heartbeat_at, timestamp)) FROM check_runs WHERE check_id = ? AND "trigger" = 'heartbeat') AS last_hb`,
-  ).bind(id, id).first<{ last_real: string | null; last_hb: string | null }>();
-  const candidates = [row?.last_real || c.created_at, row?.last_hb || ""].filter(Boolean).sort();
-  const anchor = new Date(candidates[candidates.length - 1]);
-  const due = nextHeartbeatDue(anchor, c.heartbeat_hours, c.heartbeat_window).toISOString();
-  await env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ?").bind(due, id).run();
 }
 
 /** Set scalar/JSON columns; values that are objects/arrays are JSON-encoded, booleans become 0/1. */
