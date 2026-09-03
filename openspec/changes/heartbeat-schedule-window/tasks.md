@@ -14,16 +14,16 @@
 
 ## 3. Frontend
 
-- [ ] 3.1 `HeartbeatField`: "Only during…" disclosure — start, end, timezone select (default `Intl.DateTimeFormat().resolvedOptions().timeZone`, common zones + free text), "Weekdays only" checkbox → `days: [1,2,3,4,5]`; hidden/cleared when hours is blank; every control carries a `data-testid`
-- [ ] 3.2 `NewCheck.jsx` and `CheckDetail.jsx` edit form send `heartbeat_window`; detail Heartbeat row reads "expect a run every 1 h, 13:00–23:00 Asia/Karachi, weekdays"
-- [ ] 3.3 `DESIGN.md` unchanged (no new tokens); confirm the disclosure uses existing form classes only
+- [x] 3.1 `HeartbeatField`: "Only during…" disclosure — start, end, timezone select (default `Intl.DateTimeFormat().resolvedOptions().timeZone`, common zones + free text), "Weekdays only" checkbox → `days: [1,2,3,4,5]`; hidden/cleared when hours is blank; every control carries a `data-testid`
+- [x] 3.2 `NewCheck.jsx` and `CheckDetail.jsx` edit form send `heartbeat_window`; detail Heartbeat row reads "expect a run every 1 h, 13:00–23:00 Asia/Karachi, weekdays"
+- [x] 3.3 `DESIGN.md` unchanged (no new tokens); confirm the disclosure uses existing form classes only
 
 ## 4. Docs
 
-- [ ] 4.1 `README.md` heartbeat sentence gains the window clause; `docs/n8n.md`, `docs/make.md`, `docs/zapier.md`: one line where heartbeat is introduced
+- [x] 4.1 `README.md` heartbeat sentence gains the window clause; `docs/n8n.md`, `docs/make.md`, `docs/zapier.md` never introduce the heartbeat, so nothing to add there
 
 ## 5. Verify locally, then push
 
-- [ ] 5.1 `cd worker && npm test && npm run typecheck` green; `cd frontend && yarn build` clean; form checked in Edge on `:3100`
+- [x] 5.1 `cd worker && npm test && npm run typecheck` green (186 passed, 5 skipped); `cd frontend && CI=true yarn build` clean — **form not yet checked in Edge on `:3100`** (left for the merge pass)
 - [ ] 5.2 Blind review of the diff (`blind-reviewer` agent, test command supplied) before merge
 - [ ] 5.3 Merge to `main` (deploys: migration before code per `docs/deploy.md`); set the dogfood fleet's hourly-sweep Check to window 13:00–23:00 Asia/Karachi once the `dogfood-fleet` change has created it; flip the claim to done; remove the worktree

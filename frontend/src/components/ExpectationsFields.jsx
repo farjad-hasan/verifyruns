@@ -53,12 +53,102 @@ export function ExpectationsFields({
   );
 }
 
-export function HeartbeatField({ idPrefix = "check", testidPrefix = "check", value, onChange }) {
+const COMMON_ZONES = [
+  "UTC", "Europe/London", "Europe/Berlin", "Europe/Paris", "Europe/Madrid", "Europe/Amsterdam", "Europe/Warsaw", "Europe/Istanbul",
+  "America/New_York", "America/Chicago", "America/Denver", "America/Los_Angeles", "America/Toronto", "America/Sao_Paulo", "America/Mexico_City",
+  "Asia/Karachi", "Asia/Kolkata", "Asia/Dubai", "Asia/Singapore", "Asia/Tokyo", "Asia/Shanghai", "Asia/Jakarta", "Asia/Manila",
+  "Australia/Sydney", "Australia/Melbourne", "Pacific/Auckland", "Africa/Lagos", "Africa/Johannesburg", "Africa/Cairo",
+];
+
+export function browserZone() {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+  } catch {
+    return "UTC";
+  }
+}
+
+const WEEKDAYS = [1, 2, 3, 4, 5];
+const DAY_NAMES = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+/** Form state for the window: `null` = every hour counts. */
+export function windowFromCheck(check) {
+  const w = check?.heartbeat_window;
+  if (!w) return null;
+  return { start: w.start, end: w.end, tz: w.tz, weekdays: Array.isArray(w.days) && w.days.length === 5 && WEEKDAYS.every((d) => w.days.includes(d)) };
+}
+
+/** API payload from form state; a blank cadence sends no window at all. */
+export function windowToPayload(hours, w) {
+  if (hours === "" || hours === null || hours === undefined || !w) return null;
+  const out = { start: w.start, end: w.end, tz: w.tz.trim() };
+  if (w.weekdays) out.days = WEEKDAYS;
+  return out;
+}
+
+/** "expect a run every 1 h, 13:00–23:00 Asia/Karachi, weekdays" for the detail row. */
+export function describeHeartbeat(check) {
+  if (!check?.heartbeat_hours) return "(off)";
+  let s = `expect a run every ${check.heartbeat_hours} h`;
+  const w = check.heartbeat_window;
+  if (w) {
+    s += `, ${w.start}–${w.end} ${w.tz}`;
+    if (Array.isArray(w.days) && w.days.length && w.days.length < 7) {
+      const sorted = [...w.days].sort((a, b) => a - b);
+      s += sorted.length === 5 && WEEKDAYS.every((d) => sorted.includes(d)) ? ", weekdays" : `, ${sorted.map((d) => DAY_NAMES[d]).join("/")}`;
+    }
+  }
+  return s;
+}
+
+export function HeartbeatField({ idPrefix = "check", testidPrefix = "check", value, onChange, window: win = null, onWindowChange }) {
+  const windowed = !!win;
+  const toggleWindow = (on) => {
+    if (!onWindowChange) return;
+    onWindowChange(on ? { start: "09:00", end: "17:00", tz: browserZone(), weekdays: false } : null);
+  };
+  const set = (k, v) => onWindowChange && onWindowChange({ ...win, [k]: v });
   return (
     <div>
       <label htmlFor={`${idPrefix}-heartbeat`} className={LABEL}>Expect a run every … hours (blank = off)</label>
       <input id={`${idPrefix}-heartbeat`} type="number" min="1" max="720" className="rp-input font-mono" placeholder="24" value={value} onChange={(e) => onChange(e.target.value)} data-testid={`${testidPrefix}-heartbeat-input`} />
       <p className="text-xs text-quiet mt-2">Pick a little longer than your workflow's longest normal gap — a daily job wants 26–30, not 24.</p>
+      {onWindowChange && value !== "" && (
+        <div className="mt-3">
+          <label className="flex items-start gap-2 cursor-pointer select-none">
+            <input type="checkbox" className="w-4 h-4 mt-0.5 accent-emerald-500" checked={windowed} onChange={(e) => toggleWindow(e.target.checked)} data-testid={`${testidPrefix}-heartbeat-window-toggle`} />
+            <span className="text-sm text-zinc-300">Only during…
+              <span className="block text-xs text-quiet">The clock stops outside these hours. An hourly job that runs 09:00–17:00 is due one active hour after its last run — not overnight.</span>
+            </span>
+          </label>
+          {windowed && (
+            <div className="mt-3 space-y-3" data-testid={`${testidPrefix}-heartbeat-window`}>
+              <div className="grid sm:grid-cols-3 gap-3">
+                <div>
+                  <label htmlFor={`${idPrefix}-hb-start`} className={LABEL}>From</label>
+                  <input id={`${idPrefix}-hb-start`} type="time" className="rp-input font-mono" value={win.start} onChange={(e) => set("start", e.target.value)} data-testid={`${testidPrefix}-heartbeat-window-start`} />
+                </div>
+                <div>
+                  <label htmlFor={`${idPrefix}-hb-end`} className={LABEL}>To</label>
+                  <input id={`${idPrefix}-hb-end`} type="time" className="rp-input font-mono" value={win.end} onChange={(e) => set("end", e.target.value)} data-testid={`${testidPrefix}-heartbeat-window-end`} />
+                </div>
+                <div>
+                  <label htmlFor={`${idPrefix}-hb-tz`} className={LABEL}>Time zone</label>
+                  <input id={`${idPrefix}-hb-tz`} type="text" list={`${idPrefix}-hb-zones`} className="rp-input font-mono" value={win.tz} onChange={(e) => set("tz", e.target.value)} placeholder="Area/City" data-testid={`${testidPrefix}-heartbeat-window-tz`} />
+                  <datalist id={`${idPrefix}-hb-zones`}>
+                    {[browserZone(), ...COMMON_ZONES].filter((z, i, arr) => arr.indexOf(z) === i).map((z) => <option key={z} value={z} />)}
+                  </datalist>
+                </div>
+              </div>
+              <label className="flex items-start gap-2 cursor-pointer select-none">
+                <input type="checkbox" className="w-4 h-4 mt-0.5 accent-emerald-500" checked={!!win.weekdays} onChange={(e) => set("weekdays", e.target.checked)} data-testid={`${testidPrefix}-heartbeat-window-weekdays`} />
+                <span className="text-sm text-zinc-300">Weekdays only <span className="text-xs text-quiet">(Mon–Fri)</span></span>
+              </label>
+              <p className="text-xs text-quiet">"To" earlier than "From" means the window runs past midnight.</p>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

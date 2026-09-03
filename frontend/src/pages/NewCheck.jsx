@@ -6,7 +6,7 @@ import Nav from "../components/Nav";
 import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 import { ArrowLeft, Eye, EyeOff } from "lucide-react";
-import { ExpectationsFields, HeartbeatField } from "../components/ExpectationsFields";
+import { ExpectationsFields, HeartbeatField, windowToPayload } from "../components/ExpectationsFields";
 
 export default function NewCheck() {
   useTitle("New Check");
@@ -35,6 +35,7 @@ export default function NewCheck() {
   const [alertKind, setAlertKind] = useState("slack");
   const [retryBeforeAlert, setRetryBeforeAlert] = useState(true);
   const [heartbeatHours, setHeartbeatHours] = useState("");
+  const [heartbeatWindow, setHeartbeatWindow] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -77,6 +78,7 @@ export default function NewCheck() {
         alert_channels: slackWebhook.trim() ? [{ kind: alertKind, target: slackWebhook.trim() }] : [],
         retry_before_alert: retryBeforeAlert,
         heartbeat_hours: heartbeatHours === "" ? null : Number(heartbeatHours),
+        heartbeat_window: windowToPayload(heartbeatHours, heartbeatWindow),
       };
       const { data } = await api.post("/checks", payload);
       if (posthog.__loaded) posthog.capture("check_created", { connector_kind: kind });
@@ -202,7 +204,7 @@ export default function NewCheck() {
           </Section>
 
           <Section title="Heartbeat" subtitle="Optional. Catch the workflow that never ran: if no run arrives within this many hours, VerifyRuns records a FAIL and alerts.">
-            <HeartbeatField value={heartbeatHours} onChange={setHeartbeatHours} />
+            <HeartbeatField value={heartbeatHours} onChange={setHeartbeatHours} window={heartbeatWindow} onWindowChange={setHeartbeatWindow} />
           </Section>
 
           <Section title="Alert channel" subtitle="Optional. VerifyRuns will POST a message here when a run FAILs and again when it recovers.">
