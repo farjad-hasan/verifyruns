@@ -2,7 +2,9 @@
 
 ## Purpose
 An unauthenticated, shareable status page per Check, keyed by a revocable token. As built in `enable_public`, `disable_public`, `public_check` and `frontend/src/pages/PublicStatus.jsx`.
+
 ## Requirements
+
 ### Requirement: Owner toggles public status
 `POST /api/checks/{id}/public` SHALL create (or reuse) a 24-byte urlsafe `public_token`; `DELETE` removes it and the page stops resolving.
 
@@ -11,7 +13,7 @@ An unauthenticated, shareable status page per Check, keyed by a revocable token.
 - **THEN** the same token is returned
 
 ### Requirement: Public page exposes verdicts only
-`GET /api/public/checks/{token}` SHALL return `name`, `connector_kind`, `last_verdict`, `checked_at` (timestamp of the newest run, or null), `heartbeat_hours` (or null), and the last 30 runs as `{id, verdict, timestamp, diff_message, trigger, alerts_sent: [{kind, ok}]}`. It SHALL NOT return config, secrets, fingerprints, `error_details`, or any alert target. The page exists so teammates can monitor a Check without an account. The rendered page SHALL label the Check with its real connector kind, SHALL state when it was last evaluated (absolute time with timezone), SHALL show the heartbeat expectation when one is set, SHALL show per-channel delivery status for the latest run, SHALL make each verdict readable without colour (a text label or glyph beside every square and row), and SHALL remain legible at a 390 px viewport without horizontal scrolling.
+`GET /api/public/checks/{token}` SHALL return `name`, `connector_kind`, `last_verdict`, `checked_at` (timestamp of the newest run, or null), `heartbeat_hours` (or null), and the last 30 runs as `{id, verdict, timestamp, diff_message, trigger, alerts_sent: [{kind, ok}]}`. It SHALL NOT return config, secrets, fingerprints, `error_details`, or any alert target. The page exists so teammates can monitor a Check without an account. The rendered page SHALL label the Check with its real connector kind, SHALL state when it was last evaluated (absolute time with timezone), SHALL show the heartbeat expectation when one is set, SHALL show per-channel delivery status for the latest run, SHALL make each verdict readable without colour (a text label or glyph beside every square and row), and SHALL remain legible at a 390 px viewport without horizontal scrolling. Its header SHALL be the shared `Nav` in its `public` variant and its footer the shared slim `Footer`.
 
 #### Scenario: Revoked token
 - **WHEN** the token has been deleted
@@ -27,7 +29,7 @@ An unauthenticated, shareable status page per Check, keyed by a revocable token.
 
 #### Scenario: Teammate opens an Airtable check
 - **WHEN** a teammate opens `/status/<token>` for a Check whose `connector_kind` is `airtable` with a 28 h heartbeat
-- **THEN** the page is labelled "Airtable check", shows "as of" with the time and timezone, and "expects a run every 28 h"
+- **THEN** the page is labelled "Airtable Check", shows "as of" with the time and timezone, and "expects a run every 28 h"
 
 #### Scenario: Alert delivery is visible, targets are not
 - **WHEN** the latest run is a FAIL whose Slack alert succeeded and email alert failed
@@ -43,4 +45,3 @@ An unauthenticated, shareable status page per Check, keyed by a revocable token.
 #### Scenario: Owner enables sharing
 - **WHEN** the owner clicks Enable on the public status card
 - **THEN** a confirmation states that the check name and its diff sentences become visible to anyone with the link
-

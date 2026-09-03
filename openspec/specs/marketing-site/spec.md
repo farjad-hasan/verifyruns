@@ -13,7 +13,7 @@ The landing page SHALL show a rendered FAIL card with a real diff message next t
 - **THEN** they see a FAIL card reading "Run reported success, but the destination gained 0 records…" without scrolling
 
 ### Requirement: Explanatory pages are linked from every public page
-The site SHALL serve `/pricing`, `/data` and `/security` as public routes, and the landing footer SHALL link to all three; `/data` SHALL state the same facts as `docs/what-we-store.md` and `/security` the same posture, known gaps and disclosure contact as `docs/security.md`.
+The site SHALL serve `/pricing`, `/data` and `/security` as public routes. One shared footer, rendered on every route (public and app), SHALL link to Pricing, What we store, Security, Privacy and Terms in that order; no page SHALL carry its own hand-written link list in place of it. `/data` SHALL state the same facts as `docs/what-we-store.md` and `/security` the same posture, known gaps and disclosure contact as `docs/security.md`, and each SHALL show a "Last updated" line carrying the date of the document it restates.
 
 #### Scenario: Security page
 - **WHEN** a visitor opens `/security`
@@ -22,6 +22,10 @@ The site SHALL serve `/pricing`, `/data` and `/security` as public routes, and t
 #### Scenario: Deep link
 - **WHEN** a visitor opens `/security` or `/data` directly on the Pages host
 - **THEN** the SPA serves the page (HTTP 200), not a redirect to `/`
+
+#### Scenario: Pricing reaches the Terms
+- **WHEN** a visitor scrolls to the end of `/pricing`
+- **THEN** the footer offers Pricing, What we store, Security, Privacy and Terms, in the same order as on `/`
 
 ### Requirement: Verdict sentences are never truncated
 Public status pages and Check detail pages SHALL wrap the diff message in full; the sentence is the product and MUST NOT be cut with an ellipsis.

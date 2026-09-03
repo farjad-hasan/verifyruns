@@ -15,7 +15,7 @@ by flipping `status` to `done` in your merge commit. Rules in [`AGENTS.md`](../A
 | production-ops | claude/prod-readiness | [PR #7](https://github.com/farjad-hasan/verifyruns/pull/7) | 2026-08-31 | done — merged 2026-09-01 |
 | pricing-tiers | — | — | — | deferred (activation: ≥10 external live Checks) |
 | check-detail-phone | claude/design-audit (Mac) | [PR #9](https://github.com/farjad-hasan/verifyruns/pull/9) | 2026-09-03 | done — merged 2026-09-03, archived |
-| public-page-shell | claude/design-audit (Mac) | worktree `../verifyruns-public-page-shell`, branch `public-page-shell` | 2026-09-03 | in progress — findings in `docs/design-audit-2026-09-02.md` Part 1 |
+| public-page-shell | claude/design-audit (Mac) | [PR #10](https://github.com/farjad-hasan/verifyruns/pull/10) | 2026-09-03 | done — merged 2026-09-04, archived |
 | dogfood-fleet | claude/dogfood (Mac) | worktree `../verifyruns-dogfood-fleet`, branch `dogfood-fleet` | 2026-09-03 | done — merged 2026-09-03; six Checks live, work-* wiring handed to the work repo |
 | heartbeat-schedule-window | claude/dogfood (Mac) | [PR #11](https://github.com/farjad-hasan/verifyruns/pull/11) | 2026-09-03 | done — merged + deployed 2026-09-04 (run 33794699794) |
 | unreachable-destination-recipe | claude/dogfood (Mac) | worktree `../verifyruns-unreachable-destination-recipe`, branch `unreachable-destination-recipe` | 2026-09-03 | done — merged 2026-09-03; page exists, unlinked until the activation trigger |

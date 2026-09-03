@@ -2,7 +2,9 @@
 
 ## Purpose
 The frontend's shared shell behaviour: how the SPA treats expired sessions on protected vs public routes, contains render errors with an error boundary, serves a real 404, titles each route, and paces its polling with tab visibility and API health. As built in `frontend/src/lib/api.js`, `lib/auth.jsx`, `App.js` and the page-level `usePoll` hook by the `app-resilience` change (2026-09-01).
+
 ## Requirements
+
 ### Requirement: Expired sessions never hijack public routes
 A 401 response SHALL cause a redirect to `/login` only when it arose from a protected surface. Public routes — `/status/:token`, `/reset`, `/forgot`, `/pricing`, `/data`, `/security`, `/terms`, `/privacy`, and the landing page — SHALL render fully with an expired or absent token. The redirect SHALL carry `?expired=1` and a same-origin `next` path; `/login` SHALL show "Signed out — your session expired." and return the user to `next` after login.
 
@@ -50,3 +52,17 @@ All poll loops SHALL pause while the document is hidden and refetch immediately 
 - **WHEN** polls fail repeatedly
 - **THEN** the interval decays to the 60 s cap and recovers to normal on the first success
 
+### Requirement: One footer and one nav on every route
+Every route SHALL render the shared `Footer` (logo, wordmark, Pricing · What we store · Security · Privacy · Terms) in the nav's container width; `/status/:token` SHALL render its slim variant (the "powered by" line plus Privacy and Terms). The header on `/status/:token` SHALL be the shared `Nav` in its `public` variant, not a copy. When logged out, the nav SHALL NOT link to the route it is on.
+
+#### Scenario: Auth page has a way onward
+- **WHEN** a visitor opens `/forgot`
+- **THEN** the page ends with the shared footer (Pricing · What we store · Security · Privacy · Terms)
+
+#### Scenario: Nav on the login page
+- **WHEN** a logged-out visitor opens `/login`
+- **THEN** the nav shows "Get started" and no "Log in" link; on `/signup` it shows "Log in" and no "Get started"
+
+#### Scenario: Status page header width
+- **WHEN** `/status/:token` and `/` are opened at the same viewport
+- **THEN** the logo sits at the same x-position on both
