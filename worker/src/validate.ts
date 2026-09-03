@@ -1,5 +1,6 @@
 import { egressViolation } from "./egress";
 import { validation } from "./http";
+import { HeartbeatWindow } from "./schedule";
 
 export const CONNECTOR_KINDS = ["http_json", "airtable", "postgres"] as const;
 
@@ -50,6 +51,33 @@ export function parseHeartbeat(v: unknown): number | null {
   const n = Number(v);
   if (!Number.isInteger(n) || n < 1 || n > 720) throw validation("heartbeat_hours must be an integer between 1 and 720", ["body", "heartbeat_hours"]);
   return n;
+}
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** `{start, end, tz, days?}` or null. Callers enforce "window requires heartbeat_hours". */
+export function parseHeartbeatWindow(v: unknown): HeartbeatWindow | null {
+  if (v === undefined || v === null) return null;
+  const loc = (k: string) => ["body", "heartbeat_window", k];
+  if (typeof v !== "object" || Array.isArray(v)) throw validation("heartbeat_window must be an object {start, end, tz, days?}", ["body", "heartbeat_window"]);
+  const src = v as Record<string, unknown>;
+  for (const k of ["start", "end"] as const) {
+    if (typeof src[k] !== "string" || !HHMM.test(src[k] as string)) throw validation(`${k} must be HH:MM (24 h)`, loc(k));
+  }
+  if (typeof src.tz !== "string" || !src.tz) throw validation("tz must be an IANA time zone", loc("tz"));
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: src.tz });
+  } catch {
+    throw validation(`tz "${src.tz}" is not a known time zone`, loc("tz"));
+  }
+  const out: HeartbeatWindow = { start: src.start as string, end: src.end as string, tz: src.tz };
+  if (src.days !== undefined && src.days !== null) {
+    const d = src.days;
+    const ok = Array.isArray(d) && d.length > 0 && d.every((x) => Number.isInteger(x) && x >= 0 && x <= 6) && new Set(d).size === d.length;
+    if (!ok) throw validation("days must be a non-empty list of distinct integers 0–6 (0 = Sunday)", loc("days"));
+    out.days = (d as number[]).slice().sort((a, b) => a - b);
+  }
+  return out;
 }
 
 export function parseName(v: unknown): string {

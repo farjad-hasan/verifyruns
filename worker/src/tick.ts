@@ -6,6 +6,7 @@ import { uuid } from "./crypto";
 import { Env, nowIso, num } from "./env";
 import { executeCheck } from "./execute";
 import { expireResetTokens } from "./reset";
+import { describeWindow, HeartbeatWindow, nextHeartbeatDue } from "./schedule";
 
 export function heartbeatDue(heartbeatHours: number | null, anchorTs: string, lastHeartbeatTs: string | null, now: Date): boolean {
   if (!heartbeatHours) return false;
@@ -15,8 +16,9 @@ export function heartbeatDue(heartbeatHours: number | null, anchorTs: string, la
   return true;
 }
 
-export function heartbeatMessage(elapsedHours: number, heartbeatHours: number): string {
-  return `No run in ${Math.round(elapsedHours)} h — expected one every ${heartbeatHours} h.`;
+export function heartbeatMessage(elapsedHours: number, heartbeatHours: number, window: HeartbeatWindow | null = null): string {
+  const suffix = window ? ` (${describeWindow(window)})` : "";
+  return `No run in ${Math.round(elapsedHours)} h — expected one every ${heartbeatHours} h${suffix}.`;
 }
 
 export const DEFAULT_TICK_BATCH = 25;
@@ -40,7 +42,7 @@ export async function heartbeatTick(env: Env, now: Date): Promise<number> {
     const elapsedH = (now.getTime() - new Date(anchor).getTime()) / 3600_000;
     const runId = uuid();
     const timestamp = nowIso();
-    const message = heartbeatMessage(elapsedH, c.heartbeat_hours);
+    const message = heartbeatMessage(elapsedH, c.heartbeat_hours, c.heartbeat_window);
     const fp = { record_count: 0, sample_size: 0, fields: [], newest_hash: null, sample_stored: false, newest_defined: true, null_pct: {} };
     // One statement: insert only if no heartbeat already landed inside this window, so concurrent ticks cannot both fire.
     const windowStart = new Date(now.getTime() - c.heartbeat_hours * 3600_000).toISOString();
@@ -51,7 +53,7 @@ export async function heartbeatTick(env: Env, now: Date): Promise<number> {
     ).bind(runId, c.id, timestamp, now.toISOString(), message, JSON.stringify(fp), c.id, windowStart).run();
     // Advance the due time whether or not this caller won the insert (the loser must not re-select the
     // Check every tick), predicated on the value we read so a fresher run-insert update is not clobbered.
-    const nextDue = new Date(now.getTime() + c.heartbeat_hours * 3600_000).toISOString();
+    const nextDue = nextHeartbeatDue(now, c.heartbeat_hours, c.heartbeat_window).toISOString();
     await env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ? AND next_heartbeat_due_at = ?").bind(nextDue, c.id, due).run();
     if (!res.meta.changes) continue; // another tick fired this window first
     fired += 1;

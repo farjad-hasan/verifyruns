@@ -1,16 +1,16 @@
 ## 1. Tests first (worker/test/)
 
 - [x] 1.1 `schedule.test.ts`: `nextHeartbeatDue` pure cases — no window equals `+N h`; overnight gap (22:30 → 14:00 next day); miss inside window (13:00 run, 1 h → 14:00); Mon–Fri weekend skip (Fri 16:00, 2 h → Mon 10:00); wrapping 22:00–06:00; anchor outside window (run at 03:00, window 09–17 → 09:00 + N); DST boundary in `Europe/London` (walk stays on wall-clock hours)
-- [ ] 1.2 `checks.test.ts`: create/patch validation scenarios from the spec (window without cadence → 400 `heartbeat_hours`; bad tz → 400 `heartbeat_window.tz`; bad `days`; clearing cadence clears window); field round-trips on detail and list
-- [ ] 1.3 `tick.test.ts`: windowed Check does not fire during its closed hours (tick at 03:00 local with last run 22:30) and does fire after 14:00; message carries the "(active …)" suffix
-- [ ] 1.4 migration 0005 applies over 0001–0004 in the harness (`apply-migrations.ts` picks it up)
+- [x] 1.2 `checks.test.ts`: create/patch validation scenarios from the spec (window without cadence → 400 `heartbeat_hours`; bad tz → 400 `heartbeat_window.tz`; bad `days`; clearing cadence clears window); field round-trips on detail and list
+- [x] 1.3 `tick.test.ts`: windowed Check does not fire during its closed hours (tick at 03:00 local with last run 22:30) and does fire after 14:00; message carries the "(active …)" suffix
+- [x] 1.4 migration 0005 applies over 0001–0004 in the harness (`apply-migrations.ts` picks it up)
 
 ## 2. Worker
 
-- [ ] 2.1 `migrations/0005_heartbeat_window.sql`: `ALTER TABLE checks ADD COLUMN heartbeat_window TEXT` (JSON, nullable, no backfill — null is the flat rule)
-- [ ] 2.2 `schedule.ts`: `HeartbeatWindow` type, `nextHeartbeatDue(anchor, hours, window)` walking open periods in `tz` via `Intl.DateTimeFormat` parts (bounded to 60 days, then falls back to flat arithmetic), `describeWindow` for the message
-- [ ] 2.3 `validate.ts`: `parseHeartbeatWindow`; `checks.ts`: column on `CheckDoc`/`rowToCheck`/insert, `recomputeHeartbeatDue` reads anchor rows and calls `nextHeartbeatDue` (drop the strftime expression); `execute.ts` and `tick.ts` call the same function; `tick.ts` message suffix
-- [ ] 2.4 `routes.ts`: accept on create/patch (window requires cadence, cadence-null clears window), include on reads
+- [x] 2.1 `migrations/0005_heartbeat_window.sql`: `ALTER TABLE checks ADD COLUMN heartbeat_window TEXT` (JSON, nullable, no backfill — null is the flat rule)
+- [x] 2.2 `schedule.ts`: `HeartbeatWindow` type, `nextHeartbeatDue(anchor, hours, window)` walking open periods in `tz` via `Intl.DateTimeFormat` parts (bounded to 60 days, then falls back to flat arithmetic), `describeWindow` for the message
+- [x] 2.3 `validate.ts`: `parseHeartbeatWindow`; `checks.ts`: column on `CheckDoc`/`rowToCheck`/insert, `recomputeHeartbeatDue` reads anchor rows and calls `nextHeartbeatDue` (drop the strftime expression); `execute.ts` and `tick.ts` call the same function; `tick.ts` message suffix
+- [x] 2.4 `routes.ts`: accept on create/patch (window requires cadence, cadence-null clears window), include on reads
 
 ## 3. Frontend
 

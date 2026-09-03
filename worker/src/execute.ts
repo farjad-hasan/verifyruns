@@ -4,6 +4,7 @@ import { getCheck, updateCheck } from "./checks";
 import { fetchRecords } from "./connectors";
 import { annotateCount, computeVerdict, FetchMeta, fingerprint, Fingerprint, splitSample } from "./engine";
 import { Env, nowIso, num } from "./env";
+import { nextHeartbeatDue } from "./schedule";
 
 export interface RunResult {
   id: string;
@@ -68,7 +69,7 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
   // Every real run re-anchors the heartbeat: due one window from now, in the same batch as the run.
   if (c.heartbeat_hours) {
     stmts.push(
-      env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ?").bind(new Date(Date.parse(timestamp) + c.heartbeat_hours * 3600_000).toISOString(), checkId),
+      env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ?").bind(nextHeartbeatDue(new Date(timestamp), c.heartbeat_hours, c.heartbeat_window).toISOString(), checkId),
     );
   }
   await env.DB.batch(stmts);
