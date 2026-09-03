@@ -5,7 +5,11 @@ Every route SHALL render the shared `Footer` (logo, wordmark, Pricing · What we
 
 #### Scenario: Auth page has a way onward
 - **WHEN** a visitor opens `/forgot`
-- **THEN** the page ends with the shared footer and the nav shows "Get started" but no "Log in" link on `/login`
+- **THEN** the page ends with the shared footer (Pricing · What we store · Security · Privacy · Terms)
+
+#### Scenario: Nav on the login page
+- **WHEN** a logged-out visitor opens `/login`
+- **THEN** the nav shows "Get started" and no "Log in" link; on `/signup` it shows "Log in" and no "Get started"
 
 #### Scenario: Status page header width
 - **WHEN** `/status/:token` and `/` are opened at the same viewport

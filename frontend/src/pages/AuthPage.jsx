@@ -49,7 +49,7 @@ export default function AuthPage({ mode }) {
             {isLogin ? "Log in to VerifyRuns" : "Create your account"}
           </h1>
           <p className="text-zinc-400 mb-10">
-            {isLogin ? "Pick up where you left off." : "No credit card. Add your first check in minutes."}
+            {isLogin ? "Pick up where you left off." : "No credit card. Add your first Check in minutes."}
           </p>
 
           {sessionExpired && (
