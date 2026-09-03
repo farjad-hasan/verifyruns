@@ -1,5 +1,6 @@
 import { egressViolation } from "./egress";
 import { validation } from "./http";
+import { activeMinutesWithinCap, HeartbeatWindow, WALK_CAP_DAYS } from "./schedule";
 
 export const CONNECTOR_KINDS = ["http_json", "airtable", "postgres"] as const;
 
@@ -50,6 +51,46 @@ export function parseHeartbeat(v: unknown): number | null {
   const n = Number(v);
   if (!Number.isInteger(n) || n < 1 || n > 720) throw validation("heartbeat_hours must be an integer between 1 and 720", ["body", "heartbeat_hours"]);
   return n;
+}
+
+const HHMM = /^([01]\d|2[0-3]):[0-5]\d$/;
+
+/** `{start, end, tz, days?}` or null. Callers enforce "window requires heartbeat_hours". */
+export function parseHeartbeatWindow(v: unknown): HeartbeatWindow | null {
+  if (v === undefined || v === null) return null;
+  const loc = (k: string) => ["body", "heartbeat_window", k];
+  if (typeof v !== "object" || Array.isArray(v)) throw validation("heartbeat_window must be an object {start, end, tz, days?}", ["body", "heartbeat_window"]);
+  const src = v as Record<string, unknown>;
+  for (const k of ["start", "end"] as const) {
+    if (typeof src[k] !== "string" || !HHMM.test(src[k] as string)) throw validation(`${k} must be HH:MM (24 h)`, loc(k));
+  }
+  if (typeof src.tz !== "string" || !src.tz) throw validation("tz must be an IANA time zone", loc("tz"));
+  try {
+    new Intl.DateTimeFormat("en-US", { timeZone: src.tz });
+  } catch {
+    throw validation(`tz "${src.tz}" is not a known time zone`, loc("tz"));
+  }
+  const out: HeartbeatWindow = { start: src.start as string, end: src.end as string, tz: src.tz };
+  if (src.days !== undefined && src.days !== null) {
+    const d = src.days;
+    const ok = Array.isArray(d) && d.length > 0 && d.every((x) => Number.isInteger(x) && x >= 0 && x <= 6) && new Set(d).size === d.length;
+    if (!ok) throw validation("days must be a non-empty list of distinct integers 0–6 (0 = Sunday)", loc("days"));
+    out.days = (d as number[]).slice().sort((a, b) => a - b);
+  }
+  return out;
+}
+
+/** A windowed cadence must be reachable inside the scheduler's walk cap, or the due time could never be
+ *  computed honestly. Checked with the *effective* pair on create and patch. */
+export function validateHeartbeatCapacity(hours: number | null, window: HeartbeatWindow | null): void {
+  if (!hours || !window) return;
+  const have = activeMinutesWithinCap(window);
+  if (hours * 60 > have) {
+    throw validation(
+      `heartbeat_window is too narrow for the cadence: ${hours} h of active time is not reachable within ${WALK_CAP_DAYS} days (this window offers about ${Math.floor(have / 60)} h). Widen the window, add days, or shorten heartbeat_hours.`,
+      ["body", "heartbeat_window"],
+    );
+  }
 }
 
 export function parseName(v: unknown): string {

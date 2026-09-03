@@ -10,7 +10,7 @@ import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save, Pencil, Globe2, Filter, Moon, Sun, ChevronDown } from "lucide-react";
 import { Sheet, SheetContent, SheetTitle, SheetClose } from "@/components/ui/sheet";
-import { ExpectationsFields, HeartbeatField } from "../components/ExpectationsFields";
+import { ExpectationsFields, HeartbeatField, describeHeartbeat, windowFromCheck, windowToPayload } from "../components/ExpectationsFields";
 
 // The engine appends "…checks were skipped: …" sentences to the verdict message when a rule sat
 // out (inexact count, no ORDER BY). The panel shows those as notes, not as part of the verdict.
@@ -621,6 +621,7 @@ function ExpectationsCard({ check, onSaved }) {
   const [minNew, setMinNew] = useState(check.expectations?.min_new_records ?? 1);
   const [mode, setMode] = useState(check.expectations?.growth_mode || "growth");
   const [heartbeat, setHeartbeat] = useState(check.heartbeat_hours ?? "");
+  const [heartbeatWindow, setHeartbeatWindow] = useState(windowFromCheck(check));
   const [storeSamples, setStoreSamples] = useState(!!check.store_samples);
   const [required, setRequired] = useState((check.expectations?.required_fields || []).join(", "));
   const [nonEmpty, setNonEmpty] = useState((check.expectations?.non_empty_fields || []).join(", "));
@@ -630,6 +631,7 @@ function ExpectationsCard({ check, onSaved }) {
     setMinNew(check.expectations?.min_new_records ?? 1);
     setMode(check.expectations?.growth_mode || "growth");
     setHeartbeat(check.heartbeat_hours ?? "");
+    setHeartbeatWindow(windowFromCheck(check));
     setStoreSamples(!!check.store_samples);
     setRequired((check.expectations?.required_fields || []).join(", "));
     setNonEmpty((check.expectations?.non_empty_fields || []).join(", "));
@@ -647,6 +649,7 @@ function ExpectationsCard({ check, onSaved }) {
           non_empty_fields: nonEmpty.split(",").map((s) => s.trim()).filter(Boolean),
         },
         heartbeat_hours: heartbeat === "" ? null : Number(heartbeat),
+        heartbeat_window: windowToPayload(heartbeat, heartbeatWindow),
         store_samples: storeSamples,
       });
       toast.success("Expectations updated");
@@ -676,7 +679,7 @@ function ExpectationsCard({ check, onSaved }) {
 
       {!editing ? (
         <dl className="space-y-3 text-sm">
-          <Row k="Heartbeat" v={check.heartbeat_hours ? `expect a run every ${check.heartbeat_hours} h` : "(off)"} mono />
+          <Row k="Heartbeat" v={describeHeartbeat(check)} mono />
           <Row k="Raw samples" v={check.store_samples ? "stored for 30 days" : "not stored (hash only)"} mono />
           <Row k="Growth mode" v={check.expectations?.growth_mode || "growth"} mono />
           <Row k="Min new records per run" v={String(check.expectations?.min_new_records ?? 1)} mono />
@@ -692,7 +695,7 @@ function ExpectationsCard({ check, onSaved }) {
             required={required} setRequired={setRequired}
             nonEmpty={nonEmpty} setNonEmpty={setNonEmpty}
           />
-          <HeartbeatField idPrefix="edit" testidPrefix="edit" value={heartbeat} onChange={setHeartbeat} />
+          <HeartbeatField idPrefix="edit" testidPrefix="edit" value={heartbeat} onChange={setHeartbeat} window={heartbeatWindow} onWindowChange={setHeartbeatWindow} />
           <label className="flex items-start gap-2 cursor-pointer select-none pt-1">
             <input type="checkbox" className="w-4 h-4 mt-0.5 accent-emerald-500" checked={storeSamples} onChange={(e) => setStoreSamples(e.target.checked)} data-testid="edit-store-samples" />
             <span className="text-sm text-zinc-300">Store raw samples for 30 days

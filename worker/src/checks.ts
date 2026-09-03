@@ -3,6 +3,7 @@ import { decryptSecret, encryptSecret, MASK, maskQueryValues, maskToken } from "
 import { egressViolation } from "./egress";
 import { Env, flag, nowIso } from "./env";
 import { HttpError, validation } from "./http";
+import { HeartbeatWindow, nextHeartbeatDue } from "./schedule";
 import { Expectations } from "./validate";
 
 export interface Channel {
@@ -23,6 +24,8 @@ export interface CheckDoc {
   created_at: string;
   retry_before_alert: boolean;
   heartbeat_hours: number | null;
+  /** Active window for the heartbeat clock (schedule.ts); null = the flat rule. */
+  heartbeat_window: HeartbeatWindow | null;
   store_samples: boolean;
   alert_slack_webhook_encrypted: string | null;
   alert_channels: Channel[];
@@ -48,6 +51,7 @@ export function rowToCheck(row: any): CheckDoc {
     created_at: row.created_at,
     retry_before_alert: !!row.retry_before_alert,
     heartbeat_hours: row.heartbeat_hours ?? null,
+    heartbeat_window: row.heartbeat_window ? JSON.parse(row.heartbeat_window) : null,
     store_samples: !!row.store_samples,
     alert_slack_webhook_encrypted: row.alert_slack_webhook_encrypted ?? null,
     alert_channels: JSON.parse(row.alert_channels || "[]"),
@@ -149,6 +153,7 @@ export async function sanitizeCheck(env: Env, c: CheckDoc, includeWebhookSecret 
     created_at: c.created_at,
     retry_before_alert: c.retry_before_alert,
     heartbeat_hours: c.heartbeat_hours,
+    heartbeat_window: c.heartbeat_window ?? null,
     store_samples: c.store_samples,
     has_alert_slack,
     alert_channels: channels,
@@ -182,36 +187,52 @@ export async function getCheckForUser(env: Env, id: string, userId: string): Pro
 export async function insertCheck(env: Env, c: CheckDoc): Promise<void> {
   await env.DB.prepare(
     `INSERT INTO checks (id, user_id, name, connector_kind, config, expectations, webhook_secret, created_at,
-       retry_before_alert, heartbeat_hours, store_samples, alert_slack_webhook_encrypted, alert_channels,
+       retry_before_alert, heartbeat_hours, heartbeat_window, store_samples, alert_slack_webhook_encrypted, alert_channels,
        public_token, snooze_until, last_alerted_verdict, pending_retry, pending_runs, next_heartbeat_due_at)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
   )
     .bind(
       c.id, c.user_id, c.name, c.connector_kind, JSON.stringify(c.config), JSON.stringify(c.expectations), c.webhook_secret, c.created_at,
-      c.retry_before_alert ? 1 : 0, c.heartbeat_hours, c.store_samples ? 1 : 0, c.alert_slack_webhook_encrypted, JSON.stringify(c.alert_channels),
+      c.retry_before_alert ? 1 : 0, c.heartbeat_hours, c.heartbeat_window ? JSON.stringify(c.heartbeat_window) : null, c.store_samples ? 1 : 0, c.alert_slack_webhook_encrypted, JSON.stringify(c.alert_channels),
       c.public_token, c.snooze_until, c.last_alerted_verdict, c.pending_retry ? JSON.stringify(c.pending_retry) : null, JSON.stringify(c.pending_runs),
-      c.heartbeat_hours ? new Date(Date.parse(c.created_at) + c.heartbeat_hours * 3600_000).toISOString() : null,
+      c.heartbeat_hours ? nextHeartbeatDue(new Date(c.created_at), c.heartbeat_hours, c.heartbeat_window).toISOString() : null,
     )
     .run();
 }
 
-/** Recompute next_heartbeat_due_at from stored state (same expression as the 0003 backfill):
- *  one window after the latest real run (or created_at), never earlier than one window after the
- *  last fired heartbeat. Used when heartbeat_hours changes. */
+/** Recompute next_heartbeat_due_at from stored state: one window of active time after the
+ *  latest real run (or created_at), never earlier than one window after the last fired heartbeat.
+ *  Same function as the run-insert and heartbeat-fire sites (schedule.ts), so the four agree.
+ *  Used when heartbeat_hours or heartbeat_window changes.
+ *
+ *  Compare-and-set, not MAX: a shortened cadence must be able to pull the due time *earlier*, but a
+ *  webhook run landing between our read and our write has already set a due computed from its own
+ *  timestamp, and that must win — so the write is predicated on the value we read and retried from
+ *  fresh state when it loses. */
+const RECOMPUTE_ATTEMPTS = 5;
+
 export async function recomputeHeartbeatDue(env: Env, id: string): Promise<void> {
-  await env.DB.prepare(
-    `UPDATE checks SET next_heartbeat_due_at = CASE
-       WHEN heartbeat_hours IS NULL OR heartbeat_hours <= 0 THEN NULL
-       ELSE strftime(
-         '%Y-%m-%dT%H:%M:%fZ',
-         MAX(
-           COALESCE((SELECT MAX(timestamp) FROM check_runs WHERE check_id = checks.id AND "trigger" != 'heartbeat'), created_at),
-           COALESCE((SELECT MAX(COALESCE(heartbeat_at, timestamp)) FROM check_runs WHERE check_id = checks.id AND "trigger" = 'heartbeat'), '')
-         ),
-         '+' || heartbeat_hours || ' hours')
-     END
-     WHERE id = ?`,
-  ).bind(id).run();
+  for (let attempt = 0; attempt < RECOMPUTE_ATTEMPTS; attempt++) {
+    const c = await getCheck(env, id);
+    if (!c) return;
+    const stored = (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(id).first<{ d: string | null }>())?.d ?? null;
+    let due: string | null = null;
+    if (c.heartbeat_hours && c.heartbeat_hours > 0) {
+      const row = await env.DB.prepare(
+        `SELECT
+           (SELECT MAX(timestamp) FROM check_runs WHERE check_id = ? AND "trigger" != 'heartbeat') AS last_real,
+           (SELECT MAX(COALESCE(heartbeat_at, timestamp)) FROM check_runs WHERE check_id = ? AND "trigger" = 'heartbeat') AS last_hb`,
+      ).bind(id, id).first<{ last_real: string | null; last_hb: string | null }>();
+      const candidates = [row?.last_real || c.created_at, row?.last_hb || ""].filter(Boolean).sort();
+      due = nextHeartbeatDue(new Date(candidates[candidates.length - 1]), c.heartbeat_hours, c.heartbeat_window).toISOString();
+    }
+    const res = await env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ? AND next_heartbeat_due_at IS ?").bind(due, id, stored).run();
+    if (res.meta.changes) return;
+  }
+  // Every attempt lost to a concurrent run-insert; that run's own due is current, so the stored
+  // value is still coherent — but it was computed with the cadence in force at that run, not the
+  // one just patched. The next real run or heartbeat fire corrects it.
+  console.warn(`recomputeHeartbeatDue: gave up after ${RECOMPUTE_ATTEMPTS} CAS attempts for check ${id}`);
 }
 
 /** Set scalar/JSON columns; values that are objects/arrays are JSON-encoded, booleans become 0/1. */

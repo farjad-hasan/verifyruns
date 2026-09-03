@@ -3,6 +3,8 @@ import { env } from "cloudflare:test";
 import { setFetchForTests } from "../src/net";
 import { claimLazyTick, drainPendingRuns, heartbeatDue, heartbeatMessage, heartbeatTick, tick } from "../src/tick";
 import { executeCheck } from "../src/execute";
+import { recomputeHeartbeatDue } from "../src/checks";
+import { nextHeartbeatDue } from "../src/schedule";
 import { api, jsonResponse, makeCheck, user } from "./helpers";
 
 afterEach(() => setFetchForTests(null));
@@ -25,6 +27,117 @@ describe("heartbeat (pure)", () => {
   it("message wording", () => {
     expect(heartbeatMessage(26.4, 24)).toBe("No run in 26 h — expected one every 24 h.");
     expect(heartbeatMessage(1.6, 1)).toBe("No run in 2 h — expected one every 1 h.");
+  });
+});
+
+describe("heartbeat window (D1)", () => {
+  const KHI = "Asia/Karachi";
+  const W = { start: "13:00", end: "23:00", tz: KHI };
+
+  it("does not fire during closed hours, fires after the windowed due time, message names the window", async () => {
+    serve();
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, heartbeat_hours: 1, heartbeat_window: W });
+    // Re-anchor the Check as if its last real run was 22:30 PKT on 2026-09-01 (17:30 UTC). Reads below go
+    // straight to D1: an API request can run the lazy tick on the real clock, by which this due time is long past.
+    const dbRuns = async () => (await env.DB.prepare("SELECT trigger, diff_message FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC").bind(c.id).all<any>()).results;
+    const ran = new Date("2026-09-01T17:30:00.000Z");
+    await api(`/hook/${c.webhook_secret}`, { method: "POST" });
+    await env.DB.prepare("UPDATE check_runs SET timestamp = ? WHERE check_id = ?").bind(ran.toISOString(), c.id).run();
+    await env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ?").bind(nextHeartbeatDue(ran, 1, W).toISOString(), c.id).run();
+    const due = (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(c.id).first<{ d: string }>())!.d;
+    expect(due).toBe("2026-09-02T08:30:00.000Z"); // 13:30 PKT next day
+    // 03:00 PKT (22:00 UTC): 4.5 h since the run, but the clock is stopped
+    await tick(env, new Date("2026-09-01T22:00:00.000Z"));
+    expect((await dbRuns()).length).toBe(1);
+    // 13:00 PKT: window open, 30 min of active time — still not due
+    await tick(env, new Date("2026-09-02T08:00:00.000Z"));
+    expect((await dbRuns()).length).toBe(1);
+    // 13:45 PKT: past 13:30 → heartbeat FAIL with the window in the message
+    await tick(env, new Date("2026-09-02T08:45:00.000Z"));
+    const runs = await dbRuns();
+    expect(runs.length).toBe(2);
+    expect(runs[0].trigger).toBe("heartbeat");
+    expect(runs[0].diff_message).toBe("No run in 15 h — expected one every 1 h (active 13:00–23:00 Asia/Karachi).");
+    // The next due is one active hour after the fire, i.e. 14:45 PKT, not 09:45 UTC + flat
+    const next = (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(c.id).first<{ d: string }>())!.d;
+    expect(next).toBe("2026-09-02T09:45:00.000Z");
+  });
+
+  it("a real run re-anchors through the window: run at 22:30 PKT → due 13:30 PKT next day", async () => {
+    serve();
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, heartbeat_hours: 1, heartbeat_window: W });
+    await api(`/hook/${c.webhook_secret}`, { method: "POST" });
+    const ts = (await env.DB.prepare("SELECT MAX(timestamp) AS ts FROM check_runs WHERE check_id = ?").bind(c.id).first<{ ts: string }>())!.ts;
+    const due = (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(c.id).first<{ d: string }>())!.d;
+    expect(due).toBe(nextHeartbeatDue(new Date(ts), 1, W).toISOString());
+    expect(new Date(due).getTime()).toBeGreaterThanOrEqual(new Date(ts).getTime() + 3600_000);
+  });
+
+  it("recompute is compare-and-set: a shorter cadence pulls the due earlier, a run that lands mid-recompute keeps its own due (review 4)", async () => {
+    serve();
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, heartbeat_hours: 24 });
+    await api(`/hook/${c.webhook_secret}`, { method: "POST" });
+    const ts = (await env.DB.prepare("SELECT MAX(timestamp) AS ts FROM check_runs WHERE check_id = ?").bind(c.id).first<{ ts: string }>())!.ts;
+    const dueOf = async () => (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(c.id).first<{ d: string }>())!.d;
+    expect(await dueOf()).toBe(new Date(new Date(ts).getTime() + 24 * 3600_000).toISOString());
+    await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_hours: 2 } });
+    expect(await dueOf()).toBe(new Date(new Date(ts).getTime() + 2 * 3600_000).toISOString());
+    // Simulate a run landing between the recompute's read and its write: a DB whose first UPDATE of the
+    // due column is preceded by a fresher run insert + due update, as execute.ts would do.
+    const fresh = new Date(Date.now() + 60_000).toISOString();
+    const freshDue = new Date(Date.parse(fresh) + 2 * 3600_000).toISOString();
+    let intercepted = 0;
+    const realPrepare = env.DB.prepare.bind(env.DB);
+    const racy = {
+      ...env,
+      DB: {
+        prepare(sql: string) {
+          const stmt = realPrepare(sql);
+          if (sql.startsWith("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ? AND next_heartbeat_due_at IS ?") && intercepted === 0) {
+            intercepted += 1;
+            const origBind = stmt.bind.bind(stmt);
+            return {
+              bind: (...args: unknown[]) => {
+                const bound = origBind(...args);
+                return {
+                  run: async () => {
+                    await realPrepare("INSERT INTO check_runs (id, check_id, timestamp, trigger, verdict, diff_message, fingerprint) VALUES (?, ?, ?, 'webhook', 'PASS', 'x', '{}')").bind("race-" + c.id, c.id, fresh).run();
+                    await realPrepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ?").bind(freshDue, c.id).run();
+                    return bound.run();
+                  },
+                };
+              },
+            };
+          }
+          return stmt;
+        },
+      },
+    } as any;
+    await recomputeHeartbeatDue(racy, c.id);
+    expect(intercepted).toBe(1);
+    expect(await dueOf()).toBe(freshDue); // the mid-flight run's due survived; the retry recomputed from it
+  });
+
+  it("PATCHing the window recomputes the due time from the latest real run in TS", async () => {
+    serve();
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, heartbeat_hours: 2 });
+    await api(`/hook/${c.webhook_secret}`, { method: "POST" });
+    const ran = new Date("2026-09-04T11:00:00.000Z"); // Friday 16:00 PKT
+    await env.DB.prepare("UPDATE check_runs SET timestamp = ? WHERE check_id = ?").bind(ran.toISOString(), c.id).run();
+    const weekdays = { start: "09:00", end: "17:00", tz: KHI, days: [1, 2, 3, 4, 5] };
+    await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_window: weekdays } });
+    const due = (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(c.id).first<{ d: string }>())!.d;
+    expect(due).toBe("2026-09-07T05:00:00.000Z"); // Monday 10:00 PKT
+    // and a fired heartbeat still floors the recompute
+    await env.DB.prepare("INSERT INTO check_runs (id, check_id, timestamp, heartbeat_at, trigger, verdict, diff_message, fingerprint, is_retry, count_capped, count_estimated) VALUES (?, ?, ?, ?, 'heartbeat', 'FAIL', 'x', '{}', 0, 0, 0)")
+      .bind("hb-" + c.id, c.id, "2026-09-08T05:00:00.000Z", "2026-09-08T05:00:00.000Z").run();
+    await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_hours: 2 } });
+    const due2 = (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(c.id).first<{ d: string }>())!.d;
+    expect(due2).toBe("2026-09-08T07:00:00.000Z"); // Tue 10:00 PKT fire → 12:00 PKT
   });
 });
 

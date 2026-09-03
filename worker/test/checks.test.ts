@@ -185,3 +185,99 @@ describe("checks CRUD (parity with backend_test.py + test_egress/test_heartbeat 
     expect(r.data).toEqual({ ok: true, plan: "pro" });
   });
 });
+
+describe("heartbeat_window (heartbeat-schedule-window)", () => {
+  const W = { start: "13:00", end: "23:00", tz: "Asia/Karachi" };
+  const create = (token: string, extra: Record<string, unknown>) =>
+    api("/checks", { method: "POST", token, json: { name: "x", connector_kind: "http_json", config: { url: DEST_URL }, ...extra } });
+
+  it("round-trips on create, detail and list; null by default", async () => {
+    const u = await user();
+    const plain = await makeCheck(u.token, { heartbeat_hours: 2 });
+    expect(plain.heartbeat_window).toBeNull();
+    const c = await makeCheck(u.token, { heartbeat_hours: 1, heartbeat_window: { ...W, days: [1, 2, 3, 4, 5] } });
+    expect(c.heartbeat_window).toEqual({ ...W, days: [1, 2, 3, 4, 5] });
+    expect((await api(`/checks/${c.id}`, { token: u.token })).data.heartbeat_window).toEqual({ ...W, days: [1, 2, 3, 4, 5] });
+    const listed = (await api("/checks", { token: u.token })).data.find((x: any) => x.id === c.id);
+    expect(listed.heartbeat_window).toEqual({ ...W, days: [1, 2, 3, 4, 5] });
+  });
+
+  it("window without cadence is refused naming heartbeat_hours", async () => {
+    const u = await user();
+    const r = await create(u.token, { heartbeat_window: W });
+    expect(r.status).toBe(422);
+    expect(JSON.stringify(r.data)).toContain("heartbeat_hours");
+  });
+
+  it("bad tz, bad times and bad days are refused naming the field", async () => {
+    const u = await user();
+    const tz = await create(u.token, { heartbeat_hours: 1, heartbeat_window: { ...W, tz: "Mars/Olympus" } });
+    expect(tz.status).toBe(422);
+    expect(JSON.stringify(tz.data)).toContain("heartbeat_window");
+    expect(JSON.stringify(tz.data)).toContain("tz");
+    expect((await create(u.token, { heartbeat_hours: 1, heartbeat_window: { ...W, start: "25:00" } })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 1, heartbeat_window: { ...W, end: "9am" } })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 1, heartbeat_window: { ...W, days: [] } })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 1, heartbeat_window: { ...W, days: [1, 7] } })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 1, heartbeat_window: { ...W, days: [1, 1] } })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 1, heartbeat_window: "13-23" })).status).toBe(422);
+  });
+
+  it("a window too narrow for the cadence is refused naming heartbeat_window, on create and on patch (review 1)", async () => {
+    const u = await user();
+    const narrow = { start: "09:00", end: "10:00", tz: "Asia/Karachi", days: [1] }; // 1 h/week → 57 h inside the cap
+    const r = await create(u.token, { heartbeat_hours: 100, heartbeat_window: narrow });
+    expect(r.status).toBe(422);
+    expect(JSON.stringify(r.data)).toContain("heartbeat_window");
+    expect(JSON.stringify(r.data)).toContain("too narrow");
+    expect((await create(u.token, { heartbeat_hours: 50, heartbeat_window: narrow })).status).toBe(200);
+    // 720 h over Mon–Fri 09:00–17:00 is fine (40 h/week × 57 weeks); 720 h over 1 h/day is not
+    expect((await create(u.token, { heartbeat_hours: 720, heartbeat_window: { start: "09:00", end: "17:00", tz: "UTC", days: [1, 2, 3, 4, 5] } })).status).toBe(200);
+    expect((await create(u.token, { heartbeat_hours: 720, heartbeat_window: { start: "09:00", end: "10:00", tz: "UTC" } })).status).toBe(422);
+    // DST-collapsed days are inside the bound: London 01:00–02:00 daily reaches 397 h, not 399; Sundays only, 55 not 57
+    const gap = { start: "01:00", end: "02:00", tz: "Europe/London" };
+    expect((await create(u.token, { heartbeat_hours: 399, heartbeat_window: gap })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 397, heartbeat_window: gap })).status).toBe(200);
+    expect((await create(u.token, { heartbeat_hours: 57, heartbeat_window: { ...gap, days: [0] } })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 56, heartbeat_window: { ...gap, days: [0] } })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 55, heartbeat_window: { ...gap, days: [0] } })).status).toBe(200);
+    expect((await create(u.token, { heartbeat_hours: 399, heartbeat_window: { start: "02:00", end: "03:00", tz: "America/New_York" } })).status).toBe(422);
+    // PATCH: raising the cadence past what the stored window can hold, or narrowing the window under the stored cadence
+    const c = await makeCheck(u.token, { heartbeat_hours: 50, heartbeat_window: narrow });
+    expect((await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_hours: 100 } })).status).toBe(422);
+    const wide = await makeCheck(u.token, { heartbeat_hours: 100 });
+    expect((await api(`/checks/${wide.id}`, { method: "PATCH", token: u.token, json: { heartbeat_window: narrow } })).status).toBe(422);
+    expect((await api(`/checks/${wide.id}`, { method: "PATCH", token: u.token, json: { heartbeat_hours: 50, heartbeat_window: narrow } })).status).toBe(200);
+  });
+
+  it("PATCH sets, changes and clears the window; clearing the cadence clears the window and the due time", async () => {
+    const u = await user();
+    const c = await makeCheck(u.token, { heartbeat_hours: 1 });
+    let r = await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_window: W } });
+    expect(r.status).toBe(200);
+    expect(r.data.heartbeat_window).toEqual(W);
+    // due time now respects the window: created just now (outside or inside 13–23 PKT), never null
+    let row = await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(c.id).first<{ d: string }>();
+    expect(row!.d).toBeTruthy();
+    r = await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_window: null } });
+    expect(r.data.heartbeat_window).toBeNull();
+    r = await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_window: W } });
+    expect(r.data.heartbeat_window).toEqual(W);
+    // window on its own when the Check has no cadence → 422
+    const noHb = await makeCheck(u.token, {});
+    expect((await api(`/checks/${noHb.id}`, { method: "PATCH", token: u.token, json: { heartbeat_window: W } })).status).toBe(422);
+    // clearing the cadence clears the window
+    r = await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_hours: null } });
+    expect(r.data.heartbeat_hours).toBeNull();
+    expect(r.data.heartbeat_window).toBeNull();
+    row = await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(c.id).first<{ d: string }>();
+    expect(row!.d).toBeNull();
+  });
+
+  it("migration 0005: checks carry heartbeat_window, null by default", async () => {
+    const cols = (await env.DB.prepare("PRAGMA table_info(checks)").all<{ name: string; dflt_value: string | null }>()).results;
+    const col = cols.find((c) => c.name === "heartbeat_window");
+    expect(col).toBeTruthy();
+    expect(col!.dflt_value).toBeNull();
+  });
+});

@@ -4,7 +4,7 @@ import { dummyVerify, effectiveIterations, encryptSecret, hashIterations, hashPa
 import { emailAvailable, Env, flag, nowIso, num } from "./env";
 import { clientIp, HttpError, json, readJson, validation } from "./http";
 import { PLAN_IDS, PLANS } from "./plans";
-import { CONNECTOR_KINDS, isEmail, parseChannel, parseExpectations, parseHeartbeat, parseName, validateChannelTarget } from "./validate";
+import { CONNECTOR_KINDS, isEmail, parseChannel, parseExpectations, parseHeartbeat, parseHeartbeatWindow, parseName, validateHeartbeatCapacity, validateChannelTarget } from "./validate";
 import { RateLimiter } from "./egress";
 
 export const EMAIL_NOT_CONFIGURED = "Email alerts are not configured on this host (set RESEND_API_KEY and ALERT_FROM).";
@@ -138,6 +138,9 @@ export async function createCheck(env: Env, request: Request): Promise<Response>
   const kind = typeof body.connector_kind === "string" ? body.connector_kind : "http_json";
   const expectations = parseExpectations(body.expectations);
   const heartbeat = parseHeartbeat(body.heartbeat_hours);
+  const heartbeatWindow = parseHeartbeatWindow(body.heartbeat_window);
+  if (heartbeatWindow && !heartbeat) throw validation("heartbeat_window needs heartbeat_hours", ["body", "heartbeat_hours"]);
+  validateHeartbeatCapacity(heartbeat, heartbeatWindow);
   const config = await prepareConfigForStorage(env, kind, body.config);
   const allowPrivate = flag(env.VR_ALLOW_PRIVATE_EGRESS, false);
   const legacySlack = typeof body.alert_slack_webhook === "string" && body.alert_slack_webhook.trim() ? body.alert_slack_webhook.trim() : null;
@@ -162,6 +165,7 @@ export async function createCheck(env: Env, request: Request): Promise<Response>
     created_at: nowIso(),
     retry_before_alert: body.retry_before_alert === undefined ? true : !!body.retry_before_alert,
     heartbeat_hours: heartbeat,
+    heartbeat_window: heartbeatWindow,
     store_samples: !!body.store_samples,
     alert_slack_webhook_encrypted: legacySlack ? await encryptSecret(env.ENC_KEY, legacySlack) : null,
     alert_channels: channels,
@@ -233,6 +237,15 @@ export async function patchCheck(env: Env, request: Request, id: string): Promis
   }
   if (body.retry_before_alert !== undefined && body.retry_before_alert !== null) patch.retry_before_alert = !!body.retry_before_alert;
   if ("heartbeat_hours" in body) patch.heartbeat_hours = parseHeartbeat(body.heartbeat_hours);
+  if ("heartbeat_window" in body) patch.heartbeat_window = parseHeartbeatWindow(body.heartbeat_window);
+  const hoursAfter = "heartbeat_hours" in body ? (patch.heartbeat_hours as number | null) : c.heartbeat_hours;
+  if (!hoursAfter) {
+    if (patch.heartbeat_window) throw validation("heartbeat_window needs heartbeat_hours", ["body", "heartbeat_hours"]);
+    if (c.heartbeat_window) patch.heartbeat_window = null; // cadence cleared: the window goes with it
+  } else {
+    const windowAfter = "heartbeat_window" in body ? (patch.heartbeat_window as HeartbeatWindow | null) : c.heartbeat_window;
+    validateHeartbeatCapacity(hoursAfter, windowAfter);
+  }
   if (body.store_samples !== undefined && body.store_samples !== null) patch.store_samples = !!body.store_samples;
   if (body.clear_alert_slack) patch.alert_slack_webhook_encrypted = null;
   else if (typeof body.alert_slack_webhook === "string" && body.alert_slack_webhook.trim()) {
@@ -241,7 +254,7 @@ export async function patchCheck(env: Env, request: Request, id: string): Promis
     patch.alert_slack_webhook_encrypted = await encryptSecret(env.ENC_KEY, target);
   }
   await updateCheck(env, id, patch);
-  if ("heartbeat_hours" in body) await recomputeHeartbeatDue(env, id);
+  if ("heartbeat_hours" in body || "heartbeat_window" in body) await recomputeHeartbeatDue(env, id);
   return json(await sanitizeCheck(env, await getCheckForUser(env, id, user.id)));
 }
 
@@ -448,6 +461,7 @@ export async function interest(env: Env, request: Request): Promise<Response> {
 import { executeCheck } from "./execute";
 import { parseClaimed } from "./engine";
 import { enqueueRun } from "./tick";
+import { HeartbeatWindow } from "./schedule";
 
 export async function webhook(env: Env, request: Request, ctx: ExecutionContext, secret: string): Promise<Response> {
   enforce(limiter(env, "hook"), secret);

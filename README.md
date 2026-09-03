@@ -41,7 +41,7 @@ Secrets are encrypted at rest with AES-256-GCM and only ever shown masked to the
 - **Claimed** — every webhook run must send `{"wrote": N}`; the destination must gain N.
 - **Required fields** must be present; a field present in every one of the last 30 good runs that disappears is a FAIL.
 - **Non-empty fields** — FAIL only when the newest record is empty *and* so is the majority of the five newest, so one odd row cannot flip a verdict.
-- **Heartbeat** — "expect a run every N hours": if no run arrives in the window, VerifyRuns records a FAIL ("No run in 26 h — expected one every 24 h.") and alerts; the next real run recovers it. This catches the workflow that never fired, not just the one that fired and wrote nothing.
+- **Heartbeat** — "expect a run every N hours": if no run arrives in the window, VerifyRuns records a FAIL ("No run in 26 h — expected one every 24 h.") and alerts; the next real run recovers it. This catches the workflow that never fired, not just the one that fired and wrote nothing. A workflow that only runs in office hours can add an active window ("only during 09:00–17:00 Europe/Berlin, weekdays"): the clock stops outside it, so an hourly job is due one *active* hour after its last run — Friday 16:00 becomes Monday 10:00 — instead of needing a 17-hour cadence to survive the night.
 
 The engine is deterministic code — no model, no score you cannot inspect. Every rule is a pure function with tests in `worker/test/`.
 
