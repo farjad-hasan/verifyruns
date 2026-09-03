@@ -209,8 +209,10 @@ export async function insertCheck(env: Env, c: CheckDoc): Promise<void> {
  *  webhook run landing between our read and our write has already set a due computed from its own
  *  timestamp, and that must win — so the write is predicated on the value we read and retried from
  *  fresh state when it loses. */
+const RECOMPUTE_ATTEMPTS = 5;
+
 export async function recomputeHeartbeatDue(env: Env, id: string): Promise<void> {
-  for (let attempt = 0; attempt < 3; attempt++) {
+  for (let attempt = 0; attempt < RECOMPUTE_ATTEMPTS; attempt++) {
     const c = await getCheck(env, id);
     if (!c) return;
     const stored = (await env.DB.prepare("SELECT next_heartbeat_due_at AS d FROM checks WHERE id = ?").bind(id).first<{ d: string | null }>())?.d ?? null;
@@ -227,6 +229,10 @@ export async function recomputeHeartbeatDue(env: Env, id: string): Promise<void>
     const res = await env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ? AND next_heartbeat_due_at IS ?").bind(due, id, stored).run();
     if (res.meta.changes) return;
   }
+  // Every attempt lost to a concurrent run-insert; that run's own due is current, so the stored
+  // value is still coherent — but it was computed with the cadence in force at that run, not the
+  // one just patched. The next real run or heartbeat fire corrects it.
+  console.warn(`recomputeHeartbeatDue: gave up after ${RECOMPUTE_ATTEMPTS} CAS attempts for check ${id}`);
 }
 
 /** Set scalar/JSON columns; values that are objects/arrays are JSON-encoded, booleans become 0/1. */

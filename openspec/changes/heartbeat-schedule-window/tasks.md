@@ -34,3 +34,6 @@
 - [x] 6.2 MEDIUM — spring-forward gap: `fromWallClockMs` resolves non-existent wall times to the transition instant (monotone), walk clamps `avail`/`t`; tests for Europe/London 2026-03-29 and America/New_York 2026-03-08, straddling and inside the gap
 - [x] 6.3 MEDIUM — CheckDetail save dropped a non-weekday `days` list: form state carries `days` verbatim, the checkbox only replaces it when toggled, a custom set shows as read-only text (`*-heartbeat-window-days`)
 - [x] 6.4 LOW — `recomputeHeartbeatDue` is compare-and-set with retry (predicated on the due it read), so a run landing mid-recompute keeps its own due while a shortened cadence can still pull the due earlier; race test in `tick.test.ts`
+- [x] 6.5 HIGH (re-review) — capacity bound ignored DST-collapsed days: `activeMinutesWithinCap` now subtracts two springs × min(open, 60 min); tests assert London 01:00–02:00 daily rejects 399 h and walks 397 h, Sunday-only rejects 56/57 h and walks 55 h, New York 02:00–03:00 rejects 399 h; cap comment restated as the exact invariant
+- [x] 6.6 LOW (re-review) — `recomputeHeartbeatDue` warns with the check id after exhausting 5 CAS attempts
+- [x] 6.7 LOW (re-review) — walk-cap timing claim replaced with the measured figures (3.5 ms full walk, 0.85 ms 720 h weekday, 0.03 ms hourly)

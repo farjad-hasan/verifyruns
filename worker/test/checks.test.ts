@@ -234,6 +234,14 @@ describe("heartbeat_window (heartbeat-schedule-window)", () => {
     // 720 h over Mon–Fri 09:00–17:00 is fine (40 h/week × 57 weeks); 720 h over 1 h/day is not
     expect((await create(u.token, { heartbeat_hours: 720, heartbeat_window: { start: "09:00", end: "17:00", tz: "UTC", days: [1, 2, 3, 4, 5] } })).status).toBe(200);
     expect((await create(u.token, { heartbeat_hours: 720, heartbeat_window: { start: "09:00", end: "10:00", tz: "UTC" } })).status).toBe(422);
+    // DST-collapsed days are inside the bound: London 01:00–02:00 daily reaches 397 h, not 399; Sundays only, 55 not 57
+    const gap = { start: "01:00", end: "02:00", tz: "Europe/London" };
+    expect((await create(u.token, { heartbeat_hours: 399, heartbeat_window: gap })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 397, heartbeat_window: gap })).status).toBe(200);
+    expect((await create(u.token, { heartbeat_hours: 57, heartbeat_window: { ...gap, days: [0] } })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 56, heartbeat_window: { ...gap, days: [0] } })).status).toBe(422);
+    expect((await create(u.token, { heartbeat_hours: 55, heartbeat_window: { ...gap, days: [0] } })).status).toBe(200);
+    expect((await create(u.token, { heartbeat_hours: 399, heartbeat_window: { start: "02:00", end: "03:00", tz: "America/New_York" } })).status).toBe(422);
     // PATCH: raising the cadence past what the stored window can hold, or narrowing the window under the stored cadence
     const c = await makeCheck(u.token, { heartbeat_hours: 50, heartbeat_window: narrow });
     expect((await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_hours: 100 } })).status).toBe(422);

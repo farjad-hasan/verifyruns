@@ -12,11 +12,16 @@ export interface HeartbeatWindow {
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
-/** Calendar days the walk may cover. Validation (`activeMinutesWithinCap`) refuses any cadence that
- *  needs more active time than this many days can hold, so the flat fallback below is unreachable
- *  for a stored windowed Check — it exists only so the function is total. ~400 iterations of
- *  Intl formatting at worst; measured well under a millisecond per call. */
+/** Calendar days the walk may cover. Invariant: `activeMinutesWithinCap(w) × 60_000 ms` of active time
+ *  is always found by the walk within this span, for any anchor — it counts only whole weeks and
+ *  subtracts the most a spring-forward gap can remove (two springs fit in 400 days). Validation
+ *  refuses any cadence above that bound, so the flat fallback below is unreachable for a stored
+ *  windowed Check; it exists only so the function is total. Cost: a full 402-day walk is ~1,600
+ *  formatToParts calls, measured 3.5 ms; a validated 720 h weekday walk 0.85 ms; a 1 h cadence 0.03 ms. */
 export const WALK_CAP_DAYS = 400;
+/** Springs the cap can contain, and the most active time one spring-forward day can swallow. */
+const SPRINGS_IN_CAP = 2;
+const MAX_GAP_MINUTES = 60;
 
 interface LocalParts {
   y: number;
@@ -163,11 +168,14 @@ export function openMinutesPerDay(w: HeartbeatWindow): number {
   return b > a ? b - a : b + 24 * 60 - a;
 }
 
-/** Lower bound on the active minutes the walk can find inside `WALK_CAP_DAYS`: whole weeks only, so
- *  a cadence that passes this check is always reachable and the flat fallback never runs. */
+/** Lower bound on the active minutes the walk can find inside `WALK_CAP_DAYS`: whole weeks only, minus
+ *  what two spring-forward days can collapse (a window overlapping the gap loses up to the gap length,
+ *  capped by its own width, on each). A cadence at or under this is always reachable, so the flat
+ *  fallback never runs for a validated Check. */
 export function activeMinutesWithinCap(w: HeartbeatWindow): number {
   const daysPerWeek = w.days && w.days.length ? new Set(w.days).size : 7;
-  return openMinutesPerDay(w) * daysPerWeek * Math.floor(WALK_CAP_DAYS / 7);
+  const open = openMinutesPerDay(w);
+  return Math.max(0, open * daysPerWeek * Math.floor(WALK_CAP_DAYS / 7) - SPRINGS_IN_CAP * Math.min(open, MAX_GAP_MINUTES));
 }
 
 /** "active 13:00–23:00 Asia/Karachi" / "…, Mon–Fri" / "…, Mon, Wed, Fri" for the heartbeat message. */

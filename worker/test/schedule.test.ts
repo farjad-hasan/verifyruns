@@ -76,13 +76,38 @@ describe("long cadences never fall back to flat arithmetic (review 1)", () => {
     const due = nextHeartbeatDue(at("2026-09-03T09:00"), 720, w);
     expect(due.getTime()).toBe(at("2026-09-03T09:00").getTime() + 179 * 24 * HOUR + 4 * HOUR);
   });
-  it("capacity: active minutes inside the cap, and the cadence check that uses it", () => {
+  it("capacity: whole weeks inside the cap minus two spring-forward days", () => {
+    const weeks = Math.floor(WALK_CAP_DAYS / 7);
     const wk: HeartbeatWindow = { start: "09:00", end: "17:00", tz: KHI, days: [1, 2, 3, 4, 5] };
-    expect(activeMinutesWithinCap(wk)).toBe(8 * 60 * 5 * Math.floor(WALK_CAP_DAYS / 7));
+    expect(activeMinutesWithinCap(wk)).toBe(8 * 60 * 5 * weeks - 2 * 60);
     const tiny: HeartbeatWindow = { start: "09:00", end: "09:30", tz: KHI, days: [0] };
-    expect(activeMinutesWithinCap(tiny)).toBe(30 * Math.floor(WALK_CAP_DAYS / 7));
+    expect(activeMinutesWithinCap(tiny)).toBe(30 * weeks - 2 * 30);
     const wrap: HeartbeatWindow = { start: "22:00", end: "06:00", tz: KHI };
-    expect(activeMinutesWithinCap(wrap)).toBe(8 * 60 * 7 * Math.floor(WALK_CAP_DAYS / 7));
+    expect(activeMinutesWithinCap(wrap)).toBe(8 * 60 * 7 * weeks - 2 * 60);
+  });
+
+  it("the bound holds on windows that sit inside the spring-forward gap (re-review 1)", () => {
+    const LON = "Europe/London";
+    const NYC = "America/New_York";
+    const flat = (a: Date, h: number) => a.getTime() + h * HOUR;
+    // Daily 01:00–02:00 London: 57 × 7 = 399 h nominal, two springs collapse two of them → bound 397 h.
+    const daily: HeartbeatWindow = { start: "01:00", end: "02:00", tz: LON };
+    expect(activeMinutesWithinCap(daily)).toBe(397 * 60);
+    const a = at("2026-03-28T02:00", LON);
+    const due397 = nextHeartbeatDue(a, 397, daily);
+    expect(due397.getTime()).not.toBe(flat(a, 397)); // walked, not flat
+    expect(due397.getTime()).toBeGreaterThan(a.getTime() + 398 * 24 * HOUR); // 397 active hours ≈ 399 calendar days
+    // Sunday-only 01:00–02:00 London: 57 Sundays nominal, 2026-03-29 and 2027-03-28 are both spring Sundays → 55.
+    const sun: HeartbeatWindow = { start: "01:00", end: "02:00", tz: LON, days: [0] };
+    expect(activeMinutesWithinCap(sun)).toBe(55 * 60);
+    const due55 = nextHeartbeatDue(a, 55, sun);
+    expect(due55.getTime()).not.toBe(flat(a, 55));
+    expect(iso(due55)).toBe(iso(at("2027-04-25T02:00", LON)));
+    // New York 02:00–03:00 daily has the same shape.
+    const ny: HeartbeatWindow = { start: "02:00", end: "03:00", tz: NYC };
+    expect(activeMinutesWithinCap(ny)).toBe(397 * 60);
+    const b = at("2026-03-07T03:00", NYC);
+    expect(nextHeartbeatDue(b, 397, ny).getTime()).not.toBe(flat(b, 397));
   });
 });
 
