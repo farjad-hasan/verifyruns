@@ -3,6 +3,7 @@ import { Link, useNavigate, useParams } from "react-router-dom";
 import api from "../lib/api";
 import ErrorBoundary from "../components/ErrorBoundary";
 import Nav from "../components/Nav";
+import Footer from "../components/Footer";
 import Timeline from "../components/Timeline";
 import CopyButton from "../components/CopyButton";
 import usePoll from "../lib/usePoll";
@@ -123,7 +124,7 @@ export default function CheckDetail() {
 
   if (!check) {
     return (
-      <div className="min-h-screen"><Nav />
+      <div className="rp-page"><Nav />
         <div className="max-w-5xl mx-auto px-6 lg:px-10 py-12">
           <Link to="/dashboard" className="rp-link text-sm inline-flex items-center gap-1.5 mb-6" data-testid="back-to-dashboard">
             <ArrowLeft size={14} /> Back to dashboard
@@ -137,6 +138,7 @@ export default function CheckDetail() {
             <p className="text-quiet text-sm">Loading…</p>
           )}
         </div>
+        <Footer />
       </div>
     );
   }
@@ -259,7 +261,7 @@ export default function CheckDetail() {
   );
 
   return (
-    <div className="min-h-screen">
+    <div className="rp-page">
       <Nav />
       <div className="max-w-5xl mx-auto px-6 lg:px-10 py-10">
         <Link to="/dashboard" className="rp-link text-sm inline-flex items-center gap-1.5 mb-6" data-testid="back-to-dashboard">
@@ -339,6 +341,8 @@ export default function CheckDetail() {
           </details>
         )}
       </div>
+
+      <Footer />
 
       {selectedRun && (
         <RunPanel

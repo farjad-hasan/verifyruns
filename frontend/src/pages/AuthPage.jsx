@@ -4,6 +4,7 @@ import { useAuth } from "../lib/auth";
 import { formatError } from "../lib/api";
 import { safeNext } from "../lib/nav";
 import Nav from "../components/Nav";
+import Footer from "../components/Footer";
 import useTitle from "../lib/useTitle";
 import { toast } from "sonner";
 
@@ -37,7 +38,7 @@ export default function AuthPage({ mode }) {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="rp-page">
       <Nav />
       <div className="flex-1 flex items-center justify-center px-6 py-16">
         <div className="w-full max-w-md rp-fade">
@@ -48,7 +49,7 @@ export default function AuthPage({ mode }) {
             {isLogin ? "Log in to VerifyRuns" : "Create your account"}
           </h1>
           <p className="text-zinc-400 mb-10">
-            {isLogin ? "Pick up where you left off." : "No credit card. Add your first check in minutes."}
+            {isLogin ? "Pick up where you left off." : "No credit card. Add your first Check in minutes."}
           </p>
 
           {sessionExpired && (
@@ -95,23 +96,24 @@ export default function AuthPage({ mode }) {
             </button>
             {isLogin ? (
               <p className="text-sm text-quiet">
-                <Link to="/forgot" className="underline underline-offset-4 hover:text-zinc-300" data-testid="auth-forgot-link">Forgot your password?</Link>
+                <Link to="/forgot" className="rp-inline" data-testid="auth-forgot-link">Forgot your password?</Link>
               </p>
             ) : (
               <p className="text-xs text-quiet leading-relaxed" data-testid="auth-terms-note">
-                By creating an account you agree to the <Link to="/terms" className="underline underline-offset-4 hover:text-zinc-300">Terms</Link> and the <Link to="/privacy" className="underline underline-offset-4 hover:text-zinc-300">Privacy Policy</Link>.
+                By creating an account you agree to the <Link to="/terms" className="rp-inline">Terms</Link> and the <Link to="/privacy" className="rp-inline">Privacy Policy</Link>.
               </p>
             )}
           </form>
 
           <p className="mt-8 text-sm text-quiet">
             {isLogin ? "New to VerifyRuns? " : "Already have an account? "}
-            <Link to={isLogin ? "/signup" : "/login"} className="text-zinc-200 underline underline-offset-4 hover:text-white" data-testid="auth-switch-link">
+            <Link to={isLogin ? "/signup" : "/login"} className="text-zinc-200 rp-inline" data-testid="auth-switch-link">
               {isLogin ? "Create an account" : "Log in"}
             </Link>
           </p>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { Link } from "react-router-dom";
 import api, { formatError } from "../lib/api";
 import Nav from "../components/Nav";
+import Footer from "../components/Footer";
 import useTitle from "../lib/useTitle";
 
 export default function ForgotPage() {
@@ -31,7 +32,7 @@ export default function ForgotPage() {
   };
 
   return (
-    <div className="min-h-screen flex flex-col">
+    <div className="rp-page">
       <Nav />
       <div className="flex-1 flex items-center justify-center px-6 py-16">
         <div className="w-full max-w-md rp-fade">
@@ -61,10 +62,11 @@ export default function ForgotPage() {
             </>
           )}
           <p className="mt-8 text-sm text-quiet">
-            Remembered it? <Link to="/login" className="text-zinc-200 underline underline-offset-4 hover:text-white">Log in</Link>
+            Remembered it? <Link to="/login" className="text-zinc-200 rp-inline">Log in</Link>
           </p>
         </div>
       </div>
+      <Footer />
     </div>
   );
 }

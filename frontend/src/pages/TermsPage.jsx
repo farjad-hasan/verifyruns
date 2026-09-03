@@ -1,10 +1,10 @@
 import { Link } from "react-router-dom";
 import LegalPage from "./LegalPage";
 
-const MAIL = <a className="underline underline-offset-4 hover:text-zinc-300" href="mailto:farjad.developer@gmail.com?subject=VerifyRuns%20terms">farjad.developer@gmail.com</a>;
+const MAIL = <a className="rp-inline" href="mailto:farjad.developer@gmail.com?subject=VerifyRuns%20terms">farjad.developer@gmail.com</a>;
 
 const SECTIONS = [
-  { title: "Who you are dealing with", paras: [<>VerifyRuns is operated by Farjad Hasan, an individual developer based in Pakistan. By creating an account you agree to these terms and to the <Link className="underline underline-offset-4" to="/privacy">privacy policy</Link>. Contact: {MAIL}.</>] },
+  { title: "Who you are dealing with", paras: [<>VerifyRuns is operated by Farjad Hasan, an individual developer based in Pakistan. By creating an account you agree to these terms and to the <Link className="rp-inline" to="/privacy">privacy policy</Link>. Contact: {MAIL}.</>] },
   {
     title: "Early access",
     paras: ["VerifyRuns is in early access and currently free. Features, limits and prices can change; paid plans will be announced on the pricing page and by email before anyone is charged. The service may be paused or discontinued — if that happens, account holders get at least 30 days' notice by email and can delete their data at any time before then."],
@@ -29,7 +29,7 @@ const SECTIONS = [
   },
   {
     title: "Your data",
-    paras: [<>Your destinations and their contents stay yours. What we keep, for how long, and how to delete it is set out in the <Link className="underline underline-offset-4" to="/privacy">privacy policy</Link> and <Link className="underline underline-offset-4" to="/data">What we store</Link>.</>],
+    paras: [<>Your destinations and their contents stay yours. What we keep, for how long, and how to delete it is set out in the <Link className="rp-inline" to="/privacy">privacy policy</Link> and <Link className="rp-inline" to="/data">What we store</Link>.</>],
   },
   {
     title: "Changes and law",

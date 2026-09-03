@@ -1,6 +1,6 @@
 {
   "schemaVersion": 2,
-  "generatedAt": "2026-09-03T03:20:00+05:00",
+  "generatedAt": "2026-09-03T19:05:00+05:00",
   "title": "Design System: VerifyRuns",
   "extensions": {
     "colorMeta": {
@@ -346,7 +346,10 @@
       "Do size every card-header action as rp-btn-xs (6 × 12 px, 12 px type): ghost for Copy, Edit, Enable, Rename; danger for Disable, Remove. Filled primary buttons belong to page headers, forms and empty states.",
       "Do set every sentence the product speaks — Loading, empty states, hints — in Manrope; mono is for observed values only, and a page shows one empty-state sentence per condition.",
       "Do stack verdict rows and page headers below sm (640 px): badge + sentence, then timestamp · trigger on one mono line; actions on their own row under the name.",
-      "Do keep interactive content out of links and buttons: a dashboard row is one link and its strip is Timeline in static mode (aria-hidden spans), never buttons in a button."
+      "Do keep interactive content out of links and buttons: a dashboard row is one link and its strip is Timeline in static mode (aria-hidden spans), never buttons in a button.",
+      "Do end every route with the shared Footer (logo, wordmark, Pricing · What we store · Security · Privacy · Terms) at the nav's width; /status gets the slim variant; never hand-write a closing link line.",
+      "Do style inline prose links with .rp-inline (underline, 4 px offset, brighter on hover by a relative filter so the link keeps its own hue) and chrome links with .rp-link.",
+      "Do keep documentation pages at a 65 ch measure with h2 sections and one mono 'Last updated' line under the lede."
     ],
     "donts": [
       "Don't load Inter.",

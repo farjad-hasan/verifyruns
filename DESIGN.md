@@ -417,6 +417,14 @@ steps with mono `01 / 02 / 03` numerals in emerald, then one primary button. No 
 - **Do** keep interactive content out of links and buttons: a dashboard row is one `<Link>`, and
   the strip inside it is `Timeline` in `static` mode (spans, `role="img"`), never buttons in a
   button (2026-09-03).
+- **Do** end every route with the shared `Footer` (logo, wordmark, Pricing · What we store ·
+  Security · Privacy · Terms) in the nav's `max-w-6xl` width, and give `/status/:token` its slim
+  variant; never hand-write a closing link line on a page (2026-09-03, `public-page-shell`).
+- **Do** style inline links in prose with `.rp-inline` (underline, 4 px offset, brighter on hover
+  by a relative filter so the link keeps its own hue) and chrome links with `.rp-link`; no ad-hoc
+  utility strings on anchors (2026-09-03).
+- **Do** keep documentation pages (`/data`, `/security`, `/privacy`, `/terms`) at a 65 ch measure
+  with `<h2>` sections and one mono "Last updated" line under the lede (2026-09-03).
 
 ### Don't:
 - **Don't** load Inter. `public/index.html` still requests it (line 10) — a leftover from the

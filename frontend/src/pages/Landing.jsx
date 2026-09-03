@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "react-router-dom";
 import Nav from "../components/Nav";
+import Footer from "../components/Footer";
 import useTitle from "../lib/useTitle";
 import { ArrowRight, ShieldCheck, Zap, Eye } from "lucide-react";
 
@@ -65,7 +66,7 @@ function SetupTabs() {
 export default function Landing() {
   useTitle(null); // the marketing base title
   return (
-    <div className="min-h-screen">
+    <div className="rp-page">
       <Nav />
 
       {/* Hero */}
@@ -215,29 +216,17 @@ export default function Landing() {
       <section className="border-t border-raised">
         <div className="max-w-3xl mx-auto px-6 lg:px-10 py-20 text-center">
           <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">Stop trusting the green checkmark.</h2>
-          <p className="mt-4 text-zinc-400 text-lg max-w-[65ch] mx-auto">Free during early access. First check in under five minutes.</p>
+          <p className="mt-4 text-zinc-400 text-lg max-w-[65ch] mx-auto">Free during early access. First Check in under five minutes.</p>
           <div className="mt-10 flex items-center justify-center gap-3">
             <Link to="/signup" className="rp-btn-primary" data-testid="cta-signup-btn">
-              Create your first check <ArrowRight size={16} />
+              Create your first Check <ArrowRight size={16} />
             </Link>
             <Link to="/pricing" className="rp-btn-ghost" data-testid="cta-pricing-link">Pricing</Link>
           </div>
         </div>
       </section>
 
-      <footer className="border-t border-raised">
-        <div className="max-w-6xl mx-auto px-6 lg:px-10 py-8 text-sm text-quiet flex flex-wrap items-center justify-between gap-4">
-          <span>VerifyRuns</span>
-          <div className="flex items-center gap-5">
-            <Link to="/pricing" className="hover:text-zinc-300" data-testid="footer-pricing">Pricing</Link>
-            <Link to="/data" className="hover:text-zinc-300" data-testid="footer-data">What we store</Link>
-            <Link to="/security" className="hover:text-zinc-300" data-testid="footer-security">Security</Link>
-            <Link to="/privacy" className="hover:text-zinc-300" data-testid="footer-privacy">Privacy</Link>
-            <Link to="/terms" className="hover:text-zinc-300" data-testid="footer-terms">Terms</Link>
-            <span className="font-mono">v0.2</span>
-          </div>
-        </div>
-      </footer>
+      <Footer />
     </div>
   );
 }
