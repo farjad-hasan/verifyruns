@@ -2,7 +2,9 @@
 
 ## Purpose
 A Check is one destination plus expectations, owned by a user, with a secret webhook URL and a history of runs. As built in `backend/server.py` (Check CRUD, runs, webhook).
+
 ## Requirements
+
 ### Requirement: Create a Check
 The system SHALL create a Check with a name (1–120 chars), a `connector_kind` (`http_json` | `airtable` | `postgres`), a per-connector `config`, `expectations`, an optional Slack webhook, a `retry_before_alert` flag (default true), and a 32-byte urlsafe `webhook_secret`. Connector secrets in `config` SHALL be stored encrypted with AES-256-GCM under `ENC_KEY` and never returned in full.
 
@@ -63,7 +65,7 @@ The system SHALL scope every Check route to `user_id`; a Check owned by another 
 `POST /api/checks/{id}/run` SHALL queue a run with `trigger="manual"` for the owner.
 
 #### Scenario: Run now
-- **WHEN** the owner clicks "Run check now"
+- **WHEN** the owner clicks "Run Check now"
 - **THEN** a run is queued and `{run_id, status: "queued"}` is returned
 
 ### Requirement: Run history
@@ -81,11 +83,11 @@ The system SHALL scope every Check route to `user_id`; a Check owned by another 
 - **THEN** the run is recorded and no Slack message is posted
 
 ### Requirement: Detail view is connector-aware
-The Check detail page SHALL label the Check with its connector kind and SHALL render a Destination card specific to that connector: HTTP/JSON (URL with every query-string value masked to its last four characters, JSON path, masked bearer), Airtable (base, table, view, masked PAT), Postgres (query, masked DSN).
+The Check detail page SHALL label the Check with its connector kind and SHALL render a Destination card specific to that connector: HTTP/JSON (URL with every query-string value masked to its last four characters, JSON path, masked bearer), Airtable (base, table, view, masked PAT), Postgres (query, masked DSN). The label spells the entity "Check", as `PRODUCT.md` records.
 
 #### Scenario: Postgres Check
 - **WHEN** the owner opens a Check whose `connector_kind` is `postgres`
-- **THEN** the header reads "Postgres check" and the Destination card shows the query and the DSN masked to its last 4 characters
+- **THEN** the header reads "Postgres Check" and the Destination card shows the query and the DSN masked to its last 4 characters
 
 #### Scenario: HTTP/JSON Check with a key in the query string
 - **WHEN** the owner opens a Check whose GET URL is `https://host/rest/v1/t?select=id&apikey=abcdefgh1234`
@@ -178,4 +180,3 @@ The New Check form SHALL default `min_new_records` to 0 ("growth optional") with
 #### Scenario: User asserts growth
 - **WHEN** the user sets `min_new_records` to 1
 - **THEN** behaviour is exactly today's: an unchanged destination FAILs
-
