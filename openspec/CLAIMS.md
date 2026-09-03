@@ -16,9 +16,9 @@ by flipping `status` to `done` in your merge commit. Rules in [`AGENTS.md`](../A
 | pricing-tiers | — | — | — | deferred (activation: ≥10 external live Checks) |
 | check-detail-phone | claude/design-audit (Mac) | [PR #9](https://github.com/farjad-hasan/verifyruns/pull/9) | 2026-09-03 | done — merged 2026-09-03, archived |
 | public-page-shell | claude/design-audit (Mac) | worktree `../verifyruns-public-page-shell`, branch `public-page-shell` | 2026-09-03 | in progress — findings in `docs/design-audit-2026-09-02.md` Part 1 |
-| dogfood-fleet | claude/dogfood (Mac) | worktree `../verifyruns-dogfood-fleet`, branch `dogfood-fleet` | 2026-09-03 | in progress — docs here, helper + Checks in farjad-world |
-| heartbeat-schedule-window | claude/dogfood (Mac) | worktree `../verifyruns-heartbeat-schedule-window`, branch `heartbeat-schedule-window` | 2026-09-03 | in progress |
-| unreachable-destination-recipe | claude/dogfood (Mac) | worktree `../verifyruns-unreachable-destination-recipe`, branch `unreachable-destination-recipe` | 2026-09-03 | in progress — docs only, sequential after dogfood-fleet |
+| dogfood-fleet | claude/dogfood (Mac) | worktree `../verifyruns-dogfood-fleet`, branch `dogfood-fleet` | 2026-09-03 | done — merged 2026-09-03; six Checks live, work-* wiring handed to the work repo |
+| heartbeat-schedule-window | claude/dogfood (Mac) | [PR #11](https://github.com/farjad-hasan/verifyruns/pull/11) | 2026-09-03 | review-clean, awaiting Farjad's merge (prod migration 0005) |
+| unreachable-destination-recipe | claude/dogfood (Mac) | worktree `../verifyruns-unreachable-destination-recipe`, branch `unreachable-destination-recipe` | 2026-09-03 | done — merged 2026-09-03; page exists, unlinked until the activation trigger |
 
 All seven production-readiness changes were implemented as a **stacked PR chain** (#1→#7, one
 session, sequential — the overlap table below made parallel claims impractical for this set) and

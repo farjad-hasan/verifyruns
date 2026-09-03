@@ -72,6 +72,8 @@ npm run typecheck
 
 By default a run stores counts, field names and a hash of the newest row — never the rows themselves; raw samples are an opt-in with a 30-day expiry. Details in [docs/what-we-store.md](docs/what-we-store.md).
 
+The maintainer's own scheduled jobs report to VerifyRuns as a standing test fleet: [docs/dogfood.md](docs/dogfood.md).
+
 ## Roadmap
 
 Planned work is tracked with [OpenSpec](https://github.com/Fission-AI/OpenSpec) in [`openspec/`](openspec/): `specs/` describes the behaviour as built, `changes/` holds one folder per proposal with its design, requirement deltas and task list. `openspec list` shows what is in flight.
