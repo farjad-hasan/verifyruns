@@ -160,6 +160,25 @@ export function parseClaimed(body: unknown): [number | null, string | null] {
   return [null, null];
 }
 
+export interface Reported {
+  failed: boolean;
+  error: string | null;
+}
+
+/** `{"status": "failed", "error": "…"}` in the webhook body: the workflow itself says it failed.
+ *  Any other status value, or a body that is not an object, is not a report. */
+export function parseReported(body: unknown): Reported {
+  if (!body || typeof body !== "object" || Array.isArray(body)) return { failed: false, error: null };
+  const b = body as Record<string, unknown>;
+  if (typeof b.status !== "string" || b.status.trim().toLowerCase() !== "failed") return { failed: false, error: null };
+  const error = typeof b.error === "string" ? b.error.trim().slice(0, 500) : "";
+  return { failed: true, error: error || null };
+}
+
+export function reportedFailureMessage(error: string | null): string {
+  return error ? `Your workflow reported failure: ${error}.` : "Your workflow reported failure (no reason given).";
+}
+
 export function hasOrderBy(query: string): boolean {
   return /\border\s+by\b/i.test(query || "");
 }

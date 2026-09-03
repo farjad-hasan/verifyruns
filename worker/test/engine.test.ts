@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { annotateCount, canonicalHash, computeVerdict, fingerprint, hasOrderBy, parseClaimed, splitSample } from "../src/engine";
+import { annotateCount, canonicalHash, computeVerdict, fingerprint, hasOrderBy, parseClaimed, parseReported, splitSample } from "../src/engine";
 
 const records = (n: number, extra: Record<string, unknown> = {}) => Array.from({ length: n }, (_, i) => ({ id: i, name: `row ${i}`, ...extra }));
 const passRun = (record_count: number, fields: string[] = ["id", "name"], sample_size?: number) => ({
@@ -220,3 +220,23 @@ describe("helpers", () => {
     expect(annotateCount("m.", { total: 1, capped: false, count_estimated: true }, 4000)).toBe("m. Count estimated from the sample (the full count timed out).");
   });
 });
+
+describe("parseReported", () => {
+  it("reads status: failed with an optional error, trimmed to 500", () => {
+    expect(parseReported({ status: "failed" })).toEqual({ failed: true, error: null });
+    expect(parseReported({ status: "failed", error: "  exit 1 " })).toEqual({ failed: true, error: "exit 1" });
+    expect(parseReported({ status: "FAILED", error: "x".repeat(900) })).toEqual({ failed: true, error: "x".repeat(500) });
+    expect(parseReported({ status: "failed", error: 42 })).toEqual({ failed: true, error: null });
+    expect(parseReported({ status: "failed", error: "   " })).toEqual({ failed: true, error: null });
+  });
+  it("ignores any other status, missing status, non-object bodies, and error without status", () => {
+    expect(parseReported({ status: "ok", wrote: 2 })).toEqual({ failed: false, error: null });
+    expect(parseReported({ status: 7 })).toEqual({ failed: false, error: null });
+    expect(parseReported({ wrote: 2 })).toEqual({ failed: false, error: null });
+    expect(parseReported({ error: "boom" })).toEqual({ failed: false, error: null });
+    expect(parseReported(null)).toEqual({ failed: false, error: null });
+    expect(parseReported("failed")).toEqual({ failed: false, error: null });
+    expect(parseReported([{ status: "failed" }])).toEqual({ failed: false, error: null });
+  });
+});
+

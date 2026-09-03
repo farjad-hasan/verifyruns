@@ -3,7 +3,7 @@ import { env } from "cloudflare:test";
 import { deliver, formatAlert, maybeAlert } from "../src/alerts";
 import { getCheck } from "../src/checks";
 import { setFetchForTests } from "../src/net";
-import { makeCheck, user } from "./helpers";
+import { api, jsonResponse, makeCheck, user } from "./helpers";
 
 afterEach(() => setFetchForTests(null));
 
@@ -210,3 +210,30 @@ describe("formatAlert", () => {
     expect(t.split("\n").pop()).toBe("Open in VerifyRuns: https://verifyruns.pages.dev/checks/abc");
   });
 });
+
+describe("reported failure alerts without a retry", () => {
+  it("first reported failure alerts on that run, pending_retry stays null; the next honest PASS recovers", async () => {
+    const posts: any[] = [];
+    setFetchForTests(async (url, init) => {
+      if (url.startsWith("https://discord")) {
+        posts.push(JSON.parse(String(init?.body)));
+        return new Response(null, { status: 204 });
+      }
+      return jsonResponse(Array.from({ length: 3 }, (_, i) => ({ id: i + 1 })));
+    });
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, retry_before_alert: true, alert_channels: [{ kind: "discord", target: DISCORD }] });
+    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("PASS");
+    const f = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { status: "failed", error: "exit 143" } });
+    expect(f.data.verdict).toBe("FAIL");
+    expect(posts.length).toBe(1);
+    expect(posts[0].content).toContain("Your workflow reported failure: exit 143.");
+    expect((await api(`/checks/${c.id}`, { token: u.token })).data.pending_retry_at).toBeNull();
+    expect(await alertsSent(f.data.run_id)).toEqual([{ kind: "discord", ok: true }]);
+    const ok = await api(`/hook/${c.webhook_secret}`, { method: "POST" });
+    expect(ok.data.verdict).toBe("PASS");
+    expect(posts.length).toBe(2);
+    expect(posts[1].content.startsWith("✅ **Recovered**")).toBe(true);
+  });
+});
+

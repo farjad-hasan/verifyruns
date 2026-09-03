@@ -2,7 +2,7 @@
 import { maybeAlert } from "./alerts";
 import { getCheck, updateCheck } from "./checks";
 import { fetchRecords } from "./connectors";
-import { annotateCount, computeVerdict, FetchMeta, fingerprint, Fingerprint, splitSample } from "./engine";
+import { annotateCount, computeVerdict, FetchMeta, fingerprint, Fingerprint, Reported, reportedFailureMessage, splitSample } from "./engine";
 import { Env, nowIso, num } from "./env";
 import { nextHeartbeatDue } from "./schedule";
 
@@ -13,7 +13,7 @@ export interface RunResult {
   timestamp: string;
 }
 
-export async function executeCheck(env: Env, checkId: string, trigger: string, runId: string, isRetry = false, claimedNew: number | null = null, bodyNote: string | null = null): Promise<RunResult | null> {
+export async function executeCheck(env: Env, checkId: string, trigger: string, runId: string, isRetry = false, claimedNew: number | null = null, bodyNote: string | null = null, reported: Reported | null = null): Promise<RunResult | null> {
   const c = await getCheck(env, checkId);
   if (!c) return null;
   let verdict: "PASS" | "FAIL" = "FAIL";
@@ -51,13 +51,20 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
     console.error("executeCheck error", e);
   }
 
+  // The workflow's own verdict outranks the destination's: it is recorded as a FAIL whatever the
+  // read showed, and the fingerprint is kept as evidence rather than as a baseline (FAILs never join it).
+  const reportedFailure = !!reported?.failed;
+  if (reportedFailure) {
+    verdict = "FAIL";
+    message = reportedFailureMessage(reported?.error ?? null);
+  }
   const [storedFp, sample] = await splitSample(fp, errorDetails, c.store_samples, num(env.VR_SAMPLE_TTL_DAYS, 30));
   const timestamp = nowIso();
   const stmts = [
     env.DB.prepare(
-      `INSERT INTO check_runs (id, check_id, timestamp, trigger, verdict, diff_message, fingerprint, error_details, is_retry, count_capped, count_estimated, claimed_new, body_note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
-    ).bind(runId, checkId, timestamp, trigger, verdict, message, JSON.stringify(storedFp), isRetry ? 1 : 0, meta.capped ? 1 : 0, meta.count_estimated ? 1 : 0, claimedNew, bodyNote),
+      `INSERT INTO check_runs (id, check_id, timestamp, trigger, verdict, diff_message, fingerprint, error_details, is_retry, count_capped, count_estimated, claimed_new, body_note, reported_failure, reported_error)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(runId, checkId, timestamp, trigger, verdict, message, JSON.stringify(storedFp), isRetry ? 1 : 0, meta.capped ? 1 : 0, meta.count_estimated ? 1 : 0, claimedNew, bodyNote, reportedFailure ? 1 : 0, reportedFailure ? reported?.error ?? null : null),
   ];
   if (sample) {
     stmts.push(
@@ -78,7 +85,9 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
   try {
     const snoozed = !!(c.snooze_until && c.snooze_until > nowIso());
     const freshFail = verdict === "FAIL" && c.last_alerted_verdict !== "FAIL";
-    if (!isRetry && freshFail && c.retry_before_alert && !snoozed) {
+    // A reported failure is never retried: re-reading the destination cannot change what the
+    // workflow said, and a passing retry would swallow the alert.
+    if (!isRetry && freshFail && c.retry_before_alert && !snoozed && !reportedFailure) {
       const due = new Date(Date.now() + num(env.VR_RETRY_DELAY_SECONDS, 30) * 1000).toISOString();
       await updateCheck(env, checkId, { pending_retry: { due_at: due, claimed_new: claimedNew } });
     } else {

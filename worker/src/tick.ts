@@ -117,13 +117,14 @@ export async function drainPendingRuns(env: Env, batch?: number, exec: typeof ex
   const rows = (await env.DB.prepare("SELECT id, pending_runs FROM checks WHERE pending_runs != '[]' LIMIT ?").bind(limit).all<{ id: string; pending_runs: string }>()).results;
   for (const row of rows) {
     if (budget <= 0) break;
-    const items = JSON.parse(row.pending_runs) as { run_id: string; claimed_new: number | null; body_note: string | null }[];
+    const items = JSON.parse(row.pending_runs) as CheckDoc["pending_runs"];
     for (const item of items.slice(0, budget)) {
       budget -= 1;
       const recorded = await env.DB.prepare("SELECT 1 AS x FROM check_runs WHERE id = ?").bind(item.run_id).first();
       if (!recorded) {
         try {
-          await exec(env, row.id, "webhook", item.run_id, false, item.claimed_new ?? null, item.body_note ?? null);
+          const reported = item.reported_failure ? { failed: true, error: item.reported_error ?? null } : null;
+          await exec(env, row.id, "webhook", item.run_id, false, item.claimed_new ?? null, item.body_note ?? null, reported);
           ran += 1;
         } catch (e) {
           // Leave this item and its successors queued: order is preserved and the next tick resumes

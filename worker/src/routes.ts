@@ -406,6 +406,8 @@ export function rowToRun(row: any): Record<string, any> {
     count_estimated: !!row.count_estimated,
     claimed_new: row.claimed_new ?? null,
     body_note: row.body_note ?? null,
+    reported_failure: !!row.reported_failure,
+    reported_error: row.reported_error ?? null,
     ...(row.heartbeat_at ? { heartbeat_at: row.heartbeat_at } : {}),
     ...(row.alerts_sent ? { alerts_sent: JSON.parse(row.alerts_sent) } : {}),
   };
@@ -459,7 +461,7 @@ export async function interest(env: Env, request: Request): Promise<Response> {
 
 // ---------- webhook + manual run ----------
 import { executeCheck } from "./execute";
-import { parseClaimed } from "./engine";
+import { parseClaimed, parseReported } from "./engine";
 import { enqueueRun } from "./tick";
 import { HeartbeatWindow } from "./schedule";
 
@@ -475,13 +477,14 @@ export async function webhook(env: Env, request: Request, ctx: ExecutionContext,
     body = null;
   }
   const [claimedNew, bodyNote] = parseClaimed(body);
+  const reported = parseReported(body);
   const runId = uuid();
   const wait = new URL(request.url).searchParams.get("wait");
   if (wait !== null && Number(wait) === 0) {
-    await enqueueRun(env, row.id, { run_id: runId, claimed_new: claimedNew, body_note: bodyNote, queued_at: nowIso() });
+    await enqueueRun(env, row.id, { run_id: runId, claimed_new: claimedNew, body_note: bodyNote, queued_at: nowIso(), reported_failure: reported.failed, reported_error: reported.error });
     return json({ accepted: true, run_id: runId, queued: true }, 202);
   }
-  const run = await executeCheck(env, row.id, "webhook", runId, false, claimedNew, bodyNote);
+  const run = await executeCheck(env, row.id, "webhook", runId, false, claimedNew, bodyNote, reported);
   return json({ accepted: true, run_id: runId, verdict: run?.verdict ?? null, diff_message: run?.diff_message ?? null, timed_out: false });
 }
 

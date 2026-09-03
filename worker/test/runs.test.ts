@@ -2,6 +2,7 @@ import { afterEach, describe, expect, it } from "vitest";
 import { env } from "cloudflare:test";
 import { setFetchForTests } from "../src/net";
 import { api, jsonResponse, makeCheck, user } from "./helpers";
+import { tick } from "../src/tick";
 
 afterEach(() => setFetchForTests(null));
 
@@ -184,3 +185,65 @@ describe("webhook + runs (parity with test_serverless / test_claimed_api / test_
     expect(typeof check.pending_retry_at).toBe("string");
   });
 });
+
+describe("reported failure (status: failed in the webhook body)", () => {
+  it("is a FAIL with the sentence even when the destination is healthy; fields on the run read; fingerprint stored; heartbeat re-anchored", async () => {
+    serve();
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, retry_before_alert: false, heartbeat_hours: 24 });
+    const before = (await api(`/checks/${c.id}`, { token: u.token })).data;
+    const r = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { status: "failed", error: "exit 1", wrote: 1 } });
+    expect(r.status).toBe(200);
+    expect(r.data.verdict).toBe("FAIL");
+    expect(r.data.diff_message).toBe("Your workflow reported failure: exit 1.");
+    const run = (await api(`/runs/${r.data.run_id}`, { token: u.token })).data;
+    expect(run.reported_failure).toBe(true);
+    expect(run.reported_error).toBe("exit 1");
+    expect(run.claimed_new).toBe(1);
+    expect(run.fingerprint.record_count).toBe(200);
+    const nr = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { status: "failed" } });
+    expect(nr.data.diff_message).toBe("Your workflow reported failure (no reason given).");
+    expect((await api(`/runs/${nr.data.run_id}`, { token: u.token })).data.reported_error).toBeNull();
+    const row = await env.DB.prepare("SELECT next_heartbeat_due_at FROM checks WHERE id = ?").bind(c.id).first<{ next_heartbeat_due_at: string }>();
+    expect(new Date(row!.next_heartbeat_due_at).getTime()).toBeGreaterThan(Date.parse(before.created_at) + 24 * 3600_000 - 1);
+    // ordinary runs carry the fields too
+    const ok = await api(`/hook/${c.webhook_secret}`, { method: "POST" });
+    expect(ok.data.verdict).toBe("PASS");
+    const okRun = (await api(`/runs/${ok.data.run_id}`, { token: u.token })).data;
+    expect(okRun.reported_failure).toBe(false);
+    expect(okRun.reported_error).toBeNull();
+  });
+
+  it("stays out of the PASS baseline: the next honest run is judged against earlier PASSes only", async () => {
+    let n = 200;
+    setFetchForTests(async () => jsonResponse(todos(n)));
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 1 }, retry_before_alert: false });
+    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("PASS"); // baseline 200
+    n = 205;
+    const f = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { status: "failed", error: "half-written" } });
+    expect(f.data.verdict).toBe("FAIL");
+    // If the reported failure had joined the baseline (205), a run at 206 would only show +1.
+    // Against the real baseline (200) it gains 6, which the claimed count checks exactly.
+    n = 206;
+    const r = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { wrote: 6 } });
+    expect(r.data.verdict).toBe("PASS");
+    expect(r.data.diff_message).toContain("6");
+  });
+
+  it("other status values are ignored; a queued (?wait=0) reported failure survives the tick", async () => {
+    serve();
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, retry_before_alert: false });
+    const ok = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { status: "ok", wrote: 0 } });
+    expect(ok.data.verdict).toBe("PASS");
+    const q = await api(`/hook/${c.webhook_secret}?wait=0`, { method: "POST", json: { status: "failed", error: "queued boom" } });
+    expect(q.status).toBe(202);
+    await tick(env, new Date());
+    const run = (await api(`/runs/${q.data.run_id}`, { token: u.token })).data;
+    expect(run.verdict).toBe("FAIL");
+    expect(run.diff_message).toBe("Your workflow reported failure: queued boom.");
+    expect(run.reported_failure).toBe(true);
+  });
+});
+
