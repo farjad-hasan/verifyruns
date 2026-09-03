@@ -18,7 +18,7 @@ Don't want the node to wait for the destination read? Append `?wait=0` to the UR
 
 ## Telling VerifyRuns the workflow failed
 
-Point your **Error Workflow** (Workflow settings → Error workflow) at the same webhook with the body `{ "status": "failed", "error": "{{ $json.execution.error.message }}" }`. That run is a FAIL with the sentence "Your workflow reported failure: …", is alerted straight away (no retry — re-reading the destination cannot change what the workflow said), and the next normal run recovers it. Without this, an n8n execution that dies before the last node is only caught by the heartbeat.
+Point your **Error Workflow** (Workflow settings → Error workflow) at the same webhook with the body `{ "failed": true, "error": "{{ $json.execution.error.message }}" }` (a JSON boolean, not the string `"true"`). That run is a FAIL with the sentence "Your workflow reported failure: …", is alerted straight away (no retry — re-reading the destination cannot change what the workflow said), and the next normal run recovers it. Without this, an n8n execution that dies before the last node is only caught by the heartbeat.
 
 ## What the verdict means
 

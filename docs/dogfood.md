@@ -14,7 +14,7 @@ table back, expects one new row per run, and heartbeats when nothing arrives.
 
 What a run-table Check proves: the job reached its end and said so. What it does not prove:
 that the job's real destination changed. It does prove the job *succeeded*, since 2026-09-04:
-the wrapper sends `{"status": "failed", "error": "exit N"}` on any non-zero exit and the run is
+the wrapper sends `{"failed": true, "error": "exit N"}` on any non-zero exit and the run is
 a FAIL with that sentence, alerted without a retry. (Found by a forced failure on 2026-09-03 —
 a command that exited 1 wrote its row and PASSed; the `reported-failure` change closed it.)
 The Check name says `→ Supabase fleet_runs` so nobody reads more into a PASS than it carries.

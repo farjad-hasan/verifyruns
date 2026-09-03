@@ -11,7 +11,7 @@ True as of 2026-08-29 (`deletion-purges-everything` shipped). The privacy policy
 
 - Timestamp, trigger, verdict, and the diff message.
 - The **fingerprint**: record count, sample size, the set of field names, per-field empty-percentages, and a **SHA-256 hash of the newest record** — enough to tell "unchanged" from "changed", not enough to reconstruct the row.
-- The claimed count from the webhook body, if one was sent; whether the workflow reported failure and the `error` string it sent (up to 500 characters — keep secrets out of it); and which alert channels were attempted — per channel, its kind, whether it delivered, and a short error string on failure. A single service-wide counter of failed alert deliveries is also kept (a number only — no targets, no message bodies).
+- The claimed count from the webhook body, if one was sent; whether the workflow reported failure and the `error` string it sent (up to 500 characters — keep secrets out of it); and which alert channels were attempted. On the public status page a reported failure shows only the fixed sentence "Your workflow reported failure." — the workflow's own reason stays with the account — per channel, its kind, whether it delivered, and a short error string on failure. A single service-wide counter of failed alert deliveries is also kept (a number only — no targets, no message bodies).
 - **No destination rows and no upstream response bodies** — unless the Check has **"Store raw samples"** turned on.
 
 ## How long runs are kept
@@ -29,7 +29,7 @@ A separate `run_samples` record keeps, per run, the newest record, the five newe
 
 ## What is never stored
 
-- Your workflow, its credentials, or anything except the single HTTP POST it sends to the webhook — whose body is only read for an integer count, a `status` and an `error` string.
+- Your workflow, its credentials, or anything except the single HTTP POST it sends to the webhook — whose body is only read for an integer count, a boolean `failed` and an `error` string. Only a JSON boolean `true` counts as a reported failure — a forwarded payload that happens to carry `failed: "true"` or a `status` field cannot flip a run.
 - Destination data beyond the fingerprint and, if opted in, the short-lived sample above.
 
 ## Public status pages

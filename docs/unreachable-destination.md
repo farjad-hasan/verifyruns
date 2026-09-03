@@ -68,7 +68,7 @@ curl -s -X POST "https://<project>.supabase.co/rest/v1/job_runs" \
   -H "Content-Type: application/json" -H "Prefer: return=minimal" \
   -d "{\"job\":\"nightly-export\",\"exit\":$code,\"at\":\"$(date -u +%FT%TZ)\"}" \
   && wrote=1 || wrote=0
-if [ "$code" -eq 0 ]; then body="{\"wrote\":$wrote}"; else body="{\"wrote\":$wrote,\"status\":\"failed\",\"error\":\"exit $code\"}"; fi
+if [ "$code" -eq 0 ]; then body="{\"wrote\":$wrote}"; else body="{\"wrote\":$wrote,\"failed\":true,\"error\":\"exit $code\"}"; fi
 curl -s -X POST "https://<your-host>/api/hook/<secret>" \
   -H "Content-Type: application/json" -d "$body"
 exit $code
@@ -84,7 +84,7 @@ live example of the whole pattern are in [docs/dogfood.md](dogfood.md).
 
 ## What a failed command looks like
 
-The `status: failed` body above makes a non-zero exit a FAIL in its own right — "Your workflow
+The `failed: true` body above makes a non-zero exit a FAIL in its own right — "Your workflow
 reported failure: exit 1." — alerted immediately and recovered by the next clean run. Without
 it, a job that fails but still writes its row would PASS: the row proves the job reached its
-end, not that it succeeded. Send the status; the exit code in the row is for humans.
+end, not that it succeeded. Send the boolean; the exit code in the row is for humans.
