@@ -27,3 +27,10 @@
 - [x] 5.1 `cd worker && npm test && npm run typecheck` green (186 passed, 5 skipped); `cd frontend && CI=true yarn build` clean — **form not yet checked in Edge on `:3100`** (left for the merge pass)
 - [ ] 5.2 Blind review of the diff (`blind-reviewer` agent, test command supplied) before merge
 - [ ] 5.3 Merge to `main` (deploys: migration before code per `docs/deploy.md`); set the dogfood fleet's hourly-sweep Check to window 13:00–23:00 Asia/Karachi once the `dogfood-fleet` change has created it; flip the claim to done; remove the worktree
+
+## 6. Blind review fixes
+
+- [x] 6.1 HIGH — flat fallback reachable for long cadences: `WALK_CAP_DAYS` 60 → 400; `validateHeartbeatCapacity` refuses on create/patch (effective pair) with 422 naming `heartbeat_window`; tests for 400 h Mon–Fri, 100 h over 1 h/day, 720 h max; spec deltas updated
+- [x] 6.2 MEDIUM — spring-forward gap: `fromWallClockMs` resolves non-existent wall times to the transition instant (monotone), walk clamps `avail`/`t`; tests for Europe/London 2026-03-29 and America/New_York 2026-03-08, straddling and inside the gap
+- [ ] 6.3 MEDIUM — CheckDetail save dropped a non-weekday `days` list
+- [ ] 6.4 LOW — `recomputeHeartbeatDue` SELECT-then-UPDATE could clobber a concurrent run's due

@@ -1,7 +1,7 @@
 ## ADDED Requirements
 
 ### Requirement: Heartbeat window is validated and returned
-`POST /api/checks` and `PATCH /api/checks/{id}` SHALL accept `heartbeat_window` as null or `{start, end, tz, days?}`. `start` and `end` SHALL match `HH:MM` (24 h); `tz` SHALL be a zone `Intl.DateTimeFormat` accepts; `days`, when present, SHALL be a non-empty array of distinct integers 0–6. A window without `heartbeat_hours` SHALL be refused as a validation error (HTTP 422, the code the existing `heartbeat_hours` checks use) naming `heartbeat_hours`; clearing `heartbeat_hours` SHALL also clear the window. Any change to either field SHALL recompute `next_heartbeat_due_at`. Detail, list and dashboard reads SHALL include `heartbeat_window`.
+`POST /api/checks` and `PATCH /api/checks/{id}` SHALL accept `heartbeat_window` as null or `{start, end, tz, days?}`. `start` and `end` SHALL match `HH:MM` (24 h); `tz` SHALL be a zone `Intl.DateTimeFormat` accepts; `days`, when present, SHALL be a non-empty array of distinct integers 0–6. A window without `heartbeat_hours` SHALL be refused as a validation error (HTTP 422, the code the existing `heartbeat_hours` checks use) naming `heartbeat_hours`; a cadence that needs more active time than the window offers inside the scheduler's 400-day walk (open minutes per day × allowed days per week × whole weeks in the cap) SHALL be refused with 422 naming `heartbeat_window` and saying the window is too narrow, evaluated on the effective pair after the request; clearing `heartbeat_hours` SHALL also clear the window. Any change to either field SHALL recompute `next_heartbeat_due_at`. Detail, list and dashboard reads SHALL include `heartbeat_window`.
 
 #### Scenario: Window without cadence
 - **WHEN** a Check is created with `heartbeat_window` set and `heartbeat_hours` null
@@ -10,6 +10,10 @@
 #### Scenario: Bad timezone
 - **WHEN** `tz` is "Mars/Olympus"
 - **THEN** the response is HTTP 422 naming `heartbeat_window.tz`
+
+#### Scenario: Window too narrow for the cadence
+- **WHEN** `heartbeat_hours` is 100 and the window is 09:00–10:00 on Mondays only (about 57 h reachable in the cap)
+- **THEN** the response is HTTP 422 naming `heartbeat_window` and the message says the window is too narrow
 
 #### Scenario: Cadence cleared
 - **WHEN** `PATCH` sets `heartbeat_hours` to null on a windowed Check

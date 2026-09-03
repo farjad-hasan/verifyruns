@@ -12,8 +12,11 @@ export interface HeartbeatWindow {
 
 const HOUR = 3600_000;
 const DAY = 24 * HOUR;
-/** Give up walking after this many days of local calendar and fall back to flat arithmetic. */
-const MAX_WALK_DAYS = 60;
+/** Calendar days the walk may cover. Validation (`activeMinutesWithinCap`) refuses any cadence that
+ *  needs more active time than this many days can hold, so the flat fallback below is unreachable
+ *  for a stored windowed Check — it exists only so the function is total. ~400 iterations of
+ *  Intl formatting at worst; measured well under a millisecond per call. */
+export const WALK_CAP_DAYS = 400;
 
 interface LocalParts {
   y: number;
@@ -78,10 +81,28 @@ export function wallClockToInstant(local: string, tz: string): Date {
   return fromWallClockMs(asUtc, tz);
 }
 
+/** Wall time → instant. Existing times resolve exactly (one offset refinement covers both sides of a
+ *  transition). A wall time that does not exist (inside a spring-forward gap) resolves to the
+ *  transition instant itself, so the mapping is monotone across the gap and a period inside the gap
+ *  has zero length instead of a negative one. */
 function fromWallClockMs(asUtc: number, tz: string): Date {
-  const guess = new Date(asUtc - offsetAt(new Date(asUtc), tz));
-  const refined = new Date(asUtc - offsetAt(guess, tz));
-  return refined;
+  const o1 = offsetAt(new Date(asUtc), tz);
+  const c1 = asUtc - o1;
+  const o2 = offsetAt(new Date(c1), tz);
+  if (o2 === o1) return new Date(c1);
+  const c2 = asUtc - o2;
+  const o3 = offsetAt(new Date(c2), tz);
+  if (o3 === o2) return new Date(c2);
+  // Non-existent wall time: the offset flips somewhere between the two candidates; find that instant.
+  let lo = Math.min(c1, c2);
+  let hi = Math.max(c1, c2);
+  const hiOffset = offsetAt(new Date(hi), tz);
+  for (let i = 0; i < 24 && hi - lo > 1000; i++) {
+    const mid = Math.floor((lo + hi) / 2000) * 1000;
+    if (offsetAt(new Date(mid), tz) === hiOffset) hi = mid;
+    else lo = mid;
+  }
+  return new Date(hi);
 }
 
 function hhmm(s: string): { h: number; mi: number } {
@@ -114,7 +135,7 @@ export function nextHeartbeatDue(anchor: Date, hours: number, window: HeartbeatW
   // Start scanning one calendar day back so a wrapping window opened "yesterday" is seen.
   const p0 = localParts(anchor, window.tz);
   let dayCursor = Date.UTC(p0.y, p0.m - 1, p0.d) - DAY;
-  const limit = dayCursor + (MAX_WALK_DAYS + 1) * DAY;
+  const limit = dayCursor + (WALK_CAP_DAYS + 1) * DAY;
   while (dayCursor <= limit) {
     const c = new Date(dayCursor);
     const y = c.getUTCFullYear();
@@ -125,12 +146,28 @@ export function nextHeartbeatDue(anchor: Date, hours: number, window: HeartbeatW
     const { open, close } = periodOn(y, m, d, window);
     if (close.getTime() <= t) continue;
     if (open.getTime() > t) t = open.getTime();
-    const avail = close.getTime() - t;
+    const avail = Math.max(0, close.getTime() - t);
     if (avail >= remaining) return new Date(t + remaining);
     remaining -= avail;
-    t = close.getTime();
+    t = Math.max(t, close.getTime());
   }
   return flat;
+}
+
+/** Open minutes on one (non-DST) day: `end <= start` wraps past midnight. */
+export function openMinutesPerDay(w: HeartbeatWindow): number {
+  const s = hhmm(w.start);
+  const e = hhmm(w.end);
+  const a = s.h * 60 + s.mi;
+  const b = e.h * 60 + e.mi;
+  return b > a ? b - a : b + 24 * 60 - a;
+}
+
+/** Lower bound on the active minutes the walk can find inside `WALK_CAP_DAYS`: whole weeks only, so
+ *  a cadence that passes this check is always reachable and the flat fallback never runs. */
+export function activeMinutesWithinCap(w: HeartbeatWindow): number {
+  const daysPerWeek = w.days && w.days.length ? new Set(w.days).size : 7;
+  return openMinutesPerDay(w) * daysPerWeek * Math.floor(WALK_CAP_DAYS / 7);
 }
 
 /** "active 13:00–23:00 Asia/Karachi" / "…, Mon–Fri" / "…, Mon, Wed, Fri" for the heartbeat message. */

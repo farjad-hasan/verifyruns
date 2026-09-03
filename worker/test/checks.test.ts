@@ -223,6 +223,25 @@ describe("heartbeat_window (heartbeat-schedule-window)", () => {
     expect((await create(u.token, { heartbeat_hours: 1, heartbeat_window: "13-23" })).status).toBe(422);
   });
 
+  it("a window too narrow for the cadence is refused naming heartbeat_window, on create and on patch (review 1)", async () => {
+    const u = await user();
+    const narrow = { start: "09:00", end: "10:00", tz: "Asia/Karachi", days: [1] }; // 1 h/week → 57 h inside the cap
+    const r = await create(u.token, { heartbeat_hours: 100, heartbeat_window: narrow });
+    expect(r.status).toBe(422);
+    expect(JSON.stringify(r.data)).toContain("heartbeat_window");
+    expect(JSON.stringify(r.data)).toContain("too narrow");
+    expect((await create(u.token, { heartbeat_hours: 50, heartbeat_window: narrow })).status).toBe(200);
+    // 720 h over Mon–Fri 09:00–17:00 is fine (40 h/week × 57 weeks); 720 h over 1 h/day is not
+    expect((await create(u.token, { heartbeat_hours: 720, heartbeat_window: { start: "09:00", end: "17:00", tz: "UTC", days: [1, 2, 3, 4, 5] } })).status).toBe(200);
+    expect((await create(u.token, { heartbeat_hours: 720, heartbeat_window: { start: "09:00", end: "10:00", tz: "UTC" } })).status).toBe(422);
+    // PATCH: raising the cadence past what the stored window can hold, or narrowing the window under the stored cadence
+    const c = await makeCheck(u.token, { heartbeat_hours: 50, heartbeat_window: narrow });
+    expect((await api(`/checks/${c.id}`, { method: "PATCH", token: u.token, json: { heartbeat_hours: 100 } })).status).toBe(422);
+    const wide = await makeCheck(u.token, { heartbeat_hours: 100 });
+    expect((await api(`/checks/${wide.id}`, { method: "PATCH", token: u.token, json: { heartbeat_window: narrow } })).status).toBe(422);
+    expect((await api(`/checks/${wide.id}`, { method: "PATCH", token: u.token, json: { heartbeat_hours: 50, heartbeat_window: narrow } })).status).toBe(200);
+  });
+
   it("PATCH sets, changes and clears the window; clearing the cadence clears the window and the due time", async () => {
     const u = await user();
     const c = await makeCheck(u.token, { heartbeat_hours: 1 });

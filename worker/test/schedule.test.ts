@@ -1,9 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { describeWindow, HeartbeatWindow, nextHeartbeatDue, wallClockToInstant } from "../src/schedule";
+import { activeMinutesWithinCap, describeWindow, HeartbeatWindow, nextHeartbeatDue, wallClockToInstant, WALK_CAP_DAYS } from "../src/schedule";
 
 const KHI = "Asia/Karachi"; // UTC+5, no DST
 const at = (local: string, tz = KHI) => wallClockToInstant(local, tz);
 const iso = (d: Date) => d.toISOString();
+const HOUR = 3600_000;
 
 describe("nextHeartbeatDue (pure)", () => {
   it("null window is exactly anchor + hours", () => {
@@ -57,6 +58,69 @@ describe("nextHeartbeatDue (pure)", () => {
     expect(iso(at("2026-09-03T14:00"))).toBe("2026-09-03T09:00:00.000Z");
     expect(iso(at("2026-01-15T12:00", "Europe/London"))).toBe("2026-01-15T12:00:00.000Z");
     expect(iso(at("2026-07-15T12:00", "Europe/London"))).toBe("2026-07-15T11:00:00.000Z");
+  });
+});
+
+describe("long cadences never fall back to flat arithmetic (review 1)", () => {
+  it("400 h over Mon–Fri 09:00–17:00 walks 10 working weeks", () => {
+    const w: HeartbeatWindow = { start: "09:00", end: "17:00", tz: KHI, days: [1, 2, 3, 4, 5] };
+    // Mon 2026-09-07 09:00: 400 h = 50 working days = 10 weeks → closes Fri 2026-11-13 17:00
+    expect(iso(nextHeartbeatDue(at("2026-09-07T09:00"), 400, w))).toBe(iso(at("2026-11-13T17:00")));
+  });
+  it("100 h over a 1 h/day window walks 100 days", () => {
+    const w: HeartbeatWindow = { start: "09:00", end: "10:00", tz: KHI };
+    expect(iso(nextHeartbeatDue(at("2026-09-03T09:00"), 100, w))).toBe(iso(at("2026-12-11T10:00")));
+  });
+  it("720 h (the maximum) over a 4 h/day every-day window is reachable inside the cap", () => {
+    const w: HeartbeatWindow = { start: "09:00", end: "13:00", tz: KHI };
+    const due = nextHeartbeatDue(at("2026-09-03T09:00"), 720, w);
+    expect(due.getTime()).toBe(at("2026-09-03T09:00").getTime() + 179 * 24 * HOUR + 4 * HOUR);
+  });
+  it("capacity: active minutes inside the cap, and the cadence check that uses it", () => {
+    const wk: HeartbeatWindow = { start: "09:00", end: "17:00", tz: KHI, days: [1, 2, 3, 4, 5] };
+    expect(activeMinutesWithinCap(wk)).toBe(8 * 60 * 5 * Math.floor(WALK_CAP_DAYS / 7));
+    const tiny: HeartbeatWindow = { start: "09:00", end: "09:30", tz: KHI, days: [0] };
+    expect(activeMinutesWithinCap(tiny)).toBe(30 * Math.floor(WALK_CAP_DAYS / 7));
+    const wrap: HeartbeatWindow = { start: "22:00", end: "06:00", tz: KHI };
+    expect(activeMinutesWithinCap(wrap)).toBe(8 * 60 * 7 * Math.floor(WALK_CAP_DAYS / 7));
+  });
+});
+
+describe("DST gaps (review 2)", () => {
+  const LON = "Europe/London"; // 2026-03-29: 01:00Z clocks go 01:00 → 02:00
+  const NYC = "America/New_York"; // 2026-03-08: 07:00Z clocks go 02:00 → 03:00
+  it("wall-clock mapping is monotone across the London gap", () => {
+    const times = ["00:30", "00:59", "01:00", "01:15", "01:45", "02:00", "02:15", "03:00"];
+    const inst = times.map((t) => at(`2026-03-29T${t}`, LON).getTime());
+    for (let i = 1; i < inst.length; i++) expect(inst[i]).toBeGreaterThanOrEqual(inst[i - 1]);
+    expect(iso(at("2026-03-29T02:00", LON))).toBe("2026-03-29T01:00:00.000Z");
+    expect(iso(at("2026-03-29T03:00", LON))).toBe("2026-03-29T02:00:00.000Z");
+  });
+  it("a window straddling the London gap never yields a negative period; due is never sooner than the real elapsed hours", () => {
+    const w: HeartbeatWindow = { start: "00:00", end: "04:00", tz: LON };
+    const a = at("2026-03-29T00:00", LON);
+    const due = nextHeartbeatDue(a, 2, w);
+    expect(due.getTime()).toBe(a.getTime() + 2 * HOUR); // 03:00 BST = 02:00Z
+    expect(iso(due)).toBe("2026-03-29T02:00:00.000Z");
+  });
+  it("a window entirely inside the London gap collapses to zero and the walk moves on", () => {
+    const w: HeartbeatWindow = { start: "01:15", end: "01:45", tz: LON };
+    const a = at("2026-03-28T12:00", LON);
+    const due = nextHeartbeatDue(a, 1, w);
+    expect(due.getTime()).toBeGreaterThanOrEqual(a.getTime() + HOUR);
+    // 30 min/day window: 1 h needs two full days after the collapsed 29th → 31st 01:45 GMT+1
+    expect(iso(due)).toBe(iso(at("2026-03-31T01:45", LON)));
+  });
+  it("New York spring-forward: straddling and inside-gap windows behave the same way", () => {
+    const straddle: HeartbeatWindow = { start: "01:00", end: "03:30", tz: NYC };
+    const a = at("2026-03-08T01:00", NYC); // 06:00Z
+    expect(iso(a)).toBe("2026-03-08T06:00:00.000Z");
+    const due = nextHeartbeatDue(a, 1, straddle);
+    expect(iso(due)).toBe("2026-03-08T07:00:00.000Z"); // one real hour later, 03:00 EDT
+    const inside: HeartbeatWindow = { start: "02:15", end: "02:45", tz: NYC };
+    const d2 = nextHeartbeatDue(at("2026-03-07T12:00", NYC), 1, inside);
+    expect(d2.getTime()).toBeGreaterThanOrEqual(at("2026-03-07T12:00", NYC).getTime() + HOUR);
+    expect(iso(d2)).toBe(iso(at("2026-03-10T02:45", NYC)));
   });
 });
 

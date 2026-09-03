@@ -1,6 +1,6 @@
 import { egressViolation } from "./egress";
 import { validation } from "./http";
-import { HeartbeatWindow } from "./schedule";
+import { activeMinutesWithinCap, HeartbeatWindow, WALK_CAP_DAYS } from "./schedule";
 
 export const CONNECTOR_KINDS = ["http_json", "airtable", "postgres"] as const;
 
@@ -78,6 +78,19 @@ export function parseHeartbeatWindow(v: unknown): HeartbeatWindow | null {
     out.days = (d as number[]).slice().sort((a, b) => a - b);
   }
   return out;
+}
+
+/** A windowed cadence must be reachable inside the scheduler's walk cap, or the due time could never be
+ *  computed honestly. Checked with the *effective* pair on create and patch. */
+export function validateHeartbeatCapacity(hours: number | null, window: HeartbeatWindow | null): void {
+  if (!hours || !window) return;
+  const have = activeMinutesWithinCap(window);
+  if (hours * 60 > have) {
+    throw validation(
+      `heartbeat_window is too narrow for the cadence: ${hours} h of active time is not reachable within ${WALK_CAP_DAYS} days (this window offers about ${Math.floor(have / 60)} h). Widen the window, add days, or shorten heartbeat_hours.`,
+      ["body", "heartbeat_window"],
+    );
+  }
 }
 
 export function parseName(v: unknown): string {
