@@ -298,11 +298,13 @@ export async function disablePublic(env: Env, request: Request, id: string): Pro
   return json({ is_public: false });
 }
 
+export const PUBLIC_REPORTED_FAILURE = "Your workflow reported failure.";
+
 export async function publicCheck(env: Env, token: string): Promise<Response> {
   const row = await env.DB.prepare("SELECT * FROM checks WHERE public_token = ?").bind(token).first();
   if (!row) throw new HttpError(404, "Not found");
   const c = rowToCheck(row);
-  const rows = (await env.DB.prepare("SELECT id, verdict, timestamp, diff_message, trigger, alerts_sent FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results as any[];
+  const rows = (await env.DB.prepare("SELECT id, verdict, timestamp, diff_message, trigger, alerts_sent, reported_failure FROM check_runs WHERE check_id = ? ORDER BY timestamp DESC LIMIT 30").bind(c.id).all()).results as any[];
   // Verdicts only: no config, secrets, fingerprints or error_details, and alert delivery is
   // reduced to {kind, ok} so neither the target nor a delivery error (which can quote the
   // destination's response) ever reaches a viewer without an account.
@@ -310,7 +312,8 @@ export async function publicCheck(env: Env, token: string): Promise<Response> {
     id: r.id,
     verdict: r.verdict,
     timestamp: r.timestamp,
-    diff_message: r.diff_message,
+    // The workflow-supplied reason stays with the owner; viewers without an account get the fact only.
+    diff_message: r.reported_failure ? PUBLIC_REPORTED_FAILURE : r.diff_message,
     trigger: r.trigger,
     alerts_sent: publicAlerts(r.alerts_sent),
   }));
@@ -406,6 +409,8 @@ export function rowToRun(row: any): Record<string, any> {
     count_estimated: !!row.count_estimated,
     claimed_new: row.claimed_new ?? null,
     body_note: row.body_note ?? null,
+    reported_failure: !!row.reported_failure,
+    reported_error: row.reported_error ?? null,
     ...(row.heartbeat_at ? { heartbeat_at: row.heartbeat_at } : {}),
     ...(row.alerts_sent ? { alerts_sent: JSON.parse(row.alerts_sent) } : {}),
   };
@@ -459,7 +464,7 @@ export async function interest(env: Env, request: Request): Promise<Response> {
 
 // ---------- webhook + manual run ----------
 import { executeCheck } from "./execute";
-import { parseClaimed } from "./engine";
+import { parseClaimed, parseReported } from "./engine";
 import { enqueueRun } from "./tick";
 import { HeartbeatWindow } from "./schedule";
 
@@ -474,14 +479,16 @@ export async function webhook(env: Env, request: Request, ctx: ExecutionContext,
   } catch {
     body = null;
   }
-  const [claimedNew, bodyNote] = parseClaimed(body);
+  const [claimedNew, claimNote] = parseClaimed(body);
+  const [reported, reportNote] = parseReported(body);
+  const bodyNote = [claimNote, reportNote].filter(Boolean).join("; ") || null;
   const runId = uuid();
   const wait = new URL(request.url).searchParams.get("wait");
   if (wait !== null && Number(wait) === 0) {
-    await enqueueRun(env, row.id, { run_id: runId, claimed_new: claimedNew, body_note: bodyNote, queued_at: nowIso() });
+    await enqueueRun(env, row.id, { run_id: runId, claimed_new: claimedNew, body_note: bodyNote, queued_at: nowIso(), reported_failure: reported.failed, reported_error: reported.error });
     return json({ accepted: true, run_id: runId, queued: true }, 202);
   }
-  const run = await executeCheck(env, row.id, "webhook", runId, false, claimedNew, bodyNote);
+  const run = await executeCheck(env, row.id, "webhook", runId, false, claimedNew, bodyNote, reported);
   return json({ accepted: true, run_id: runId, verdict: run?.verdict ?? null, diff_message: run?.diff_message ?? null, timed_out: false });
 }
 

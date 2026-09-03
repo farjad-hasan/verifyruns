@@ -39,7 +39,7 @@ export async function deliver(env: Env, kind: string, target: string, text: stri
       signal: AbortSignal.timeout(8000),
     });
     if (kind === "slack") resp = await httpFetch(target, init({ text }));
-    else if (kind === "discord") resp = await httpFetch(target, init({ content: text.slice(0, DISCORD_MAX_CHARS) }));
+    else if (kind === "discord") resp = await httpFetch(target, init({ content: text.slice(0, DISCORD_MAX_CHARS), allowed_mentions: { parse: [] } }));
     else if (kind === "email") {
       if (!emailAvailable(env)) return { ok: false, error: "email alerts need RESEND_API_KEY and ALERT_FROM on the server" };
       resp = await httpFetch("https://api.resend.com/emails", init({ from: env.ALERT_FROM, to: [target], subject, text }, { authorization: `Bearer ${env.RESEND_API_KEY}` }));
@@ -116,10 +116,13 @@ export type AlertState = "FAIL" | "Recovered";
 export interface AlertEvent { state: AlertState; name: string; message: string; timestamp: string; link: string }
 
 /** One message per channel dialect: Slack mrkdwn, Discord markdown, plain text for email. */
+/** Slack reads `<…>` as links/mentions and `&` as an entity; user-supplied text must be escaped. */
+export const slackEscape = (s: string) => s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+
 export function formatAlert(kind: string, ev: AlertEvent): string {
   if (kind === "slack") {
     const icon = ev.state === "FAIL" ? ":rotating_light:" : ":white_check_mark:";
-    return [`${icon} *${ev.state}* — ${ev.name}`, ev.message, `_At ${ev.timestamp}_`, ev.link ? `<${ev.link}|Open in VerifyRuns>` : ""].filter(Boolean).join("\n");
+    return [`${icon} *${ev.state}* — ${slackEscape(ev.name)}`, slackEscape(ev.message), `_At ${ev.timestamp}_`, ev.link ? `<${ev.link}|Open in VerifyRuns>` : ""].filter(Boolean).join("\n");
   }
   if (kind === "discord") {
     const icon = ev.state === "FAIL" ? "🚨" : "✅";

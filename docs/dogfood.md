@@ -13,12 +13,10 @@ table the Worker *can* read, then tells VerifyRuns `{"wrote": 1}`. The Check rea
 table back, expects one new row per run, and heartbeats when nothing arrives.
 
 What a run-table Check proves: the job reached its end and said so. What it does not prove:
-that the job's real destination changed — nor that the job *succeeded*. Verified 2026-09-03
-with a forced failure: a command that exits 1 still writes its row (`exit: 1`) and the Check
-PASSes ("Destination gained 1 record(s), matching what your workflow reported"). The exit code
-is in the row for a human to read; VerifyRuns has no rule for it. That is a product gap the
-fleet surfaced, not something the wrapper should hide — a job that reports its own failure is
-a different fact from a job that never reported, and today only the second one is a FAIL.
+that the job's real destination changed. It does prove the job *succeeded*, since 2026-09-04:
+the wrapper sends `{"failed": true, "error": "exit N"}` on any non-zero exit and the run is
+a FAIL with that sentence, alerted without a retry. (Found by a forced failure on 2026-09-03 —
+a command that exited 1 wrote its row and PASSed; the `reported-failure` change closed it.)
 The Check name says `→ Supabase fleet_runs` so nobody reads more into a PASS than it carries.
 
 Table (`fleet_runs`, project `kcofxrdmuzbfmpjeukgx`), same shape as the older `brand_runs`:

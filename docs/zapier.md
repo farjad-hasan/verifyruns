@@ -13,6 +13,6 @@ If the Zap uses a Looping step or writes several rows, send the loop's item coun
 
 Leave Data empty to have VerifyRuns check growth against the Check's own minimum.
 
-Zapier's own alerts tell you when a Zap *errors*; VerifyRuns tells you when a Zap *succeeds without landing anything*. Use both.
+Zapier's own alerts tell you when a Zap *errors*; VerifyRuns tells you when a Zap *succeeds without landing anything*. Use both — or route the error path to the same webhook with `failed` → `true` (a boolean, not text) and `error` → the message, so one status page carries both facts.
 
 Not yet validated against a live Zap by the VerifyRuns authors — confirm the request in the Zap's history.

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { annotateCount, canonicalHash, computeVerdict, fingerprint, hasOrderBy, parseClaimed, splitSample } from "../src/engine";
+import { annotateCount, canonicalHash, computeVerdict, fingerprint, hasOrderBy, parseClaimed, parseReported, reportedFailureMessage, splitSample } from "../src/engine";
 
 const records = (n: number, extra: Record<string, unknown> = {}) => Array.from({ length: n }, (_, i) => ({ id: i, name: `row ${i}`, ...extra }));
 const passRun = (record_count: number, fields: string[] = ["id", "name"], sample_size?: number) => ({
@@ -220,3 +220,34 @@ describe("helpers", () => {
     expect(annotateCount("m.", { total: 1, capped: false, count_estimated: true }, 4000)).toBe("m. Count estimated from the sample (the full count timed out).");
   });
 });
+
+describe("parseReported", () => {
+  const none = { failed: false, error: null };
+  it("reads a boolean failed: true with an optional error, trimmed to 500, newlines collapsed", () => {
+    expect(parseReported({ failed: true })).toEqual([{ failed: true, error: null }, null]);
+    expect(parseReported({ failed: true, error: "  exit 1 " })).toEqual([{ failed: true, error: "exit 1" }, null]);
+    expect(parseReported({ failed: true, error: "x".repeat(900) })).toEqual([{ failed: true, error: "x".repeat(500) }, null]);
+    expect(parseReported({ failed: true, error: "line one\nline two\r\n@everyone" })).toEqual([{ failed: true, error: "line one line two @everyone" }, null]);
+    expect(parseReported({ failed: true, error: 42 })).toEqual([{ failed: true, error: null }, null]);
+    expect(parseReported({ failed: true, error: "   " })).toEqual([{ failed: true, error: null }, null]);
+    expect(parseReported({ failed: true, error: "..." })).toEqual([{ failed: true, error: null }, null]);
+    expect(parseReported({ failed: true, error: "timed out. " })).toEqual([{ failed: true, error: "timed out" }, null]);
+  });
+  it("only a boolean counts: strings and numbers are noted, not read; false, absent, non-object bodies and error alone are ignored", () => {
+    expect(parseReported({ failed: "true" })).toEqual([none, "webhook body ignored: `failed` is not a boolean"]);
+    expect(parseReported({ failed: 1 })).toEqual([none, "webhook body ignored: `failed` is not a boolean"]);
+    expect(parseReported({ failed: false, error: "ignored" })).toEqual([none, null]);
+    expect(parseReported({ status: "failed" })).toEqual([none, null]);
+    expect(parseReported({ wrote: 2 })).toEqual([none, null]);
+    expect(parseReported({ error: "boom" })).toEqual([none, null]);
+    expect(parseReported(null)).toEqual([none, null]);
+    expect(parseReported("failed")).toEqual([none, null]);
+    expect(parseReported([{ failed: true }])).toEqual([none, null]);
+  });
+  it("message never doubles the full stop", () => {
+    expect(reportedFailureMessage("timed out.")).toBe("Your workflow reported failure: timed out.");
+    expect(reportedFailureMessage("timed out")).toBe("Your workflow reported failure: timed out.");
+    expect(reportedFailureMessage(null)).toBe("Your workflow reported failure (no reason given).");
+  });
+});
+

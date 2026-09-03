@@ -160,6 +160,29 @@ export function parseClaimed(body: unknown): [number | null, string | null] {
   return [null, null];
 }
 
+export interface Reported {
+  failed: boolean;
+  error: string | null;
+}
+
+/** `{"failed": true, "error": "…"}` in the webhook body: the workflow itself says it failed.
+ *  Only a boolean `true` counts — forwarded payloads (job rows, payment objects) carry all sorts of
+ *  status-like keys, and a string "true" is noted on the run rather than read, like a bad `wrote`. */
+export function parseReported(body: unknown): [Reported, string | null] {
+  const none: Reported = { failed: false, error: null };
+  if (!body || typeof body !== "object" || Array.isArray(body)) return [none, null];
+  const b = body as Record<string, unknown>;
+  if (!("failed" in b)) return [none, null];
+  if (typeof b.failed !== "boolean") return [none, "webhook body ignored: `failed` is not a boolean"];
+  if (!b.failed) return [none, null];
+  const error = typeof b.error === "string" ? b.error.replace(/[\r\n]+/g, " ").trim().slice(0, 500).replace(/\.+$/, "").trim() : "";
+  return [{ failed: true, error: error || null }, null];
+}
+
+export function reportedFailureMessage(error: string | null): string {
+  return error ? `Your workflow reported failure: ${error.replace(/\.+$/, "")}.` : "Your workflow reported failure (no reason given).";
+}
+
 export function hasOrderBy(query: string): boolean {
   return /\border\s+by\b/i.test(query || "");
 }

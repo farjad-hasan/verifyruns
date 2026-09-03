@@ -60,3 +60,21 @@ describe("public status endpoint (verdicts only, for teammates without an accoun
     expect(pub.data).toEqual({ name: "t", connector_kind: "http_json", last_verdict: null, checked_at: null, heartbeat_hours: null, runs: [] });
   });
 });
+
+describe("public page hides the workflow-supplied failure reason", () => {
+  it("owner sees the reason; the public run shows the fixed sentence", async () => {
+    setFetchForTests(async () => jsonResponse(todos()));
+    const u = await user();
+    const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, retry_before_alert: false });
+    const r = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { failed: true, error: "db password for svc_x rejected" } });
+    expect(r.data.verdict).toBe("FAIL");
+    expect((await api(`/runs/${r.data.run_id}`, { token: u.token })).data.diff_message).toContain("svc_x");
+    const on = await api(`/checks/${c.id}/public`, { method: "POST", token: u.token });
+    const pub = await api(`/public/checks/${on.data.public_token}`);
+    expect(pub.data.runs[0].verdict).toBe("FAIL");
+    expect(pub.data.runs[0].diff_message).toBe("Your workflow reported failure.");
+    expect(JSON.stringify(pub.data)).not.toContain("svc_x");
+    expect(Object.keys(pub.data.runs[0]).sort()).toEqual(["alerts_sent", "diff_message", "id", "timestamp", "trigger", "verdict"]);
+  });
+});
+

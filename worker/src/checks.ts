@@ -33,7 +33,7 @@ export interface CheckDoc {
   snooze_until: string | null;
   last_alerted_verdict: string | null;
   pending_retry: { due_at: string; claimed_new: number | null } | null;
-  pending_runs: { run_id: string; claimed_new: number | null; body_note: string | null; queued_at: string }[];
+  pending_runs: { run_id: string; claimed_new: number | null; body_note: string | null; queued_at: string; reported_failure?: boolean; reported_error?: string | null }[];
   /** Maintained, not computed: run inserts, heartbeat fires and heartbeat_hours changes keep it
    *  current so the tick's heartbeat sweep is one indexed range scan. NULL = no heartbeat. */
   next_heartbeat_due_at: string | null;

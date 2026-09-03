@@ -2,7 +2,7 @@
 import { maybeAlert } from "./alerts";
 import { getCheck, updateCheck } from "./checks";
 import { fetchRecords } from "./connectors";
-import { annotateCount, computeVerdict, FetchMeta, fingerprint, Fingerprint, splitSample } from "./engine";
+import { annotateCount, computeVerdict, FetchMeta, fingerprint, Fingerprint, Reported, reportedFailureMessage, splitSample } from "./engine";
 import { Env, nowIso, num } from "./env";
 import { nextHeartbeatDue } from "./schedule";
 
@@ -13,19 +13,22 @@ export interface RunResult {
   timestamp: string;
 }
 
-export async function executeCheck(env: Env, checkId: string, trigger: string, runId: string, isRetry = false, claimedNew: number | null = null, bodyNote: string | null = null): Promise<RunResult | null> {
+export async function executeCheck(env: Env, checkId: string, trigger: string, runId: string, isRetry = false, claimedNew: number | null = null, bodyNote: string | null = null, reported: Reported | null = null): Promise<RunResult | null> {
+  const startedAt = nowIso();
   const c = await getCheck(env, checkId);
   if (!c) return null;
   let verdict: "PASS" | "FAIL" = "FAIL";
   let message = "";
   let fp: Fingerprint = { record_count: 0, sample_size: 0, fields: [], newest_record: null, newest_window: [], newest_defined: true, null_pct: {} };
   let errorDetails: string | null = null;
+  let readFailed = false;
   let meta: FetchMeta = { total: 0, capped: false, count_estimated: false };
   try {
     const res = await fetchRecords(env, c.connector_kind, c.config);
     if (res.records === null) {
       message = res.error || "Destination fetch failed.";
       errorDetails = res.details;
+      readFailed = true;
     } else {
       meta = res.meta || { total: res.records.length, capped: false, count_estimated: false };
       fp = fingerprint(res.records, meta.total, meta.newest_defined ?? true);
@@ -48,16 +51,25 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
     verdict = "FAIL";
     message = `Unexpected error while checking destination: ${e?.name || "Error"}.`;
     errorDetails = String(e?.message || e).slice(0, 500);
+    readFailed = true;
     console.error("executeCheck error", e);
   }
 
+  // The workflow's own verdict outranks the destination's: it is recorded as a FAIL whatever the
+  // read showed, and the fingerprint is kept as evidence rather than as a baseline (FAILs never join it).
+  const reportedFailure = !!reported?.failed;
+  if (reportedFailure) {
+    verdict = "FAIL";
+    const sentence = reportedFailureMessage(reported?.error ?? null);
+    message = readFailed ? `${sentence} Destination could not be read: ${message}` : sentence;
+  }
   const [storedFp, sample] = await splitSample(fp, errorDetails, c.store_samples, num(env.VR_SAMPLE_TTL_DAYS, 30));
   const timestamp = nowIso();
   const stmts = [
     env.DB.prepare(
-      `INSERT INTO check_runs (id, check_id, timestamp, trigger, verdict, diff_message, fingerprint, error_details, is_retry, count_capped, count_estimated, claimed_new, body_note)
-       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?)`,
-    ).bind(runId, checkId, timestamp, trigger, verdict, message, JSON.stringify(storedFp), isRetry ? 1 : 0, meta.capped ? 1 : 0, meta.count_estimated ? 1 : 0, claimedNew, bodyNote),
+      `INSERT INTO check_runs (id, check_id, timestamp, trigger, verdict, diff_message, fingerprint, error_details, is_retry, count_capped, count_estimated, claimed_new, body_note, reported_failure, reported_error)
+       VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?, ?, ?, ?)`,
+    ).bind(runId, checkId, timestamp, trigger, verdict, message, JSON.stringify(storedFp), isRetry ? 1 : 0, meta.capped ? 1 : 0, meta.count_estimated ? 1 : 0, claimedNew, bodyNote, reportedFailure ? 1 : 0, reportedFailure ? reported?.error ?? null : null),
   ];
   if (sample) {
     stmts.push(
@@ -72,13 +84,27 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
       env.DB.prepare("UPDATE checks SET next_heartbeat_due_at = ? WHERE id = ?").bind(nextHeartbeatDue(new Date(timestamp), c.heartbeat_hours, c.heartbeat_window).toISOString(), checkId),
     );
   }
+  // A reported failure also cancels a retry left by an earlier ordinary FAIL: that retry would read a
+  // healthy destination, PASS, and send a false Recovered seconds after the failure alert.
+  if (reportedFailure) stmts.push(env.DB.prepare("UPDATE checks SET pending_retry = NULL WHERE id = ?").bind(checkId));
   await env.DB.batch(stmts);
   const run: RunResult = { id: runId, verdict, diff_message: message, timestamp };
 
   try {
     const snoozed = !!(c.snooze_until && c.snooze_until > nowIso());
     const freshFail = verdict === "FAIL" && c.last_alerted_verdict !== "FAIL";
-    if (!isRetry && freshFail && c.retry_before_alert && !snoozed) {
+    // A retry is claimed (pending_retry cleared) before it reads the destination, so a reported
+    // failure landing during that read cannot cancel it. If one did, this PASS must not say Recovered.
+    if (isRetry && verdict === "PASS") {
+      const overtaken = await env.DB.prepare("SELECT 1 AS x FROM check_runs WHERE check_id = ? AND reported_failure = 1 AND timestamp >= ? LIMIT 1").bind(checkId, startedAt).first();
+      if (overtaken) {
+        console.warn("retry PASS overtaken by a reported failure; not alerting", checkId, runId);
+        return run;
+      }
+    }
+    // A reported failure is never retried: re-reading the destination cannot change what the
+    // workflow said, and a passing retry would swallow the alert.
+    if (!isRetry && freshFail && c.retry_before_alert && !snoozed && !reportedFailure) {
       const due = new Date(Date.now() + num(env.VR_RETRY_DELAY_SECONDS, 30) * 1000).toISOString();
       await updateCheck(env, checkId, { pending_retry: { due_at: due, claimed_new: claimedNew } });
     } else {
