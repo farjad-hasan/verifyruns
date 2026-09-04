@@ -13,4 +13,4 @@
 
 - [x] 3.1 Run worker tests/typecheck, frontend build and strict OpenSpec validation; reconcile main specs.
 - [x] 3.2 Exercise signup, setup, baseline, PASS, FAIL, recovery, alert delivery, public sharing and settings in browser/API checks.
-- [ ] 3.3 Review diff, commit exact paths, release through staging/production where authorized credentials permit, record release evidence and close the claim.
+- [x] 3.3 Review diff, commit exact paths, release through staging/production where authorized credentials permit, record release evidence and close the claim.
