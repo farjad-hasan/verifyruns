@@ -14,7 +14,7 @@ by flipping `status` to `done` in your merge commit. Rules in [`AGENTS.md`](../A
 | app-resilience | claude/prod-readiness | [PR #6](https://github.com/farjad-hasan/verifyruns/pull/6) | 2026-08-31 | done — merged 2026-09-01 |
 | production-ops | claude/prod-readiness | [PR #7](https://github.com/farjad-hasan/verifyruns/pull/7) | 2026-08-31 | done — merged 2026-09-01 |
 | pricing-tiers | — | — | — | deferred (activation: ≥10 external live Checks) |
-| alpha-review-readiness | codex/opg-readiness | branch `codex/alpha-review-readiness`, worktree `../verifyruns-alpha-review-readiness` | 2026-09-05 | active — final deployed rehearsal exposed same-zone Worker fetch rejection; routing fix and release evidence remain |
+| alpha-review-readiness | codex/opg-readiness | branch `codex/alpha-review-readiness`, worktree `../verifyruns-alpha-review-readiness` | 2026-09-05 | done — alpha verdicts, setup, positioning and public Worker routing verified; release evidence in docs/alpha-release.md |
 | check-detail-phone | claude/design-audit (Mac) | [PR #9](https://github.com/farjad-hasan/verifyruns/pull/9) | 2026-09-03 | done — merged 2026-09-03, archived |
 | public-page-shell | claude/design-audit (Mac) | [PR #10](https://github.com/farjad-hasan/verifyruns/pull/10) | 2026-09-03 | done — merged 2026-09-04, archived |
 | dogfood-fleet | claude/dogfood (Mac) | worktree `../verifyruns-dogfood-fleet`, branch `dogfood-fleet` | 2026-09-03 | done — merged 2026-09-03; six Checks live, work-* wiring handed to the work repo |

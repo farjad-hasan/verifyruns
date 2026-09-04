@@ -1,19 +1,23 @@
 # Alpha release evidence — 2026-09-05
 
-Change: alpha-review-readiness. Base: 21d5f2f. Release commit and deployment links will be recorded after the release gate completes.
+Change: alpha-review-readiness. Base: 21d5f2f. Release commit: 715ddc6 (PR #15). Deployment evidence is recorded below after the pipeline completes.
 
 ## Verified locally
 
-- Worker: 219 tests passed, five Postgres integration tests skipped because no local Postgres instance exists. Tests cover real D1/workerd execution plus mocked external APIs, including Airtable paging/newest-five completeness, count baseline isolation, retry intervals, reported failures, credential protection, owner isolation and provider acceptance/error responses.
+- Worker: 220 tests passed in the final local suite after the routing flag change; five Postgres integration tests skipped because no local Postgres instance exists. Tests cover real D1/workerd execution plus mocked external APIs, including Airtable paging/newest-five completeness, count baseline isolation, retry intervals, reported failures, credential protection, owner isolation and provider acceptance/error responses.
 - Worker TypeScript check passed.
 - Frontend optimized build compiled successfully; the final local build also passed.
 - Strict OpenSpec validation: 22 items passed, zero failed.
 - scripts/alpha-smoke.mjs: all 12 checks passed against a local Wrangler API with actual HTTP fixture traffic: signup/login, independent alert test, baseline/no-op/growth, failure streak suppression, recovery, public sharing/redaction/revocation, snooze/reported failure, destination editing, manual/queued execution, pricing interest and deletion.
 - Browser: pricing intent survived signup; new Check defaulted to minimum 1; channel test succeeded; manual baseline appeared; destination edit retained an omitted URL and saved a newest key; actual webhook PASS then FAIL appeared in the timeline; the run sheet displayed the full verdict, provider result and previous count baseline.
 
+## Deployed routing issue found during rehearsal
+
+The first deployed synthetic channel test failed with Cloudflare error 1042 when production fetched a staging Worker in the same zone. Both test accounts were deleted. Cloudflare documents global_fetch_strictly_public as the compatibility flag for public Worker-to-Worker requests: [Fetch documentation](https://developers.cloudflare.com/workers/runtime-apis/fetch/). The release follow-up enables it for staging and production; the application’s existing egress validation still applies. Live rehearsal will be repeated after that deployment.
+
 ## Release gates and external evidence
 
-CI and deployment gates now require a real Postgres 16 service on :5434; the five integration cases must run before merge/deployment. CI at 29a7743 passed all 224 tests, including the five Postgres cases: https://github.com/farjad-hasan/verifyruns/actions/runs/33928013790. The subsequent malformed-JSON regression adds one more case.
+CI and deployment gates now require a real Postgres 16 service on :5434; the five integration cases must run before merge/deployment. Final branch c7bc334 passed all **225 tests**, including the five Postgres cases, plus typecheck and frontend build: [CI run](https://github.com/farjad-hasan/verifyruns/actions/runs/33928476976). The deployment test gate passed again on merge commit 715ddc6.
 
 Actual Slack/Discord inbox receipt and a real Airtable account have not been exercised in this local fixture rehearsal. Provider payloads, failures and destination pagination are tested; they are different evidence from receipt in an operator's chosen channel. Confirm Send test and the failure/recovery rehearsal for the actual pilot connection before relying on it.
 
