@@ -30,28 +30,22 @@ web
 
 ## Product Purpose
 
-Every monitoring tool watches the *run*. VerifyRuns re-reads the *destination* after each run,
-fingerprints it, diffs it against the last 30 good runs, and emits a plain-English PASS or FAIL
-("Run reported success, but your workflow said it wrote 3 records; the destination gained 0, and
-the field `price` disappeared"). Success is a user seeing a FAIL they would otherwise have found
-three days later from a customer email.
+VerifyRuns independently reads destination counts and sampled fields after a workflow runs, then emits a plain-English PASS or FAIL. Counts compare the preceding readable observation; field-disappearance history uses up to 30 PASS runs. Success is an operator catching a missed net addition or missing run before a customer notices.
 
 ## Positioning
 
-**The sentence is the product.** A neighbour can copy uptime, retries and run logs; they cannot
-truthfully claim to have read the destination after the run and reconciled it against what the
-workflow said it wrote (`{"wrote": N}`). Deterministic rules, no model, no score — every verdict is
-a pure function with tests in `worker/test/`. Origin story on the landing page: one of Farjad's own
-scheduled jobs hit a lock, exited 0 and recorded nothing.
+**Your workflow finished. Check the destination.** The initial wedge is a technical operator maintaining a sequential, append-only workflow with one writer per monitored result set. Sell the avoided manual check and useful incident message. This is a focus hypothesis for validation, not evidence of product-market fit.
+
+The alpha does not verify record identities, duplicates, arbitrary values, updates, or concurrent writers. Deterministic rules and clear explanations are useful product properties, not a defensible moat. Next week's OPG fractional CTO and founder sessions are independent reviews; only a real workflow connection and continued use count as pilot evidence.
 
 ## Operating Context
 
-- Set-up is three steps in about four minutes: create a Check (HTTP/JSON, Airtable, or read-only
+- Set-up establishes a baseline before the first verified workflow batch: create a Check (HTTP/JSON, Airtable, or read-only
   Postgres destination), paste one HTTP Request node at the end of the workflow, get verdicts.
 - Verdicts arrive on the dashboard, on a public read-only status page (`/status/:token`) **for
   teammates to monitor the same Check without an account** *(confirmed 2026-08-29; the landing copy's
   "hand it to a client" line is a secondary use, not the design target)*, and via Slack / Discord / email — on the first FAIL and again on recovery,
-  never one message per red run.
+  with retries when all providers reject delivery. Provider acceptance is not a receipt guarantee.
 - Heartbeat rule: "expect a run every N hours"; a missing run is itself a FAIL.
 - The n8n community node (`verifyruns-n8n`) fails the execution on FAIL; the webhook returns the
   verdict in the same request (`?wait=30`).
@@ -63,9 +57,9 @@ scheduled jobs hit a lock, exited 0 and recorded nothing.
 
 - Routes: `/` (landing), `/login`, `/signup`, `/dashboard`, `/checks/new`, `/checks/:id`,
   `/status/:token` (public), `/pricing`, `/data`, `/security`; `/forgot`, `/reset`, `/terms`,
-  `/privacy` are being added by the in-flight `password-reset` and `legal-pages` changes.
+  `/privacy` and `/setup` are available.
 - Stack: React 19 + Tailwind + shadcn/ui (CRA, `react-scripts`), Cloudflare Worker + D1 API,
-  Cloudflare Pages hosting. Dev: `cd frontend && PORT=3100 npm start` against `localhost:8787`.
+  Cloudflare Pages hosting. Dev: `cd frontend && PORT=3100 yarn start` against `localhost:8787`.
 - **Early access: everything is free, no card.** Pricing shows *planned* prices; the "I'd pay for…"
   CTA only records interest. Real billing is the `pricing-tiers` OpenSpec change (Paddle), gated on
   ≥10 external users with a live Check. UI must not imply a charge exists.
@@ -117,7 +111,7 @@ scheduled jobs hit a lock, exited 0 and recorded nothing.
 3. **Newest on the right, always.** The timeline is the shared mental model across every surface.
 4. **Honest about state.** Early access, planned prices, known security gaps and what is stored are
    said plainly on the surface, not in a footer.
-5. **Four minutes to first verdict.** Every screen between signup and the first run exists to
+5. **A clear path to the first verified batch.** Every screen between signup and the first run exists to
    shorten that, and the empty state is the onboarding.
 
 ## Accessibility & Inclusion

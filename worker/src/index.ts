@@ -33,6 +33,7 @@ route("DELETE", "/api/checks/{id}/public", (env, req, _c, p) => r.disablePublic(
 route("GET", "/api/public/checks/{token}", (env, _req, _c, p) => r.publicCheck(env, p.token));
 route("POST", "/api/checks/{id}/channels", (env, req, _c, p) => r.addChannel(env, req, p.id));
 route("DELETE", "/api/checks/{id}/channels/{channelId}", (env, req, _c, p) => r.deleteChannel(env, req, p.id, p.channelId));
+route("POST", "/api/checks/{id}/channels/{channelId}/test", (env, req, _c, p) => r.testChannel(env, req, p.id, p.channelId));
 route("GET", "/api/checks/{id}/runs", (env, req, _c, p) => r.listRuns(env, req, p.id));
 route("GET", "/api/runs/{runId}", (env, req, _c, p) => r.getRun(env, req, p.runId));
 route("POST", "/api/hook/{secret}", (env, req, ctx, p) => r.webhook(env, req, ctx, p.secret));

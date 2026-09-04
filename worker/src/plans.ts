@@ -11,11 +11,11 @@ export const PLANS = [
     name: "Pro",
     planned_price: "$19–29 / month",
     limits: {
-      checks: "unlimited",
+      checks: "allowance to be confirmed",
       history: "90 days",
       connectors: ["HTTP / JSON", "Airtable", "Postgres"],
       channels: ["Slack", "Discord", "Email"],
-      extras: ["Heartbeats", "Claimed-count reconciliation"],
+      extras: ["Heartbeats", "Minimum claimed-count checks"],
     },
     for: "Operators running revenue-touching syncs — orders, invoices, CRM.",
   },
@@ -24,13 +24,13 @@ export const PLANS = [
     name: "Agency",
     planned_price: "$79–99 / month",
     limits: {
-      checks: "unlimited",
+      checks: "allowance to be confirmed",
       history: "90 days",
       connectors: ["all"],
       channels: ["all"],
-      extras: ["Client grouping", "Branded public status pages", "Priority alerts"],
+      extras: ["Package scope to be confirmed with pilot users"],
     },
-    for: "Agencies at client #21 who need proof, not promises.",
+    for: "A proposed package for consultants maintaining several client workflows. Agency management is not available today.",
   },
 ] as const;
 

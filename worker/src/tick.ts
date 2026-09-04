@@ -7,6 +7,8 @@ import { Env, nowIso, num } from "./env";
 import { executeCheck } from "./execute";
 import { expireResetTokens } from "./reset";
 import { describeWindow, HeartbeatWindow, nextHeartbeatDue } from "./schedule";
+import { canonicalHash } from "./engine";
+import { getCheck } from "./checks";
 
 export function heartbeatDue(heartbeatHours: number | null, anchorTs: string, lastHeartbeatTs: string | null, now: Date): boolean {
   if (!heartbeatHours) return false;
@@ -80,7 +82,10 @@ export async function drainRetries(env: Env, now: Date): Promise<number> {
     const res = await env.DB.prepare("UPDATE checks SET pending_retry = NULL WHERE id = ? AND pending_retry = ?").bind(row.id, row.pending_retry).run();
     if (!res.meta.changes) continue;
     try {
-      await executeCheck(env, row.id, "retry", uuid(), true, pr.claimed_new ?? null);
+      const check = await getCheck(env, row.id);
+      if (!check) continue;
+      if (pr.source_key && pr.source_key !== await canonicalHash({ kind: check.connector_kind, config: check.config })) continue;
+      await executeCheck(env, row.id, "retry", uuid(), true, pr.claimed_new ?? null, null, null, pr.count_baseline);
       ran += 1;
     } catch (e) {
       console.error("retry failed for check", row.id, e);

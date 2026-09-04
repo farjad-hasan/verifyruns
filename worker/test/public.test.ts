@@ -20,7 +20,7 @@ describe("public status endpoint (verdicts only, for teammates without an accoun
       heartbeat_hours: 28,
       alert_channels: [{ kind: "discord", target: WEBHOOK }, { kind: "slack", target: "https://hooks.slack.com/services/T/B/slackSECRET" }],
     });
-    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("PASS");
+    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("FAIL");
     const fail = await api(`/hook/${c.webhook_secret}`, { method: "POST" });
     expect(fail.data.verdict).toBe("FAIL");
     // The owner sees the delivery error; the public page must not.

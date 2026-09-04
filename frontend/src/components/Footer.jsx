@@ -10,6 +10,7 @@ const LINKS = [
   ["/security", "Security", "footer-security"],
   ["/privacy", "Privacy", "footer-privacy"],
   ["/terms", "Terms", "footer-terms"],
+  ["/setup", "Setup guide", "footer-setup"],
 ];
 
 export default function Footer({ slim = false }) {

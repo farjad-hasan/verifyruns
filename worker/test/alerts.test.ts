@@ -251,7 +251,7 @@ describe("reported failure cancels a pending retry", () => {
     });
     const u = await user();
     const c = await makeCheck(u.token, { expectations: { min_new_records: 1 }, retry_before_alert: true, alert_channels: [{ kind: "discord", target: DISCORD }] });
-    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("PASS");
+    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("FAIL");
     const f1 = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { wrote: 5 } }); // destination gained 0 → ordinary FAIL, retry scheduled
     expect(f1.data.verdict).toBe("FAIL");
     expect(posts.length).toBe(0);
@@ -310,7 +310,7 @@ describe("a claimed retry overtaken by a reported failure", () => {
     });
     const u = await user();
     const c = await makeCheck(u.token, { expectations: { min_new_records: 1 }, retry_before_alert: true, alert_channels: [{ kind: "discord", target: DISCORD }] });
-    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("PASS");
+    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("FAIL");
     expect((await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { wrote: 5 } })).data.verdict).toBe("FAIL");
     const due = (await api(`/checks/${c.id}`, { token: u.token })).data.pending_retry_at;
     n = 205; // the retry would PASS
@@ -324,7 +324,8 @@ describe("a claimed retry overtaken by a reported failure", () => {
     expect((await draining).retries).toBe(1);
     const runs = (await api(`/checks/${c.id}/runs`, { token: u.token })).data;
     const retry = runs.find((r: any) => r.trigger === "retry");
-    expect(retry.verdict).toBe("PASS");
+    expect(retry.verdict).toBe("FAIL");
+    expect(retry.diff_message).toContain("superseded");
     expect(posts.length).toBe(1); // no Recovered
     expect(retry.alerts_sent).toBeUndefined();
   });

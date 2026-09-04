@@ -55,6 +55,7 @@ beforeAll(async () => {
   } catch {
     reachable = false;
   }
+  if ((env as any).TEST_REQUIRE_PG === "1" && !reachable) throw new Error("CI requires the Postgres integration service on :5434");
 });
 
 async function pg(dsn: string, query: string) {

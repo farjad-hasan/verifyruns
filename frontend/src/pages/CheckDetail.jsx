@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState, useCallback, useRef } from "react";
 import { Link, useNavigate, useParams } from "react-router-dom";
-import api from "../lib/api";
+import api, { formatError } from "../lib/api";
 import ErrorBoundary from "../components/ErrorBoundary";
 import Nav from "../components/Nav";
 import Footer from "../components/Footer";
@@ -13,8 +13,7 @@ import { ArrowLeft, Play, Trash2, RefreshCw, X, Bell, BellOff, Save, Pencil, Glo
 import { Sheet, SheetContent, SheetTitle, SheetClose } from "@/components/ui/sheet";
 import { ExpectationsFields, HeartbeatField, describeHeartbeat, windowFromCheck, windowToPayload } from "../components/ExpectationsFields";
 
-// The engine appends "…checks were skipped: …" sentences to the verdict message when a rule sat
-// out (inexact count, no ORDER BY). The panel shows those as notes, not as part of the verdict.
+// Older stored runs used skip notes. Preserve their explanatory text; new incomplete rules fail.
 const SKIP_NOTE_RE = /(?:Record-count|Newest-record) checks were skipped:[^.]*\./g;
 function splitSkipNotes(message) {
   const notes = (message || "").match(SKIP_NOTE_RE) || [];
@@ -212,15 +211,15 @@ export default function CheckDetail() {
         </div>
         <div className="mono-block break-all" data-testid="curl-claim-example">{curlWithClaim}</div>
         <p className="text-xs text-quiet mt-2">
-          Send <code className="font-mono">{"{"}"wrote": N{"}"}</code> in the body and the verdict reconciles your workflow's own count against the destination.
-          n8n: <code className="font-mono">{"{{ $input.all().length }}"}</code> · Make: the bundle count · Zapier: the step's item count.
+          Send <code className="font-mono">{"{"}"wrote": N{"}"}</code> to require at least N net additions since the previous observation. Send the number of new records expected, not the number of updates or input items unless those are equal.
+          Use one call per completed batch. <Link to="/setup" className="rp-inline" data-testid="check-setup-guide">Setup guide and limits</Link>.
         </p>
       </div>
 
       {/* Config + Expectations */}
       <div className="grid md:grid-cols-2 gap-6 mt-6">
         <div className="rp-card p-6 sm:p-8">
-          <h2 className="font-display text-lg mb-4">Destination</h2>
+          <DestinationEditor check={check} onSaved={load} />
           <dl className="space-y-3 text-sm">
             {check.connector_kind === "postgres" ? (
               <>
@@ -315,12 +314,14 @@ export default function CheckDetail() {
           </div>
           {timelineRuns.length === 0 ? (
             <div className="py-8 text-center">
-              <p className="text-sm text-zinc-400">No runs yet. Trigger your workflow, or click &ldquo;Run Check now&rdquo;.</p>
+              <p className="text-sm text-zinc-400">Start with &ldquo;Run Check now&rdquo; to record the destination baseline. Growth is not verified on that first read. Then run your workflow and send its webhook.</p>
             </div>
           ) : (
             <Timeline runs={timelineRuns} hero onRunClick={openRun} testid="detail-timeline" />
           )}
         </div>
+
+        <p className="text-sm text-quiet mt-4" data-testid="check-coverage-note">PASS means the configured destination checks passed. It does not prove individual records or values are correct. {!(check.alert_channels || []).length && "No alert channel is configured; failures appear here only. "}<Link to="/setup" className="rp-inline">Understand coverage</Link>.</p>
 
         {!latest && setupCards}
 
@@ -459,9 +460,8 @@ function RunPanelBody({ run, steady, runs }) {
 
           {diff && (
             <>
-              <p className="text-xs uppercase tracking-widest text-quiet mb-2">Diff vs last PASS</p>
+              <p className="text-xs uppercase tracking-widest text-quiet mb-2">Shape comparison vs last PASS</p>
               <div className="rp-card p-4 mb-8 space-y-2 text-sm" data-testid="fingerprint-diff">
-                <DiffRow label="Record count" a={diff.prev.record_count} b={diff.now.record_count} delta={diff.record_delta} steady={steady} />
                 <DiffRow label="Field count" a={diff.prev.fields.length} b={diff.now.fields.length} delta={diff.now.fields.length - diff.prev.fields.length} />
                 {diff.added_fields.length > 0 && (
                   <p className="text-emerald-400 font-mono text-xs">+ added: {diff.added_fields.join(", ")}</p>
@@ -479,11 +479,15 @@ function RunPanelBody({ run, steady, runs }) {
                     ))}
                   </div>
                 )}
-                {diff.added_fields.length === 0 && diff.removed_fields.length === 0 && diff.record_delta === 0 && diff.null_changes.length === 0 && (
+                {diff.added_fields.length === 0 && diff.removed_fields.length === 0 && diff.null_changes.length === 0 && (
                   <p className="text-quiet text-xs font-mono">No shape changes.</p>
                 )}
               </div>
             </>
+          )}
+
+          {run.fingerprint?.count_baseline && (
+            <p className="text-sm text-quiet mb-8" data-testid="run-count-baseline">The count assertion uses the previous observation: {run.fingerprint.count_baseline.record_count.toLocaleString()} records. A retry reuses its original baseline.</p>
           )}
 
           <p className="text-xs uppercase tracking-widest text-quiet mb-2">Fingerprint</p>
@@ -529,6 +533,18 @@ function AlertChannelsCard({ check, onSaved }) {
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
   const [emailAvailable, setEmailAvailable] = useState(null);
+  const [testing, setTesting] = useState("");
+  const [testResult, setTestResult] = useState("");
+  const test = async (ch) => {
+    setTesting(ch.id);
+    setTestResult("");
+    try {
+      const { data } = await api.post(`/checks/${check.id}/channels/${ch.id}/test`);
+      setTestResult(data.message);
+    } catch (e) {
+      setTestResult(e.response?.data?.message || formatError(e.response?.data?.detail) || "Could not send the test. Try again.");
+    } finally { setTesting(""); }
+  };
 
   useEffect(() => {
     api.get("/meta").then(({ data }) => setEmailAvailable(!!data.email_alerts)).catch(() => setEmailAvailable(false));
@@ -574,7 +590,7 @@ function AlertChannelsCard({ check, onSaved }) {
         <h2 className="font-display text-lg">Alert channels</h2>
       </div>
       <p className="text-sm text-quiet mb-4">
-        Every channel gets one message on the first FAIL and one when the Check recovers — never one per red run.
+        Alerts are attempted on the first FAIL and recovery. Repeated failures are quiet after a provider accepts an alert. If every channel rejects it, a later run retries delivery.
       </p>
 
       {channels.length > 0 && (
@@ -585,13 +601,19 @@ function AlertChannelsCard({ check, onSaved }) {
                 <span className="text-[11px] uppercase tracking-widest text-quiet mr-3">{ch.kind}</span>
                 {ch.last4}
               </span>
+              <span className="flex gap-2 flex-wrap">
+              <button className="rp-btn-ghost rp-btn-xs" onClick={() => test(ch)} disabled={!!testing} data-testid={`test-channel-${ch.id}`}>
+                {testing === ch.id ? "Sending…" : "Send test"}
+              </button>
               <button className="rp-btn-danger rp-btn-xs" onClick={() => remove(ch)} data-testid={`remove-channel-${ch.id}`}>
                 Remove
               </button>
+              </span>
             </li>
           ))}
         </ul>
       )}
+      {testResult && <p role="status" className="text-sm text-zinc-300 mb-4" data-testid="channel-test-result">{testResult}</p>}
 
       <label htmlFor="channel-target" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Add a channel</label>
       <div className="grid sm:grid-cols-[140px_1fr_auto] gap-2 items-center">
@@ -627,6 +649,7 @@ function ExpectationsCard({ check, onSaved }) {
   const [heartbeat, setHeartbeat] = useState(check.heartbeat_hours ?? "");
   const [heartbeatWindow, setHeartbeatWindow] = useState(windowFromCheck(check));
   const [storeSamples, setStoreSamples] = useState(!!check.store_samples);
+  const [retry, setRetry] = useState(!!check.retry_before_alert);
   const [required, setRequired] = useState((check.expectations?.required_fields || []).join(", "));
   const [nonEmpty, setNonEmpty] = useState((check.expectations?.non_empty_fields || []).join(", "));
   const [busy, setBusy] = useState(false);
@@ -637,6 +660,7 @@ function ExpectationsCard({ check, onSaved }) {
     setHeartbeat(check.heartbeat_hours ?? "");
     setHeartbeatWindow(windowFromCheck(check));
     setStoreSamples(!!check.store_samples);
+    setRetry(!!check.retry_before_alert);
     setRequired((check.expectations?.required_fields || []).join(", "));
     setNonEmpty((check.expectations?.non_empty_fields || []).join(", "));
     setEditing(true);
@@ -655,12 +679,13 @@ function ExpectationsCard({ check, onSaved }) {
         heartbeat_hours: heartbeat === "" ? null : Number(heartbeat),
         heartbeat_window: windowToPayload(heartbeat, heartbeatWindow),
         store_samples: storeSamples,
+        retry_before_alert: retry,
       });
       toast.success("Expectations updated");
       setEditing(false);
       await onSaved();
-    } catch {
-      toast.error("Could not update expectations");
+    } catch (e) {
+      toast.error(formatError(e.response?.data?.detail) || "Could not update expectations");
     } finally {
       setBusy(false);
     }
@@ -683,6 +708,7 @@ function ExpectationsCard({ check, onSaved }) {
 
       {!editing ? (
         <dl className="space-y-3 text-sm">
+          <Row k="Retry before alert" v={check.retry_before_alert ? "enabled" : "disabled"} mono />
           <Row k="Heartbeat" v={describeHeartbeat(check)} mono />
           <Row k="Raw samples" v={check.store_samples ? "stored for 30 days" : "not stored (hash only)"} mono />
           <Row k="Growth mode" v={check.expectations?.growth_mode || "growth"} mono />
@@ -700,6 +726,7 @@ function ExpectationsCard({ check, onSaved }) {
             nonEmpty={nonEmpty} setNonEmpty={setNonEmpty}
           />
           <HeartbeatField idPrefix="edit" testidPrefix="edit" value={heartbeat} onChange={setHeartbeat} window={heartbeatWindow} onWindowChange={setHeartbeatWindow} />
+          <label className="flex items-start gap-2 text-sm text-zinc-300"><input type="checkbox" checked={retry} onChange={e => setRetry(e.target.checked)} data-testid="edit-retry" /> Retry ordinary failures before alerting (due after 30 seconds; processed by the scheduler).</label>
           <label className="flex items-start gap-2 cursor-pointer select-none pt-1">
             <input type="checkbox" className="w-4 h-4 mt-0.5 accent-emerald-500" checked={storeSamples} onChange={(e) => setStoreSamples(e.target.checked)} data-testid="edit-store-samples" />
             <span className="text-sm text-zinc-300">Store raw samples for 30 days
@@ -766,6 +793,7 @@ function findPreviousPassFingerprint(allRuns, current) {
   for (const r of allRuns) {
     if (r.id === current.id) continue;
     if (r.verdict !== "PASS") continue;
+    if (r.fingerprint?.source_key !== current.fingerprint?.source_key) continue;
     if (new Date(r.timestamp).getTime() < currentTs) return r.fingerprint;
   }
   return null;
@@ -861,7 +889,7 @@ function PublicStatusCard({ check, onSaved }) {
       {check.is_public ? (
         <>
           <p className="text-sm text-quiet mb-3">
-            Anyone with this link can see verdicts and timestamps — no destination URL, tokens, or fingerprints are exposed.
+            Anyone with this link can see the Check name, verdict messages, timestamps and delivery outcomes. Messages can include field names. Workflow-supplied failure reasons, connection settings and fingerprints are excluded.
           </p>
           <div className="flex items-center gap-2">
             <div className="mono-block flex-1 break-all" data-testid="public-status-url">{publicUrl}</div>
@@ -1025,3 +1053,37 @@ function SnoozeControl({ check, onSaved }) {
   );
 }
 
+
+function DestinationEditor({ check, onSaved }) {
+  const [editing, setEditing] = useState(false);
+  const [values, setValues] = useState({});
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const fields = check.connector_kind === "postgres"
+    ? [["query", "Read-only query", "text"], ["dsn", "Replacement connection string", "password"]]
+    : check.connector_kind === "airtable"
+      ? [["base_id", "Base ID", "text"], ["table", "Table", "text"], ["view", "View (optional)", "text"], ["personal_access_token", "Replacement personal access token", "password"]]
+      : [["url", "Replacement destination URL", "url"], ["json_path", "JSON path (optional)", "text"], ["newest_key", "Newest key (optional)", "text"], ["bearer_token", "Replacement bearer token", "password"]];
+  const start = () => {
+    setValues(Object.fromEntries(fields.map(([key, , type]) => [key, type === "password" || key === "url" ? "" : check.config?.[key] || ""])));
+    setError(""); setEditing(true);
+  };
+  const save = async (event) => {
+    event.preventDefault(); setBusy(true); setError("");
+    const config = Object.fromEntries(Object.entries(values).filter(([key, value]) => value || !["url", "dsn", "personal_access_token", "bearer_token"].includes(key)));
+    try {
+      await api.patch(`/checks/${check.id}`, { config });
+      await onSaved(); setEditing(false); toast.success("Destination updated. Record a fresh baseline before the next workflow run.");
+    } catch (e) { setError(formatError(e.response?.data?.detail) || "Could not update destination."); }
+    finally { setBusy(false); }
+  };
+  return <>
+    <div className="flex items-center justify-between mb-4"><h2 className="font-display text-lg">Destination</h2>{!editing && <button className="rp-btn-ghost rp-btn-xs" onClick={start} data-testid="edit-destination"><Pencil size={13} /> Edit</button>}</div>
+    {editing && <form onSubmit={save} className="space-y-3 mb-6" data-testid="destination-form">
+      <p className="text-xs text-quiet">Leave replacement URL and credentials blank to keep them. Changing connection settings starts a new baseline. HTTP must return a complete array; Postgres should omit LIMIT and order newest first. <Link className="rp-inline" to="/setup">Connector limits</Link>.</p>
+      {fields.map(([key, label, type]) => <label key={key} className="block text-sm text-zinc-300" htmlFor={`destination-${key}`}>{label}<input id={`destination-${key}`} type={type} autoComplete="off" className="rp-input mt-1" value={values[key] || ""} onChange={e => setValues(v => ({ ...v, [key]: e.target.value }))} data-testid={`destination-${key}`} /></label>)}
+      {error && <p role="alert" className="text-sm text-red-400">{error}</p>}
+      <div className="flex gap-2"><button className="rp-btn-primary" disabled={busy} data-testid="save-destination">{busy ? "Saving…" : "Save destination"}</button><button type="button" className="rp-btn-ghost" onClick={() => setEditing(false)}>Cancel</button></div>
+    </form>}
+  </>;
+}

@@ -18,6 +18,7 @@ import ResetPage from "@/pages/ResetPage";
 import TermsPage from "@/pages/TermsPage";
 import PrivacyPage from "@/pages/PrivacyPage";
 import NotFound from "@/pages/NotFound";
+import SetupPage from "@/pages/SetupPage";
 
 function Protected({ children }) {
   const { user, ready, expired } = useAuth();
@@ -54,6 +55,7 @@ export default function App() {
             <Route path="/checks/:id" element={<Protected><CheckDetail /></Protected>} />
             <Route path="/status/:token" element={<PublicStatus />} />
             <Route path="/pricing" element={<Pricing />} />
+            <Route path="/setup" element={<SetupPage />} />
             <Route path="/data" element={<DataPage />} />
             <Route path="/security" element={<SecurityPage />} />
             <Route path="/forgot" element={<PublicOnly><ForgotPage /></PublicOnly>} />

@@ -9,7 +9,7 @@ const SECTIONS = [
   },
   {
     title: "Per run",
-    body: "Timestamp, trigger, verdict, the diff message, and a fingerprint: record count, sample size, field names, per-field empty rates, and a SHA-256 hash of the newest record — enough to tell changed from unchanged, not enough to rebuild the row. Also the count your workflow claimed, if it sent one, and per alert channel its kind, whether it delivered, and a short error on failure; a single service-wide count of failed deliveries is kept as a number only. No destination rows. No upstream response bodies.",
+    body: "Timestamp, trigger, verdict, the diff message, and a fingerprint: record count, sample size, the previous count observation, an opaque destination-configuration hash, read-success and count-accuracy flags, field names, per-field empty rates, and a SHA-256 hash of the newest record. Also the count your workflow claimed, whether it reported failure, and its supplied error text (up to 500 characters), and per alert channel its kind, whether it delivered, and a short error on failure; a single service-wide count of failed deliveries is kept as a number only. No destination rows. No upstream response bodies.",
   },
   {
     title: "How long runs are kept",
@@ -21,7 +21,7 @@ const SECTIONS = [
   },
   {
     title: "Your workflow",
-    body: "We never see it. The only thing that reaches VerifyRuns is the one HTTP POST it sends to the webhook, and the body is read for a single integer.",
+    body: "We never see it. The only thing that reaches VerifyRuns is the one HTTP POST it sends to the webhook, and the body is read for a count, a boolean failed flag and an optional error message. Keep secrets and personal data out of that error message.",
   },
   {
     title: "Deleting",
@@ -29,7 +29,7 @@ const SECTIONS = [
   },
   {
     title: "Public status pages",
-    body: "Show the Check's name, connector kind and the last 30 verdicts with their messages. Never config, secrets, fingerprints or samples.",
+    body: "Show the Check's name, connector kind and the last 30 verdicts with their messages. Workflow-supplied failure reasons are replaced by a fixed sentence. Never config, secrets, fingerprints or samples.",
   },
   {
     title: "Runs written before 2026-08-27",
@@ -48,7 +48,7 @@ export default function DataPage() {
         <p className="text-zinc-400 text-lg leading-relaxed max-w-[65ch]">
           A watchdog that reads your database has to be careful about what it keeps. Here is the whole list, and every change to it ships with this page.
         </p>
-        <p className="text-sm text-quiet mt-3 font-mono">Last updated 2026-09-03</p>
+        <p className="text-sm text-quiet mt-3 font-mono">Last updated 2026-09-05</p>
         <div className="mt-12 space-y-8">
           {SECTIONS.map((s) => (
             <div key={s.title}>

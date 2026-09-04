@@ -1,8 +1,8 @@
 # VerifyRuns
 
-**Your automation said Done. VerifyRuns checks if that's true.**
+**Your workflow finished. Check the destination.**
 
-n8n, Make and Zapier workflows finish green while silently writing nothing — or the wrong thing — to the destination. Every monitoring tool watches the *run*. VerifyRuns re-reads the *destination* after each run, fingerprints it, diffs it against the last 30 good runs, and tells you in plain English when a "successful" workflow didn't actually land:
+VerifyRuns independently reads destination counts and sampled fields after an automation runs. It helps operators catch missing net additions, missing sampled fields and missed scheduled runs. The alpha is designed for sequential, append-only workflows with one writer per monitored result set. It does not reconcile record identities or validate arbitrary values.
 
 ```
 FAIL — airtable-orders-sync
@@ -15,13 +15,14 @@ and the field `price` disappeared — it was present in the last 30 good runs.
 ## How it works
 
 1. **Create a Check** — point VerifyRuns at your destination (an HTTP/JSON endpoint, an Airtable table, or a read-only Postgres query) and set expectations: growth per run, required fields, fields that must be non-empty.
-2. **Paste the webhook** — add one HTTP Request node at the end of your workflow that POSTs to the Check's secret URL. Optionally tell VerifyRuns what the workflow believes it wrote:
+2. **Record a baseline** — before the workflow writes, click Run Check now. A first count assertion returns FAIL / Verification incomplete, establishing the baseline without sending a setup alert. The next read can measure growth. Changing destination settings (or upgrading a Check without source-bound observations) starts a new baseline.
+3. **Paste the webhook** — add one HTTP Request node at the end of your workflow that POSTs to the Check's secret URL. Optionally tell VerifyRuns what the workflow believes it wrote:
    ```bash
    curl -X POST "https://<your-host>/api/hook/<secret>" \
         -H "content-type: application/json" -d '{"wrote": 3}'
    ```
    A workflow that knows it failed can say so — `{"failed": true, "error": "step 4 timed out"}` — and the run is a FAIL with that reason, whatever the destination shows (your error workflow or a cron wrapper's non-zero exit is the usual sender).
-3. **Get verdicts** — every run is PASS or FAIL with a diff message. Slack, Discord and email channels get a message on the first FAIL and again on recovery; not on every red run.
+4. **Test alerts and get verdicts** — use Send test and confirm receipt. — every run is PASS or FAIL with a diff message. Configured Slack, Discord and email channels are attempted on the first FAIL and on recovery. Confirm actual receipt; a provider accepting the message is not a delivery guarantee.
 
 Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/zapier.md). The webhook returns the verdict in the same request; the n8n community node ([`n8n-nodes-verifyruns`](https://www.npmjs.com/package/n8n-nodes-verifyruns)) does that and fails the execution on FAIL.
 
@@ -30,25 +31,25 @@ Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/
 | Connector | Config | Count | Newest record |
 |---|---|---|---|
 | HTTP / JSON | GET URL, optional bearer token, optional JSON path to the array, optional `newest_key` | length of the array | max of `newest_key`, else the last element |
-| Airtable | base id, table, optional view, personal access token | true count via `offset` paging (ceiling 4,000; beyond it the count is marked capped and growth rules stand down) | newest `createdTime` |
-| Postgres | connection string (TLS unless `sslmode=disable`; on the hosted build the certificate must be publicly trusted — see `docs/deploy.md`), a single read-only `SELECT`/`WITH` | `COUNT(*)` of the query | the query's own `ORDER BY … DESC`; without one, newest-record rules are skipped and the run says so |
+| Airtable | base id, table, optional view, personal access token | true count via `offset` paging (ceiling 4,000; beyond it the count is marked capped and configured count assertions return FAIL / incomplete) | newest `createdTime` |
+| Postgres | connection string (TLS unless `sslmode=disable`; on the hosted build the certificate must be publicly trusted — see `docs/deploy.md`), a single read-only `SELECT`/`WITH` | `COUNT(*)` of the query | the query's own `ORDER BY … DESC`; without one, configured newest-record assertions return FAIL / incomplete |
 
 Secrets are encrypted at rest with AES-256-GCM and only ever shown masked to their last four characters. All destination reads happen server-side.
 
 ## Verdict rules
 
-- **Growth** — the destination must gain at least `min_new_records` (the New Check form defaults to 0, "growth optional"; set 1 to assert every run adds a record), or at least what the workflow claimed with `{"wrote": N}`.
+- **Growth** — the destination must gain at least `min_new_records` (default 1; choose 0 only to disable the growth requirement), or at least what the workflow claimed with `{"wrote": N}`.
 - **Steady** — the count must not change (lookup tables, config rows).
-- **Claimed** — every webhook run must send `{"wrote": N}`; the destination must gain N.
-- **Required fields** must be present; a field present in every one of the last 30 good runs that disappears is a FAIL.
-- **Non-empty fields** — FAIL only when the newest record is empty *and* so is the majority of the five newest, so one odd row cannot flip a verdict.
+- **Claimed** — every webhook run must send `{"wrote": N}`; the destination must gain at least N net records since the preceding readable observation, even if that observation failed. A retry uses the original interval.
+- **Required fields** must occur somewhere in the inspected sample; a field present in every one of the last 30 good runs that disappears is a FAIL.
+- **Non-empty fields** — missing fields and an unavailable newest sample fail; otherwise FAIL when the newest record is empty *and* so is the majority of the five newest, so one odd row cannot flip a verdict.
 - **Heartbeat** — "expect a run every N hours": if no run arrives in the window, VerifyRuns records a FAIL ("No run in 26 h — expected one every 24 h.") and alerts; the next real run recovers it. This catches the workflow that never fired, not just the one that fired and wrote nothing. A workflow that only runs in office hours can add an active window ("only during 09:00–17:00 Europe/Berlin, weekdays"): the clock stops outside it, so an hourly job is due one *active* hour after its last run — Friday 16:00 becomes Monday 10:00 — instead of needing a 17-hour cadence to survive the night.
 
 The engine is deterministic code — no model, no score you cannot inspect. Every rule is a pure function with tests in `worker/test/`.
 
 ## Run it yourself
 
-API: a Cloudflare Worker with D1 (`worker/`, TypeScript); the original FastAPI + MongoDB build lives in git history (tag `python-backend-final`). Frontend: React 19 + Tailwind + shadcn/ui (yarn — it is pinned via `packageManager`). Deployment: [docs/deploy.md](docs/deploy.md) — Workers + D1 + Pages, $0.
+API: a Cloudflare Worker with D1 (`worker/`, TypeScript); the original FastAPI + MongoDB build lives in git history (tag `python-backend-final`). Frontend: React 19 + Tailwind + shadcn/ui (yarn — it is pinned via `packageManager`). Deployment: [docs/deploy.md](docs/deploy.md) — Workers + D1 + Pages; actual hosting costs depend on usage.
 
 ```bash
 # API (Cloudflare Worker, runs locally in workerd)

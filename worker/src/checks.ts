@@ -32,7 +32,7 @@ export interface CheckDoc {
   public_token: string | null;
   snooze_until: string | null;
   last_alerted_verdict: string | null;
-  pending_retry: { due_at: string; claimed_new: number | null } | null;
+  pending_retry: { due_at: string; claimed_new: number | null; count_baseline?: import("./engine").CountBaseline | null; source_key?: string } | null;
   pending_runs: { run_id: string; claimed_new: number | null; body_note: string | null; queued_at: string; reported_failure?: boolean; reported_error?: string | null }[];
   /** Maintained, not computed: run inserts, heartbeat fires and heartbeat_hours changes keep it
    *  current so the tick's heartbeat sweep is one indexed range scan. NULL = no heartbeat. */

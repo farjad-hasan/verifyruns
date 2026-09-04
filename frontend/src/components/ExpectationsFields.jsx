@@ -4,9 +4,9 @@
 // `testidPrefix` keeps the existing `check-*` and `edit-*` test ids.
 
 export const MODE_HINT = {
-  growth: "The destination must gain at least the minimum below, or at least what the workflow claimed with {\"wrote\": N}.",
-  steady: "The count must not change between runs — for lookup tables and config rows.",
-  claimed: "Every run must send {\"wrote\": N} and the destination must gain exactly that many.",
+  growth: "Require net additions since the previous destination observation. A wrote claim replaces the minimum for that run.",
+  steady: "The record count must stay the same. This does not check whether existing values changed.",
+  claimed: "Every webhook run must send {\"wrote\": N}. Require at least N net additions since the previous observation; this does not match individual records.",
 };
 
 const LABEL = "text-[11px] uppercase tracking-wider text-quiet block mb-2";
@@ -37,8 +37,8 @@ export function ExpectationsFields({
       <div className="grid sm:grid-cols-2 gap-3">
         <div>
           <label htmlFor={`${idPrefix}-minnew`} className={LABEL}>Minimum new records per run</label>
-          <input id={`${idPrefix}-minnew`} type="number" min="0" className="rp-input font-mono" value={minNew} onChange={(e) => setMinNew(e.target.value)} data-testid={`${testidPrefix}-minnew-input`} />
-          <p className="text-xs text-quiet mt-2 leading-relaxed">0 = growth optional; 1 asserts every run adds a record.</p>
+          <input id={`${idPrefix}-minnew`} type="number" min="0" disabled={mode !== "growth"} className="rp-input font-mono" value={minNew} onChange={(e) => setMinNew(e.target.value)} data-testid={`${testidPrefix}-minnew-input`} />
+          <p className="text-xs text-quiet mt-2 leading-relaxed">{mode === "growth" ? "1 requires an addition after the baseline. 0 turns off growth checks unless you send wrote." : "Used only in Growth mode."}</p>
         </div>
         <div>
           <label htmlFor={`${idPrefix}-required`} className={LABEL}>Required fields (comma-separated)</label>
@@ -46,8 +46,9 @@ export function ExpectationsFields({
         </div>
       </div>
       <div className="mt-3">
-        <label htmlFor={`${idPrefix}-nonempty`} className={LABEL}>Fields that must be non-empty</label>
+        <label htmlFor={`${idPrefix}-nonempty`} className={LABEL}>Check newest records for empty fields</label>
         <input id={`${idPrefix}-nonempty`} type="text" className="rp-input font-mono" placeholder="email, customer_id" value={nonEmpty} onChange={(e) => setNonEmpty(e.target.value)} data-testid={`${testidPrefix}-nonempty-input`} />
+        <p className="text-xs text-quiet mt-2" data-testid={`${testidPrefix}-field-scope`}>Field presence is checked across the sample. Emptiness fails when a field is missing, or is empty in the newest record and a majority of the five newest. This does not validate every row or its values.</p>
       </div>
     </>
   );

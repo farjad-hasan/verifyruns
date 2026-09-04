@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
 import api, { formatError } from "../lib/api";
 import Nav from "../components/Nav";
@@ -27,7 +27,7 @@ export default function NewCheck() {
   const [dsn, setDsn] = useState("");
   const [query, setQuery] = useState("");
   // Expectations + alerts
-  const [minNew, setMinNew] = useState(0);
+  const [minNew, setMinNew] = useState(1);
   const [mode, setMode] = useState("growth");
   const [required, setRequired] = useState("");
   const [nonEmpty, setNonEmpty] = useState("");
@@ -38,6 +38,10 @@ export default function NewCheck() {
   const [heartbeatWindow, setHeartbeatWindow] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
+  const [emailAvailable, setEmailAvailable] = useState(false);
+  useEffect(() => {
+    api.get("/meta").then(({ data }) => setEmailAvailable(!!data.email_alerts)).catch(() => {});
+  }, []);
 
   const submit = async (e) => {
     e.preventDefault();
@@ -111,7 +115,7 @@ export default function NewCheck() {
                 active={kind === "http_json"}
                 onClick={() => setKind("http_json")}
                 title="HTTP / JSON"
-                sub="Any REST endpoint returning an array"
+                sub="A complete JSON array of records"
                 testid="connector-http-json"
               />
               <ConnectorOption
@@ -132,7 +136,7 @@ export default function NewCheck() {
 
             {kind === "http_json" && (
               <div className="space-y-4">
-                <Field id="check-url" label="GET URL">
+                <Field id="check-url" label="GET URL" hint="Use a complete, stable result set. HTTP pagination is not followed; a fixed-size page cannot measure total growth.">
                   <input id="check-url" required type="url" autoComplete="off" className="rp-input font-mono" placeholder="https://api.example.com/v1/orders" value={url} onChange={(e) => setUrl(e.target.value)} data-testid="check-url-input" />
                 </Field>
                 <Field id="check-token" label="Bearer token" optional hint="Encrypted at rest; shown masked afterwards.">
@@ -162,7 +166,7 @@ export default function NewCheck() {
                   <input id="check-view" type="text" className="rp-input font-mono" placeholder="Grid view" value={view} onChange={(e) => setView(e.target.value)} data-testid="check-view-input" />
                 </Field>
                 <p className="text-xs text-quiet leading-relaxed">
-                  VerifyRuns lists up to 100 records at a time. Create a PAT at
+                  Counts are paged up to 4,000 records; above that, growth checks fail as incomplete. Use a stable table or view. Create a PAT at
                   <a className="rp-inline ml-1" href="https://airtable.com/create/tokens" target="_blank" rel="noreferrer">airtable.com/create/tokens</a>
                   &nbsp;with <span className="font-mono">data.records:read</span> for the base.
                 </p>
@@ -180,20 +184,20 @@ export default function NewCheck() {
                     required
                     rows={3}
                     className="rp-input font-mono resize-y"
-                    placeholder="SELECT id, email, created_at FROM orders ORDER BY id DESC LIMIT 100"
+                    placeholder="SELECT id, email, created_at FROM orders ORDER BY created_at DESC"
                     value={query}
                     onChange={(e) => setQuery(e.target.value)}
                     data-testid="check-query-input"
                   />
                 </Field>
                 <p className="text-xs text-quiet leading-relaxed">
-                  Read-only: must start with <span className="font-mono">SELECT</span> or <span className="font-mono">WITH</span>, single statement, no <span className="font-mono">INSERT</span>/<span className="font-mono">UPDATE</span>/<span className="font-mono">DELETE</span>/<span className="font-mono">DROP</span>. VerifyRuns caps results at 100 rows.
+                  Use a read-only role and a single SELECT or WITH query. VerifyRuns counts your full query and samples up to 100 rows. Leave LIMIT out of a growth query; it caps the count too. Order newest first. Hosted connections require a publicly trusted TLS certificate.
                 </p>
               </div>
             )}
           </Section>
 
-          <Section title="Expectations" subtitle="All optional. VerifyRuns will use these to decide PASS or FAIL.">
+          <Section title="Expectations" subtitle="Choose what a successful observation must satisfy. The first read establishes a baseline; it cannot prove growth yet.">
             <ExpectationsFields
               mode={mode} setMode={setMode}
               minNew={minNew} setMinNew={setMinNew}
@@ -206,24 +210,25 @@ export default function NewCheck() {
             <HeartbeatField value={heartbeatHours} onChange={setHeartbeatHours} window={heartbeatWindow} onWindowChange={setHeartbeatWindow} />
           </Section>
 
-          <Section title="Alert channel" subtitle="Optional. VerifyRuns will POST a message here when a run FAILs and again when it recovers.">
-            <label htmlFor="check-alert-target" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">Webhook URL <span className="normal-case tracking-normal text-quiet/80">(optional)</span></label>
+          <Section title="Alert channel" subtitle="Recommended. Get notified on failure and recovery, then test delivery from the Check page.">
+            <label htmlFor="check-alert-target" className="text-[11px] uppercase tracking-wider text-quiet block mb-2">{alertKind === "email" ? "Email address" : "Webhook URL"} <span className="normal-case tracking-normal text-quiet/80">(optional)</span></label>
             <div className="grid sm:grid-cols-[140px_1fr] gap-2">
               <select className="rp-input font-mono" aria-label="Alert channel kind" value={alertKind} onChange={(e) => setAlertKind(e.target.value)} data-testid="check-alert-kind">
                 <option value="slack">Slack</option>
                 <option value="discord">Discord</option>
+                <option value="email" disabled={!emailAvailable}>Email{!emailAvailable ? " (unavailable on this host)" : ""}</option>
               </select>
               <input
                 id="check-alert-target"
-                type="url"
+                type={alertKind === "email" ? "email" : "url"}
                 className="rp-input font-mono"
-                placeholder={alertKind === "discord" ? "Discord webhook URL (https://discord.com/api/webhooks/...)" : "Slack incoming webhook URL (https://hooks.slack.com/services/...)"}
+                placeholder={alertKind === "email" ? "ops@example.com" : alertKind === "discord" ? "https://discord.com/api/webhooks/..." : "https://hooks.slack.com/services/..."}
                 value={slackWebhook}
                 onChange={(e) => setSlackWebhook(e.target.value)}
                 data-testid="check-slack-input"
               />
             </div>
-            <p className="text-xs text-quiet mt-2">Email and more channels can be added from the Check page.</p>
+            <p className="text-xs text-quiet mt-2" data-testid="new-check-alert-guidance">{slackWebhook.trim() ? "After creating the Check, send a test and confirm it arrives." : "Without a channel, failures appear only in VerifyRuns. You can add a channel later."}</p>
             <p className="text-xs text-quiet leading-relaxed mt-2">
               Stored encrypted; only the last 4 characters are shown afterwards.
             </p>
@@ -235,9 +240,9 @@ export default function NewCheck() {
                 onChange={(e) => setRetryBeforeAlert(e.target.checked)}
                 data-testid="check-retry-toggle"
               />
-              <span className="text-sm text-zinc-300">Retry 30s before alerting</span>
-              <span className="text-xs text-quiet">— swallows flaky destinations. Turn off for instant alerts.</span>
+              <span className="text-sm text-zinc-300">Retry a failed read or assertion before alerting</span>
             </label>
+            <p className="text-xs text-quiet mt-2">Retry is due after 30 seconds and runs on the next scheduler tick. Incomplete assertions and reported failures alert without a retry; establishing the initial baseline does not alert.</p>
           </Section>
 
           {error && <div className="text-sm text-red-400 border border-red-500/25 bg-red-500/5 rounded-md p-3" data-testid="new-check-error">{error}</div>}

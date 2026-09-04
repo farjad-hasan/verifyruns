@@ -56,9 +56,9 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
     } catch (e: any) {
       return fail(`Destination fetch error: ${e?.name || "Error"}.`, String(e?.message || e).slice(0, 500));
     }
-    if (resp.status >= 400) {
-      const body = await resp.text().catch(() => "");
-      return fail(`Destination fetch failed with HTTP ${resp.status}.`, body.slice(0, 500));
+    if (resp.status >= 300) {
+      const rawError = await readCapped(resp, maxBytes).catch(() => null);
+      return fail(`Destination fetch failed with HTTP ${resp.status}.`, rawError ? new TextDecoder().decode(rawError).slice(0, 500) : null);
     }
     const raw = await readCapped(resp, maxBytes);
     if (raw === null) return fail(`Destination response exceeded ${Math.floor(maxBytes / (1024 * 1024))} MB.`);
@@ -98,14 +98,16 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
       if (page > 0 && countField) params.append("fields[]", countField);
       let resp: Response;
       try {
-        resp = await httpFetch(`${base}?${params}`, { headers, signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+        resp = await httpFetch(`${base}?${params}`, { headers, redirect: "manual", signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
       } catch (e: any) {
         return fail(`Airtable fetch error: ${e?.name || "Error"}.`, String(e?.message || e).slice(0, 500));
       }
-      if (resp.status >= 400) return fail(`Airtable fetch failed with HTTP ${resp.status}.`, (await resp.text().catch(() => "")).slice(0, 500));
+      if (resp.status >= 300) return fail(`Airtable fetch failed with HTTP ${resp.status}.`);
       let body: any;
       try {
-        body = await resp.json();
+        const bytes = await readCapped(resp, maxBytes);
+        if (bytes === null) return fail("Airtable response exceeded the response-size limit.");
+        body = JSON.parse(new TextDecoder().decode(bytes));
       } catch {
         return fail("Airtable did not return valid JSON.");
       }
@@ -130,16 +132,20 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
         break;
       }
     }
-    const newest = seen.reduce<{ created: string; id: string } | null>((best, cur) => (!best || cur.created > best.created ? cur : best), null);
-    if (newest && !sample.some((r) => r.id === newest.id)) {
+    // Read the actual five newest rows across all counted pages, not just the first page.
+    const newestRows = [...seen].sort((a, b) => b.created.localeCompare(a.created)).slice(0, 5);
+    let newestDefined = !capped;
+    for (const newest of newestRows) {
+      if (sample.some((r) => r.id === newest.id)) continue;
       try {
-        const one = await httpFetch(`${base}/${encodeURIComponent(newest.id)}`, { headers, signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
-        if (one.status < 400) sample.unshift(flatten(await one.json()));
-      } catch {
-        /* the sample simply lacks it */
-      }
+        const one = await httpFetch(`${base}/${encodeURIComponent(newest.id)}`, { headers, redirect: "manual", signal: AbortSignal.timeout(HTTP_TIMEOUT_MS) });
+        const bytes = one.status < 300 ? await readCapped(one, maxBytes) : null;
+        const row = bytes ? JSON.parse(new TextDecoder().decode(bytes)) : null;
+        if (!row || row.id !== newest.id || !row.fields || typeof row.fields !== "object") newestDefined = false;
+        else sample.unshift(flatten(row));
+      } catch { newestDefined = false; }
     }
-    return { records: sortDesc(sample, "createdTime"), meta: meta(seen.length, { capped }), error: null, details: null };
+    return { records: sortDesc(sample, "createdTime"), meta: meta(seen.length, { capped, newest_defined: newestDefined }), error: null, details: null };
   }
 
   if (kind === "postgres") {
