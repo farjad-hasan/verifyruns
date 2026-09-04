@@ -13,7 +13,7 @@ Change: alpha-review-readiness. Base: 21d5f2f. Release commit and deployment lin
 
 ## Release gates and external evidence
 
-CI and deployment gates now require a real Postgres 16 service on :5434; the five integration cases must run before merge/deployment. GitHub results are pending until the branch is published.
+CI and deployment gates now require a real Postgres 16 service on :5434; the five integration cases must run before merge/deployment. CI at 29a7743 passed all 224 tests, including the five Postgres cases: https://github.com/farjad-hasan/verifyruns/actions/runs/33928013790. The subsequent malformed-JSON regression adds one more case.
 
 Actual Slack/Discord inbox receipt and a real Airtable account have not been exercised in this local fixture rehearsal. Provider payloads, failures and destination pagination are tested; they are different evidence from receipt in an operator's chosen channel. Confirm Send test and the failure/recovery rehearsal for the actual pilot connection before relying on it.
 

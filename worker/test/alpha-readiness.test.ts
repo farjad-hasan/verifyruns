@@ -12,6 +12,12 @@ const hook = (c: any, body?: unknown) => api(`/hook/${c.webhook_secret}`, { meth
 const rows = (n: number) => Array.from({length: n}, (_, id) => ({id, email: "present"}));
 
 describe("alpha verification contract", () => {
+  it("rejects malformed JSON before it can drop a claim or queue a weaker run", async () => {
+    const u=await user();const c=await makeCheck(u.token,{expectations:{min_new_records:0}});
+    const r=await api(`/hook/${c.webhook_secret}?wait=0`,{method:"POST",body:"{bad",headers:{"content-type":"application/json"}});
+    expect(r.status).toBe(422);expect((await api(`/checks/${c.id}/runs`,{token:u.token})).data).toEqual([]);
+    expect((await api(`/checks/${c.id}`,{token:u.token})).data.pending_runs).toBe(0);
+  });
   it("requires a baseline, detects no-op, verifies growth, and never lends failed-batch writes to another claim", async () => {
     let count = 100;
     setFetchForTests(async () => jsonResponse(rows(count)));

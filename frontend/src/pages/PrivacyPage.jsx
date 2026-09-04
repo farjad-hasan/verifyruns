@@ -9,13 +9,13 @@ const SECTIONS = [
     title: "What we collect and why",
     paras: ["Everything below exists to do one job: re-read a destination your automation wrote to and tell you whether it really changed."],
     list: [
-      <><strong className="text-zinc-300">Account:</strong> your email address and a salted PBKDF2 hash of your password, so you can log in. We never see the password itself.</>,
+      <><strong className="text-zinc-300">Account:</strong> your email address and a salted PBKDF2 hash of your password, so you can log in. Passwords are hashed before storage.</>,
       <><strong className="text-zinc-300">Checks:</strong> the name, destination and expectations you configure. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets (Slack/Discord webhook URLs, email addresses) are encrypted with AES-256-GCM before they are stored and are only ever shown back masked to the last four characters. They are used solely to read the destination and to deliver your alerts.</>,
-      <><strong className="text-zinc-300">Runs:</strong> per run, a timestamp, the verdict, the diff sentence, the count your workflow claimed, and a fingerprint of the destination — record count, field names, per-field empty rates and a SHA-256 hash of the newest record. Not the rows. See <Link className="rp-inline" to="/data">What we store</Link> for the exact list.</>,
-      <><strong className="text-zinc-300">Raw samples, only if you turn them on:</strong> the five newest records and up to 500 characters of an upstream error, kept about 30 days and then deleted automatically.</>,
+      <><strong className="text-zinc-300">Runs:</strong> per run, a timestamp, the verdict, the diff sentence, the count your workflow claimed, any reported failure and supplied error text (up to 500 characters), delivery outcomes, and a fingerprint of the destination — record count, its previous observation, count-accuracy flags, an opaque destination-configuration hash, field names, per-field empty rates and a SHA-256 hash of the newest record. Not the rows. See <Link className="rp-inline" to="/data">What we store</Link> for the exact list.</>,
+      <><strong className="text-zinc-300">Raw samples, only if you turn them on:</strong> up to five sampled destination records and up to 500 characters of an upstream error, kept about 30 days and then deleted automatically.</>,
       <><strong className="text-zinc-300">Pricing interest:</strong> if you click a plan on the pricing page, the plan and any note you type, with your email.</>,
       <><strong className="text-zinc-300">Password resets:</strong> a hash of the one-time token, for one hour.</>,
-      <><strong className="text-zinc-300">Not stored:</strong> IP addresses are counted in memory for rate limiting and never written down. There are no analytics or advertising trackers and no cookies; your session token lives in your browser's local storage.</>,
+      <><strong className="text-zinc-300">Not stored:</strong> The application uses IP addresses in memory for rate limiting; hosting-provider request logs may include connection metadata. There are no analytics or advertising trackers and no cookies; your session token lives in your browser's local storage.</>,
     ],
   },
   {
@@ -24,19 +24,19 @@ const SECTIONS = [
   },
   {
     title: "Who else touches the data",
-    paras: ["Two providers, and nothing is sold or shared for advertising."],
+    paras: ["Cloudflare hosts the service and Resend sends email. Configured Slack or Discord webhooks receive alert text through the destination you choose. Nothing is sold or shared for advertising."],
     list: [
-      <><strong className="text-zinc-300">Cloudflare</strong> hosts the application, the API and the database (Workers, Pages and D1), primarily in the Asia-Pacific region, and keeps short-lived operational logs of requests and errors.</>,
+      <><strong className="text-zinc-300">Cloudflare</strong> hosts the application, the API and the database (Workers, Pages and D1), and processes operational request and error logs according to the hosting configuration.</>,
       <><strong className="text-zinc-300">Resend</strong> sends password-reset emails and email alerts, and therefore sees the recipient address and the alert text.</>,
     ],
   },
   {
     title: "How long we keep it",
     list: [
-      "Account, Checks and runs: until you delete the Check or the account.",
-      "Raw samples: about 30 days from the run.",
+      "Account and Checks: until you delete them. Runs: 90 days, retaining at least the newest 35 runs and newest 30 PASS runs per Check regardless of age; deleting a Check or account removes them.",
+      "Raw samples: about 30 days from the run, removed by the periodic cleanup task.",
       "Password-reset tokens: one hour, or until used.",
-      "Operational logs at Cloudflare: a few days, on Cloudflare's schedule.",
+      "Operational logs: retained according to the configured Cloudflare logging service.",
     ],
     paras: [],
   },
@@ -55,5 +55,5 @@ const SECTIONS = [
 ];
 
 export default function PrivacyPage() {
-  return <LegalPage eyebrow="Privacy" title="Privacy policy." intro="Short, because the product stores little. This page says what VerifyRuns keeps about you and your destinations, who else touches it, and how to make it go away." updated="2026-08-29" sections={SECTIONS} />;
+  return <LegalPage eyebrow="Privacy" title="Privacy policy." intro="Short, because the product stores little. This page says what VerifyRuns keeps about you and your destinations, who else touches it, and how to make it go away." updated="2026-09-05" sections={SECTIONS} />;
 }

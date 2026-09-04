@@ -490,13 +490,8 @@ export async function webhook(env: Env, request: Request, ctx: ExecutionContext,
   enforce(limiter(env, "hook"), secret);
   const row = await env.DB.prepare("SELECT id FROM checks WHERE webhook_secret = ?").bind(secret).first<{ id: string }>();
   if (!row) throw new HttpError(404, "Unknown webhook");
-  let body: unknown = null;
-  try {
-    const text = await request.text();
-    body = text ? JSON.parse(text) : null;
-  } catch {
-    body = null;
-  }
+  // Invalid JSON must not silently discard an intended claim and run weaker checks.
+  const body: unknown = await readJson(request);
   const [claimedNew, claimNote] = parseClaimed(body);
   const [reported, reportNote] = parseReported(body);
   const bodyNote = [claimNote, reportNote].filter(Boolean).join("; ") || null;
