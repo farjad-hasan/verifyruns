@@ -31,11 +31,11 @@ Any text a user is expected to read — captions, helper text, eyebrows, timesta
 - **THEN** its colour measures ≥ 4.5:1 against `#121214`
 
 ### Requirement: Only the system typefaces load
-Pages SHALL request only Outfit, Manrope and JetBrains Mono from the font provider; no page SHALL request Inter or any other family.
+Pages SHALL use only Outfit, Manrope and JetBrains Mono, served from the site's own origin as vendored files under their SIL Open Font License; no page SHALL request any font provider, and no page SHALL request Inter or any other family.
 
 #### Scenario: Font requests on first load
 - **WHEN** `/` is loaded with an empty cache
-- **THEN** every `fonts.googleapis.com` request names only Outfit, Manrope or JetBrains Mono
+- **THEN** every font request goes to the site's own origin and names only Outfit, Manrope or JetBrains Mono, and no request goes to `fonts.googleapis.com` or `fonts.gstatic.com`
 
 ### Requirement: Every form control has a visible, associated label
 Text inputs, textareas and selects on New Check, the Expectations editor, the Alert channels form and the Run history filters SHALL each have a `<label>` associated by `for`/`id` (or wrapping), visible on screen; a placeholder SHALL NOT be the only label. The expectation fields (growth mode, minimum new records, required fields, non-empty fields) and the heartbeat field SHALL be rendered by one shared component on both New Check and the Expectations editor, so their labels, hints and option text cannot diverge between the two forms.
