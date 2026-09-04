@@ -88,7 +88,7 @@ function airtable(total: number, newestIndex: number) {
 
 describe("airtable", () => {
   const cfg = async () => ({ base_id: "appX", table: "Orders", view: null, pat_encrypted: await enc("pat") });
-  it("pages with fields[] after page one; exact count; sample is page one", async () => {
+  it("pages with fields[] after page one; exact count; sample includes page one plus the newest five", async () => {
     const { handler, calls } = airtable(250, 5);
     setFetchForTests(handler);
     const r = await fetchRecords(env, "airtable", await cfg());
@@ -99,7 +99,7 @@ describe("airtable", () => {
     expect(pages.every((u) => u.searchParams.getAll("fields[]").join() === "n")).toBe(true);
     expect(calls[0].searchParams.has("fields[]")).toBe(false);
     expect(calls[0].searchParams.get("pageSize")).toBe("100");
-    expect(r.records!.length).toBe(100);
+    expect(r.records!.length).toBe(104);
     expect(r.records![0].n).toBe(5);
     expect(r.meta!.capped).toBe(false);
   });
@@ -109,7 +109,7 @@ describe("airtable", () => {
     const r = await fetchRecords(env, "airtable", await cfg());
     expect(r.records![0].n).toBe(230);
     expect(r.records![0].name).toBe("row 230");
-    expect(r.records!.length).toBe(101);
+    expect(r.records!.length).toBe(105);
     expect(calls.filter((u) => u.pathname.endsWith("/rec230")).length).toBe(1);
   });
   it("caps at VR_AIRTABLE_MAX_PAGES and flags it", async () => {
@@ -118,7 +118,7 @@ describe("airtable", () => {
     const r = await fetchRecords({ ...env, VR_AIRTABLE_MAX_PAGES: "2" }, "airtable", await cfg());
     expect(r.meta!.total).toBe(200);
     expect(r.meta!.capped).toBe(true);
-    expect(calls.length).toBe(2);
+    expect(calls.filter(u => !u.pathname.split("/").at(-1)!.startsWith("rec")).length).toBe(2);
   });
   it("single page makes one request; missing records array fails", async () => {
     const { handler, calls } = airtable(7, 3);

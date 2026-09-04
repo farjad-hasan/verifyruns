@@ -49,7 +49,7 @@ export default function AuthPage({ mode }) {
             {isLogin ? "Log in to VerifyRuns" : "Create your account"}
           </h1>
           <p className="text-zinc-400 mb-10">
-            {isLogin ? "Pick up where you left off." : "No credit card. Add your first Check in minutes."}
+            {isLogin ? "Pick up where you left off." : "No credit card. Start with one workflow and a destination baseline."}
           </p>
 
           {sessionExpired && (
@@ -60,8 +60,9 @@ export default function AuthPage({ mode }) {
 
           <form onSubmit={submit} className="space-y-4">
             <div>
-              <label className="text-xs uppercase tracking-wider text-quiet block mb-2">Email</label>
+              <label htmlFor="auth-email" className="text-xs uppercase tracking-wider text-quiet block mb-2">Email</label>
               <input
+                id="auth-email"
                 type="email"
                 required
                 autoComplete="email"
@@ -73,8 +74,9 @@ export default function AuthPage({ mode }) {
               />
             </div>
             <div>
-              <label className="text-xs uppercase tracking-wider text-quiet block mb-2">Password</label>
+              <label htmlFor="auth-password" className="text-xs uppercase tracking-wider text-quiet block mb-2">Password</label>
               <input
+                id="auth-password"
                 type="password"
                 required
                 minLength={6}
@@ -107,7 +109,7 @@ export default function AuthPage({ mode }) {
 
           <p className="mt-8 text-sm text-quiet">
             {isLogin ? "New to VerifyRuns? " : "Already have an account? "}
-            <Link to={isLogin ? "/signup" : "/login"} className="text-zinc-200 rp-inline" data-testid="auth-switch-link">
+            <Link to={`${isLogin ? "/signup" : "/login"}${next ? `?next=${encodeURIComponent(next)}` : ""}`} className="text-zinc-200 rp-inline" data-testid="auth-switch-link">
               {isLogin ? "Create an account" : "Log in"}
             </Link>
           </p>

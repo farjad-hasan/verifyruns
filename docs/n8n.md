@@ -1,5 +1,7 @@
 # VerifyRuns with n8n
 
+Before connecting the workflow, create a Check and record a baseline with **Run Check now**. The first count assertion is FAIL / Verification incomplete, without a setup alert. Send the next webhook only after the batch commits. Use one writer, a stable complete result set and sequential batches. The `wrote` count means **expected new records**, not updates or arbitrary input items. See the public [setup guide](https://verifyruns.pages.dev/setup) for scope and connector limits.
+
 Add one **HTTP Request** node as the last step of the workflow you want verified.
 
 | Field | Value |
@@ -10,19 +12,19 @@ Add one **HTTP Request** node as the last step of the workflow you want verified
 | Body Content Type | JSON |
 | Body | `{ "wrote": {{ $input.all().length }} }` |
 
-`$input.all().length` is the number of items that reached the node — normally the number of records the previous node wrote. If the node runs once per item, set **Execute Once** on it or move it after an aggregation step, otherwise it fires once per item.
+`$input.all().length` is the number of items that reached the node — use it only if each item represents one expected new destination record. If the node runs once per item, set **Execute Once** on it or move it after an aggregation step, otherwise it fires once per item.
 
 Leave the body empty if you only want VerifyRuns to check growth against the Check's own minimum.
 
-Don't want the node to wait for the destination read? Append `?wait=0` to the URL: VerifyRuns answers `202` immediately and runs the check within a minute.
+Don't want the node to wait for the destination read? Append `?wait=0` to the URL: VerifyRuns answers `202` immediately and queues the check for the periodic scheduler (normally the next tick, with no fixed latency guarantee).
 
 ## Telling VerifyRuns the workflow failed
 
-Point your **Error Workflow** (Workflow settings → Error workflow) at the same webhook with the body `{ "failed": true, "error": "{{ $json.execution.error.message }}" }` (a JSON boolean, not the string `"true"`). That run is a FAIL with the sentence "Your workflow reported failure: …", is alerted straight away (no retry — re-reading the destination cannot change what the workflow said), and the next normal run recovers it. Without this, an n8n execution that dies before the last node is only caught by the heartbeat.
+Point your **Error Workflow** (Workflow settings → Error workflow) at the same webhook with the body `{ "failed": true, "error": "{{ $json.execution.error.message }}" }` (a JSON boolean, not the string `"true"`). That run is a FAIL with the sentence "Your workflow reported failure: …", is alerted straight away (no retry — re-reading the destination cannot change what the workflow said), and the next passing run recovers it. Without this, an n8n execution that dies before the last node is only caught by the heartbeat.
 
 ## What the verdict means
 
-- **PASS** — the destination gained at least what the workflow claimed (or the Check's minimum) and every field rule held.
+- **PASS** — the destination gained at least what the workflow claimed (or the Check's minimum) and the configured sampled-field rules held; a first read only establishes a baseline.
 - **FAIL** — the run said "done" but the destination disagrees. The message says exactly how: `your workflow said it wrote 3 records; the destination gained 0`. Or the workflow said it failed: `Your workflow reported failure: step 4 timed out.`
 
 ## Making the n8n execution fail too

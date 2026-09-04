@@ -19,7 +19,7 @@ describe("webhook + runs (parity with test_serverless / test_claimed_api / test_
     expect(r.status).toBe(200);
     expect(r.data.verdict).toBe("PASS");
     expect(r.data.timed_out).toBe(false);
-    expect(r.data.diff_message.startsWith("First successful check")).toBe(true);
+    expect(r.data.diff_message.startsWith("Destination read successfully")).toBe(true);
     const runs = await runsOf(c.id, u.token);
     expect(runs.map((x: any) => x.id)).toEqual([r.data.run_id]);
     expect(runs[0].trigger).toBe("webhook");
@@ -39,13 +39,13 @@ describe("webhook + runs (parity with test_serverless / test_claimed_api / test_
       expect(Object.keys(run).sort()).toEqual(["diff_message", "id", "timestamp", "verdict"]);
       expect(typeof run.diff_message).toBe("string");
     }
-    expect(list.data[0].recent_runs[0].diff_message.startsWith("First successful check")).toBe(true);
+    expect(list.data[0].recent_runs[0].diff_message.startsWith("Destination read successfully")).toBe(true);
     const on = await api(`/checks/${c.id}/public`, { method: "POST", token: u.token });
     const pub = await api(`/public/checks/${on.data.public_token}`);
     for (const run of pub.data.runs) expect(Object.keys(run).sort()).toEqual(["alerts_sent", "diff_message", "id", "timestamp", "trigger", "verdict"]);
   });
 
-  it("a capped Airtable fetch marks the stored fingerprint and the next run skips the growth rule", async () => {
+  it("a capped Airtable fetch marks the stored fingerprint and the next run cannot verify growth", async () => {
     // every page returns one record and an offset forever, so the 40-page ceiling always trips
     setFetchForTests(async (url) => {
       const off = new URL(url).searchParams.get("offset") || "0";
@@ -55,12 +55,12 @@ describe("webhook + runs (parity with test_serverless / test_claimed_api / test_
     const r = await api("/checks", { method: "POST", token: u.token, json: { name: "at", connector_kind: "airtable", config: { base_id: "app1", table: "T" } } });
     expect(r.status).toBe(200);
     const first = await api(`/hook/${r.data.webhook_secret}`, { method: "POST" });
-    expect(first.data.verdict).toBe("PASS");
+    expect(first.data.verdict).toBe("FAIL");
     const stored = await env.DB.prepare("SELECT fingerprint FROM check_runs WHERE id = ?").bind(first.data.run_id).first<{ fingerprint: string }>();
     expect(JSON.parse(stored!.fingerprint).count_capped).toBe(true);
     const second = await api(`/hook/${r.data.webhook_secret}`, { method: "POST" });
-    expect(second.data.verdict).toBe("PASS");
-    expect(second.data.diff_message).toContain("Record-count checks were skipped: the count is capped.");
+    expect(second.data.verdict).toBe("FAIL");
+    expect(second.data.diff_message).toContain("Record-count checks could not be evaluated: the count is capped.");
     expect(second.data.diff_message).toContain("Count capped at 4,000 records.");
   });
 
@@ -69,7 +69,8 @@ describe("webhook + runs (parity with test_serverless / test_claimed_api / test_
     const u = await user();
     const c = await makeCheck(u.token, { expectations: { min_new_records: 0 } });
     const first = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { wrote: 0 } });
-    expect(first.data.verdict).toBe("PASS");
+    expect(first.data.verdict).toBe("FAIL");
+    expect(first.data.diff_message).toContain("Baseline recorded");
     const second = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { wrote: 2 } });
     expect(second.data.verdict).toBe("FAIL");
     expect(second.data.diff_message).toBe("Run reported success, but your workflow said it wrote 2 records; the destination gained 0.");
@@ -151,7 +152,7 @@ describe("webhook + runs (parity with test_serverless / test_claimed_api / test_
     });
     const u = await user();
     const c = await makeCheck(u.token, { expectations: { min_new_records: 1 }, retry_before_alert: false, alert_channels: [{ kind: "discord", target: "https://discord.com/api/webhooks/1/abcd" }] });
-    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("PASS");
+    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("FAIL");
     const f1 = await api(`/hook/${c.webhook_secret}`, { method: "POST" });
     expect(f1.data.verdict).toBe("FAIL");
     const f2 = await api(`/hook/${c.webhook_secret}`, { method: "POST" });
@@ -216,28 +217,27 @@ describe("reported failure (failed: true in the webhook body)", () => {
     expect(okRun.reported_error).toBeNull();
   });
 
-  it("stays out of the PASS baseline: the next honest run is judged against earlier PASSes only", async () => {
+  it("a reported failure is excluded from field history but its readable count starts the next interval", async () => {
     let n = 200;
     setFetchForTests(async () => jsonResponse(todos(n)));
     const u = await user();
     const c = await makeCheck(u.token, { expectations: { min_new_records: 1 }, retry_before_alert: false });
-    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("PASS"); // baseline 200
+    expect((await api(`/hook/${c.webhook_secret}`, { method: "POST" })).data.verdict).toBe("FAIL"); // baseline 200
     n = 205;
     const f = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { failed: true, error: "half-written" } });
     expect(f.data.verdict).toBe("FAIL");
-    // If the reported failure had joined the baseline (205), a run at 206 would only show +1.
-    // Against the real baseline (200) it gains 6, which the claimed count checks exactly.
+    // Do not borrow the five writes from a prior failed batch to substantiate this batch.
     n = 206;
     const r = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { wrote: 6 } });
-    expect(r.data.verdict).toBe("PASS");
-    expect(r.data.diff_message).toContain("6");
+    expect(r.data.verdict).toBe("FAIL");
+    expect(r.data.diff_message).toContain("destination gained 1");
   });
 
   it("failed: false is ignored; a queued (?wait=0) reported failure survives the tick", async () => {
     serve();
     const u = await user();
     const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, retry_before_alert: false });
-    const ok = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { failed: false, wrote: 0 } });
+    const ok = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { failed: false } });
     expect(ok.data.verdict).toBe("PASS");
     const q = await api(`/hook/${c.webhook_secret}?wait=0`, { method: "POST", json: { failed: true, error: "queued boom" } });
     expect(q.status).toBe(202);
@@ -255,7 +255,8 @@ describe("reported failure edge cases", () => {
     const u = await user();
     const c = await makeCheck(u.token, { expectations: { min_new_records: 0 }, retry_before_alert: false });
     const r = await api(`/hook/${c.webhook_secret}`, { method: "POST", json: { failed: "true", wrote: "lots" } });
-    expect(r.data.verdict).toBe("PASS");
+    expect(r.data.verdict).toBe("FAIL");
+    expect(r.data.diff_message).toContain("Verification incomplete");
     const run = (await api(`/runs/${r.data.run_id}`, { token: u.token })).data;
     expect(run.reported_failure).toBe(false);
     expect(run.body_note).toBe("webhook body ignored: `wrote` is not an integer; webhook body ignored: `failed` is not a boolean");

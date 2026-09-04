@@ -57,7 +57,7 @@ describe("claims: keys and clamps", () => {
     const [claimed] = parseClaimed({ wrote: 0 });
     const [v, m] = computeVerdict(fingerprint(records(40)), [passRun(40)], DEFAULTS, claimed);
     expect(v).toBe("PASS");
-    expect(m).toBe("Destination gained 0 record(s), matching what your workflow reported.");
+    expect(m).toBe("Destination gained 0 record(s) since the previous observation; your workflow reported at least 0. Configured checks passed.");
   });
   it("claimed mode with a negative body FAILs with the teaching message", () => {
     const [claimed] = parseClaimed({ wrote: -1 });
@@ -68,32 +68,32 @@ describe("claims: keys and clamps", () => {
 });
 
 describe("verdict: inexact counts", () => {
-  const SKIP_CAP = "Record-count checks were skipped: the count is capped.";
-  const SKIP_EST = "Record-count checks were skipped: the count is estimated.";
+  const SKIP_CAP = "Record-count checks could not be evaluated: the count is capped. Use a complete, countable destination.";
+  const SKIP_EST = "Record-count checks could not be evaluated: the count is estimated. Use a complete, countable destination.";
   const capped = (fp: any) => ({ ...fp, count_capped: true });
   const cappedPass = (n: number, fields?: string[]) => ({ ...passRun(n, fields), fingerprint: { ...passRun(n, fields).fingerprint, count_capped: true } });
 
-  it("a capped run skips the growth rule with a note instead of failing on a saturated delta", () => {
+  it("a capped run cannot substantiate growth with a note instead of failing on a saturated delta", () => {
     const [v, m] = computeVerdict(capped(fingerprint(records(100), 4000)), [passRun(4000)], DEFAULTS);
-    expect(v).toBe("PASS");
-    expect(m).toBe(`All expectations met. ${SKIP_CAP}`);
+    expect(v).toBe("FAIL");
+    expect(m).toBe(`Verification incomplete. ${SKIP_CAP}`);
   });
-  it("a capped baseline also skips the growth rule", () => {
+  it("a capped baseline also cannot substantiate growth", () => {
     const [v, m] = computeVerdict(fingerprint(records(100), 100), [cappedPass(4000)], DEFAULTS);
-    expect(v).toBe("PASS");
-    expect(m).toBe(`All expectations met. ${SKIP_CAP}`);
+    expect(v).toBe("FAIL");
+    expect(m).toBe(`Verification incomplete. ${SKIP_CAP}`);
   });
-  it("an estimated baseline against a sample-collapsed count does not FAIL", () => {
+  it("an estimated baseline against a sample-collapsed count is incomplete", () => {
     const est = { ...passRun(5_000_000), fingerprint: { ...passRun(5_000_000).fingerprint, count_estimated: true } };
     const [v, m] = computeVerdict(fingerprint(records(100), 100), [est], DEFAULTS);
-    expect(v).toBe("PASS");
-    expect(m).toBe(`All expectations met. ${SKIP_EST}`);
+    expect(v).toBe("FAIL");
+    expect(m).toBe(`Verification incomplete. ${SKIP_EST}`);
   });
-  it("this run's COUNT timing out (count_estimated on the run itself) also skips growth", () => {
+  it("this run's COUNT timing out (count_estimated on the run itself) cannot verify growth", () => {
     const fp = { ...fingerprint(records(100), 100), count_estimated: true };
     const [v, m] = computeVerdict(fp, [passRun(5_000_000)], DEFAULTS);
-    expect(v).toBe("PASS");
-    expect(m).toBe(`All expectations met. ${SKIP_EST}`);
+    expect(v).toBe("FAIL");
+    expect(m).toBe(`Verification incomplete. ${SKIP_EST}`);
   });
   it("field rules still fire on a capped run", () => {
     const prev = [0, 1, 2].map(() => cappedPass(4000, ["id", "name", "sku"]));
@@ -102,10 +102,10 @@ describe("verdict: inexact counts", () => {
     expect(m).toContain("the field `sku` disappeared — it was present in the last 3 good runs");
     expect(m).toContain(SKIP_CAP);
   });
-  it("steady mode with an inexact count does not FAIL on change", () => {
+  it("steady mode with an inexact count is incomplete on change", () => {
     const [v, m] = computeVerdict(capped(fingerprint(records(11), 11)), [passRun(12)], { ...DEFAULTS, growth_mode: "steady" });
-    expect(v).toBe("PASS");
-    expect(m).toBe(`All expectations met. ${SKIP_CAP}`);
+    expect(v).toBe("FAIL");
+    expect(m).toBe(`Verification incomplete. ${SKIP_CAP}`);
   });
   it("claimed mode still requires the claim even when the count is inexact", () => {
     const [v, m] = computeVerdict(capped(fingerprint(records(100), 4000)), [passRun(4000)], { ...DEFAULTS, growth_mode: "claimed" }, null);
@@ -117,8 +117,8 @@ describe("verdict: inexact counts", () => {
 describe("verdict: growth", () => {
   it("first run", () => {
     const [v, m] = computeVerdict(fingerprint(records(40)), [], DEFAULTS);
-    expect(v).toBe("PASS");
-    expect(m).toBe("First successful check. Destination has 40 records across 2 fields.");
+    expect(v).toBe("FAIL");
+    expect(m).toBe("Verification incomplete. Baseline recorded at 40 records. Growth has not been verified yet; send the next run after the workflow writes to the destination.");
   });
   it("no-op run FAILs", () => {
     const [v, m] = computeVerdict(fingerprint(records(40)), [passRun(40)], DEFAULTS);
@@ -126,7 +126,7 @@ describe("verdict: growth", () => {
     expect(m).toBe("Run reported success, but the destination gained 0 records (expected at least 1).");
   });
   it("growth PASSes, also with a large true count over a 100 sample", () => {
-    expect(computeVerdict(fingerprint(records(43)), [passRun(40)], DEFAULTS)).toEqual(["PASS", "Destination gained 3 record(s). All expectations met."]);
+    expect(computeVerdict(fingerprint(records(43)), [passRun(40)], DEFAULTS)).toEqual(["PASS", "Destination gained 3 record(s) since the previous observation. Configured checks passed."]);
     expect(computeVerdict(fingerprint(records(100), 2403), [passRun(2400, ["id", "name"], 100)], DEFAULTS)[0]).toBe("PASS");
   });
   it("two reasons joined with 'and'", () => {
@@ -144,16 +144,16 @@ describe("verdict: growth", () => {
 describe("verdict: claimed / steady", () => {
   it("claimed mismatch and match", () => {
     expect(computeVerdict(fingerprint(records(40)), [passRun(40)], DEFAULTS, 3)).toEqual(["FAIL", "Run reported success, but your workflow said it wrote 3 records; the destination gained 0."]);
-    expect(computeVerdict(fingerprint(records(43)), [passRun(40)], DEFAULTS, 3)).toEqual(["PASS", "Destination gained 3 record(s), matching what your workflow reported."]);
+    expect(computeVerdict(fingerprint(records(43)), [passRun(40)], DEFAULTS, 3)).toEqual(["PASS", "Destination gained 3 record(s) since the previous observation; your workflow reported at least 3. Configured checks passed."]);
     expect(computeVerdict(fingerprint(records(42)), [passRun(40)], { ...DEFAULTS, min_new_records: 5 }, 2)[0]).toBe("PASS");
   });
   it("growth optional at 0", () => {
-    expect(computeVerdict(fingerprint(records(40)), [passRun(40)], { ...DEFAULTS, min_new_records: 0 })).toEqual(["PASS", "Destination gained 0 record(s). All expectations met."]);
+    expect(computeVerdict(fingerprint(records(40)), [passRun(40)], { ...DEFAULTS, min_new_records: 0 })).toEqual(["PASS", "Destination read successfully. Configured checks passed. No record-growth requirement was configured."]);
   });
   it("steady", () => {
     const STEADY = { ...DEFAULTS, growth_mode: "steady" as const };
     expect(computeVerdict(fingerprint(records(11)), [passRun(12)], STEADY)).toEqual(["FAIL", "Run reported success, but the destination changed by -1 records (expected no change)."]);
-    expect(computeVerdict(fingerprint(records(12)), [passRun(12)], STEADY)).toEqual(["PASS", "Destination unchanged at 12 records. All expectations met."]);
+    expect(computeVerdict(fingerprint(records(12)), [passRun(12)], STEADY)).toEqual(["PASS", "Destination unchanged at 12 records since the previous observation. Configured checks passed."]);
   });
   it("claimed mode without a count", () => {
     const CLAIMED = { ...DEFAULTS, growth_mode: "claimed" as const };
@@ -174,11 +174,12 @@ describe("verdict: non-empty window", () => {
     expect(computeVerdict(fingerprint(rows([""])), prev(1), NE)[1]).toContain("the field `email` is empty in the newest record");
     expect(computeVerdict(fingerprint(rows(["a", "", "", "", "b"])), prev(5), NE)[0]).toBe("PASS");
   });
-  it("undefined newest skips with a note", () => {
+  it("undefined newest fails a configured newest-record assertion", () => {
     const prev = [passRun(3, ["email", "id"])];
     const [v, m] = computeVerdict(fingerprint(rows(["", "", ""]), undefined, false), prev, NE);
-    expect(v).toBe("PASS");
-    expect(m.endsWith("Newest-record checks were skipped: add ORDER BY <timestamp column> DESC to the query to enable them.")).toBe(true);
+    expect(v).toBe("FAIL");
+    expect(m).toContain("Newest-record checks could not be evaluated:");
+    expect(m).toContain("ORDER BY");
     expect(computeVerdict(fingerprint(rows(["", "", ""]), undefined, false), prev, { ...NE, non_empty_fields: [] })[1]).not.toContain("skipped");
   });
 });

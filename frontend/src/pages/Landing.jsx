@@ -79,23 +79,23 @@ export default function Landing() {
               Destination watchdog for n8n, Make and Zapier
             </div>
             <h1 className="font-display text-4xl sm:text-5xl font-semibold leading-[1.05] tracking-tight rp-fade" style={{ animationDelay: "60ms" }}>
-              Your automation said <span className="text-quiet line-through decoration-2 decoration-red-500/60">Done</span>.
+              Your workflow finished.
               <br />
-              VerifyRuns checks if that&apos;s true.
+              Check the destination.
             </h1>
             <p className="mt-8 text-lg text-zinc-400 max-w-xl leading-relaxed rp-fade" style={{ animationDelay: "140ms" }}>
-              Workflows finish green while writing nothing — or the wrong thing — to the destination. Every monitor watches the run.
-              VerifyRuns re-reads the destination after each one and says, in a sentence, what actually landed.
+              A green run can still leave missing output. VerifyRuns independently reads your destination and checks record growth and sampled fields.
+              Get a plain-English alert when a configured check fails or cannot be verified.
             </p>
             <div className="mt-10 flex items-center gap-3 rp-fade" style={{ animationDelay: "220ms" }}>
               <Link to="/signup" className="rp-btn-primary" data-testid="hero-signup-btn">
                 Start free <ArrowRight size={16} />
               </Link>
-              <Link to="/login" className="rp-btn-ghost" data-testid="hero-login-btn">
-                I have an account
+              <Link to="/setup" className="rp-btn-ghost" data-testid="hero-setup-btn">
+                Read the setup guide
               </Link>
             </div>
-            <p className="mt-4 text-xs text-quiet font-mono">Early access · everything free · no card</p>
+            <p className="mt-4 text-xs text-quiet font-mono">Free early access · no card</p>
           </div>
 
           {/* The product is the sentence, so the sentence is the hero */}
@@ -116,9 +116,9 @@ export default function Landing() {
                   ))}
                 </div>
               </div>
-              <p className="mt-3 text-xs text-quiet font-mono">alerted: slack ✓ · discord ✓</p>
+              <p className="mt-3 text-xs text-quiet font-mono">Example: failure notification accepted by Slack</p>
             </div>
-            <p className="mt-3 text-xs text-quiet max-w-[65ch]">A real verdict, word for word. No score, no model — deterministic checks you can read.</p>
+            <p className="mt-3 text-xs text-quiet max-w-[65ch]">Example verdict from the deterministic rules. No model or score.</p>
           </div>
         </div>
       </section>
@@ -128,15 +128,15 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto px-6 lg:px-10 py-20">
           <p className="text-xs uppercase tracking-widest text-red-400 mb-3">The silent failure</p>
           <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-6 max-w-3xl">
-            Every monitoring tool watches the run.
+            A successful run is one signal.
             <br />
-            <span className="text-quiet">Nobody watches the destination.</span>
+            <span className="text-quiet">Check the output too.</span>
           </h2>
           <div className="grid md:grid-cols-3 gap-5 mt-10">
             {[
               { title: "Zapier says ✓", body: "Task completed. 200 OK. All nodes green.", tag: "Reality" },
-              { title: "Airtable says …", body: "Zero new rows. The upsert matched an existing record and silently no-op'd.", tag: "Truth" },
-              { title: "You find out", body: "Three days later, when a customer emails asking where their invoice went.", tag: "Pain" },
+              { title: "Airtable says …", body: "Zero new rows, even though this insert-only batch expected three.", tag: "Truth" },
+              { title: "You find out", body: "A missing record can go unnoticed until a customer asks about it.", tag: "Pain" },
             ].map((c) => (
               <div key={c.title} className="rp-card p-6">
                 <p className="text-[11px] uppercase tracking-widest text-quiet mb-3">{c.tag}</p>
@@ -153,14 +153,14 @@ export default function Landing() {
         <div className="max-w-5xl mx-auto px-6 lg:px-10 py-20 grid md:grid-cols-2 gap-10">
           <div>
             <p className="text-xs uppercase tracking-widest text-emerald-400 mb-3">Who this is for</p>
-            <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">Agencies at client #21.<br /><span className="text-quiet">Operators whose syncs touch money.</span></h2>
+            <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">For the person maintaining the sync.<br /><span className="text-quiet">Before someone asks where the output went.</span></h2>
           </div>
           <div className="space-y-5 text-zinc-400 leading-relaxed max-w-[65ch]">
             <p>
-              If you run automations for other people, "it ran" is not an answer you can give a client. VerifyRuns gives you the sentence and a public status page you can hand over.
+              Start with a scheduled, append-only sync into HTTP / JSON, Airtable or Postgres. Set the expected additions and fields, then receive a verdict after each completed batch.
             </p>
             <p>
-              If your own workflow moves orders, invoices or CRM records, a green run that wrote nothing costs real money before anyone notices. One HTTP call at the end of the workflow, and it can't happen quietly.
+              Built for operators and automation consultants maintaining these workflows. Aggregate checks do not verify individual record identities or arbitrary values. Updates, other writers and rolling result sets need a different verification approach.
             </p>
           </div>
         </div>
@@ -170,12 +170,12 @@ export default function Landing() {
       <section className="border-t border-raised">
         <div className="max-w-5xl mx-auto px-6 lg:px-10 py-20">
           <p className="text-xs uppercase tracking-widest text-emerald-400 mb-3">How it works</p>
-          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-12">Three steps. About four minutes.</h2>
+          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-12">Connect. Establish a baseline. Verify.</h2>
           <div className="grid md:grid-cols-3 gap-8">
             {[
-              { icon: <ShieldCheck size={20} />, title: "Create a Check", body: "Point VerifyRuns at your destination — an HTTP endpoint, an Airtable table, a read-only Postgres query. Say what a good run looks like: growth, required fields, a heartbeat." },
-              { icon: <Zap size={20} />, title: "Paste the webhook", body: "One HTTP Request node at the end of your workflow. Optionally send {\"wrote\": N} and the verdict reconciles your count against the destination." },
-              { icon: <Eye size={20} />, title: "Get verdicts", body: "PASS or FAIL with a sentence. Slack, Discord or email on the first FAIL and again on recovery — never one message per red run." },
+              { icon: <ShieldCheck size={20} />, title: "Create a Check", body: "Connect a supported destination with read-only access. Choose count and field expectations, then run a first read to establish the baseline." },
+              { icon: <Zap size={20} />, title: "Paste the webhook", body: "POST after the batch commits. Send {\"wrote\": N} to require at least N net additions since the previous destination observation." },
+              { icon: <Eye size={20} />, title: "Get verdicts", body: "Read the PASS or FAIL sentence. Configure and test Slack, Discord or email delivery. Add a heartbeat to detect missing runs." },
             ].map((s) => (
               <div key={s.title} className="rp-card p-8">
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 mb-6">
@@ -193,8 +193,9 @@ export default function Landing() {
       <section className="border-t border-raised bg-ink-alt">
         <div className="max-w-5xl mx-auto px-6 lg:px-10 py-20">
           <p className="text-xs uppercase tracking-widest text-emerald-400 mb-3">Set up in your tool</p>
-          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-10">One node. Copy, paste, done.</h2>
+          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-10">One HTTP step after the write.</h2>
           <SetupTabs />
+          <p className="text-sm text-quiet mt-4">Use an input count only when every item represents one expected new record. Establish a baseline first and send one webhook per completed batch. <Link to="/setup" className="rp-inline">Full setup and limits</Link>.</p>
         </div>
       </section>
 
@@ -206,7 +207,7 @@ export default function Landing() {
             One of my own scheduled jobs hit a lock, exited 0, and recorded nothing. The only evidence was a single line in a log I wasn't reading. The scheduler was happy. The output was missing.
           </p>
           <p className="mt-6 text-zinc-400 leading-relaxed max-w-[65ch]">
-            I built the check my own agents needed: read the thing that was supposed to change, and say whether it did. Then I made it work for everyone else's workflows.
+            I built a destination check for my own jobs. This alpha makes those count and field checks available to other automation operators. I’m looking for real workflows and candid feedback.
           </p>
           <p className="mt-3 text-sm text-quiet font-mono">— Farjad Hasan</p>
         </div>
@@ -215,8 +216,8 @@ export default function Landing() {
       {/* CTA */}
       <section className="border-t border-raised">
         <div className="max-w-3xl mx-auto px-6 lg:px-10 py-20 text-center">
-          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">Stop trusting the green checkmark.</h2>
-          <p className="mt-4 text-zinc-400 text-lg max-w-[65ch] mx-auto">Free during early access. First Check in under five minutes.</p>
+          <h2 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight">Give your next sync a second check.</h2>
+          <p className="mt-4 text-zinc-400 text-lg max-w-[65ch] mx-auto">Free during early access. Start with one suitable workflow and test its failure path.</p>
           <div className="mt-10 flex items-center justify-center gap-3">
             <Link to="/signup" className="rp-btn-primary" data-testid="cta-signup-btn">
               Create your first Check <ArrowRight size={16} />

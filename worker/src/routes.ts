@@ -6,8 +6,26 @@ import { clientIp, HttpError, json, readJson, validation } from "./http";
 import { PLAN_IDS, PLANS } from "./plans";
 import { CONNECTOR_KINDS, isEmail, parseChannel, parseExpectations, parseHeartbeat, parseHeartbeatWindow, parseName, validateHeartbeatCapacity, validateChannelTarget } from "./validate";
 import { RateLimiter } from "./egress";
+import { channels, deliver, slackEscape } from "./alerts";
 
 export const EMAIL_NOT_CONFIGURED = "Email alerts are not configured on this host (set RESEND_API_KEY and ALERT_FROM).";
+
+export async function testChannel(env: Env, request: Request, id: string, channelId: string): Promise<Response> {
+  const user = await currentUser(env, request);
+  const check = await getCheckForUser(env, id, user.id);
+  enforce(limiter(env, "create"), `channel-test:${user.id}`);
+  const channel = (await channels(env, check)).find((ch) => ch.id === channelId);
+  if (!channel) throw new HttpError(404, "Alert channel not found");
+  if (!channel.target) return json({ ok: false, message: "Stored channel could not be read. Remove it and add it again." }, 502);
+  validateChannelTarget(channel.kind, channel.target, flag(env.VR_ALLOW_PRIVATE_EGRESS, false), ["channel"]);
+  const result = await deliver(env, channel.kind, channel.target,
+    `VerifyRuns test alert — ${channel.kind === "slack" ? slackEscape(check.name) : check.name}\nThis is a delivery test. No workflow failed and the Check's status has not changed.`,
+    `VerifyRuns: test alert — ${check.name}`);
+  // Provider bodies can echo credentials. Return a useful generic message, not that body.
+  return json(result.ok
+    ? { ok: true, message: "Test accepted by the alert provider. Confirm it arrived in your channel or inbox." }
+    : { ok: false, message: "The alert provider did not accept the test. Check the channel settings and try again." }, result.ok ? 200 : 502);
+}
 const JWT_EXPIRE_DAYS = 7;
 const D1_BIND_CHUNK = 90; // D1 allows 100 bound parameters per statement
 

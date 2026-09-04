@@ -1,0 +1,30 @@
+# Alpha release evidence — 2026-09-05
+
+Change: alpha-review-readiness. Base: 21d5f2f. Release commit and deployment links will be recorded after the release gate completes.
+
+## Verified locally
+
+- Worker: 219 tests passed, five Postgres integration tests skipped because no local Postgres instance exists. Tests cover real D1/workerd execution plus mocked external APIs, including Airtable paging/newest-five completeness, count baseline isolation, retry intervals, reported failures, credential protection, owner isolation and provider acceptance/error responses.
+- Worker TypeScript check passed.
+- Frontend optimized build compiled successfully; the final local build also passed.
+- Strict OpenSpec validation: 22 items passed, zero failed.
+- scripts/alpha-smoke.mjs: all 12 checks passed against a local Wrangler API with actual HTTP fixture traffic: signup/login, independent alert test, baseline/no-op/growth, failure streak suppression, recovery, public sharing/redaction/revocation, snooze/reported failure, destination editing, manual/queued execution, pricing interest and deletion.
+- Browser: pricing intent survived signup; new Check defaulted to minimum 1; channel test succeeded; manual baseline appeared; destination edit retained an omitted URL and saved a newest key; actual webhook PASS then FAIL appeared in the timeline; the run sheet displayed the full verdict, provider result and previous count baseline.
+
+## Release gates and external evidence
+
+CI and deployment gates now require a real Postgres 16 service on :5434; the five integration cases must run before merge/deployment. GitHub results are pending until the branch is published.
+
+Actual Slack/Discord inbox receipt and a real Airtable account have not been exercised in this local fixture rehearsal. Provider payloads, failures and destination pagination are tested; they are different evidence from receipt in an operator's chosen channel. Confirm Send test and the failure/recovery rehearsal for the actual pilot connection before relying on it.
+
+Make and Zapier recipes remain unverified inside those vendors' editors. The generic HTTP contract is tested. n8n's previous editor/CLI validation is documented in docs/n8n.md and is historical evidence, not a new platform run for this release.
+
+## Behavior change for existing Checks
+
+The first count assertion without an observation bound to the current connection settings establishes a fresh baseline. It shows FAIL / Verification incomplete but does not alert for that setup state alone. Existing counts are not assumed to be newly written records. A malformed claim, capped/estimated count used for growth, or unavailable configured newest sample cannot return PASS. A minimum of zero explicitly disables growth unless a claim is sent. Counts now compare the preceding readable observation, including a failed batch; retries reuse the original interval.
+
+## Operational scope
+
+This is a reviewable alpha for stable, complete, sequential, append-only result sets with one writer. It does not prove record identity, arbitrary values, duplicate absence or update success. Read access and a suitable connection remain prerequisites, not product features that can be demonstrated without an external system.
+
+No schema migration is introduced. Existing deployment applies outstanding migrations before staging and production code. Code rollback can use the prior worker/frontend commit; additive fingerprint/retry JSON remains readable, but rolling back restores the old verdict limitations.

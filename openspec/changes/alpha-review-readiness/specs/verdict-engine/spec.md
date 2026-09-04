@@ -1,8 +1,5 @@
-# verdict-engine
+## MODIFIED Requirements
 
-## Purpose
-Deterministic code (no AI) that fingerprints a record set and compares it with the trailing window of PASS runs to produce PASS/FAIL and a human-readable diff. As built in `_fingerprint` and `_compute_verdict`.
-## Requirements
 ### Requirement: Fingerprint a record set
 The system SHALL compute `record_count`, the sorted union of field names, `null_pct` per field (percentage of records where the value is None, blank string, or empty list/dict), and `newest_record` = the first element of the sample after connector-defined ordering (Airtable: `createdTime` desc; Postgres: the query's own ORDER BY; HTTP/JSON: max of `config.newest_key` when set, else the last element). The fingerprint SHALL also store `newest_window`, the first 5 ordered records, and `newest_defined: true|false`.
 
@@ -109,29 +106,3 @@ Reasons SHALL be joined with commas and "and", prefixed "Run reported success, b
 #### Scenario: Two reasons
 - **WHEN** growth is 0 and `price` is missing
 - **THEN** the message is "Run reported success, but the destination gained 0 records (expected at least 1) and the field `price` is missing."
-
-### Requirement: Fetch errors are FAIL runs
-Any connector error SHALL be recorded as a FAIL run with an empty fingerprint and the error text in `diff_message`; the process never raises out of `execute_check`.
-
-#### Scenario: Timeout
-- **WHEN** the destination does not answer within the connector timeout
-- **THEN** a FAIL run is stored with "Destination fetch error: <ExceptionType>."
-
-### Requirement: Fingerprint records the sample size
-The fingerprint SHALL include `sample_size` (number of records inspected for fields, null rates and newest record) alongside `record_count`; the run panel SHALL display "N records (M sampled)" when they differ.
-
-#### Scenario: Sampled run
-- **WHEN** `record_count` is 5,000 and `sample_size` is 100
-- **THEN** the run panel shows "5,000 records (100 sampled)"
-
-### Requirement: Stored fingerprints carry a hash, not the row
-The fingerprint written to a run SHALL include `newest_hash` — SHA-256 of the canonical JSON of the newest record (keys sorted, compact separators) — and `sample_stored`. `newest_record` and `newest_window` SHALL NOT be written to the run document; the in-memory fingerprint used for the verdict is unchanged.
-
-#### Scenario: Same row, different key order
-- **WHEN** two runs see newest records `{"a": 1, "b": 2}` and `{"b": 2, "a": 1}`
-- **THEN** both runs store the same `newest_hash`
-
-#### Scenario: Verdict still uses the rows
-- **WHEN** `non_empty_fields` is configured
-- **THEN** the rule is evaluated on the in-memory newest window exactly as before, regardless of `store_samples`
-

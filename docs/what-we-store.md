@@ -1,6 +1,6 @@
 # What VerifyRuns stores
 
-True as of 2026-08-29 (`deletion-purges-everything` shipped). The privacy policy is `privacy.md`; the terms are `terms.md`.
+Updated 2026-09-05. The privacy policy is `privacy.md`; the terms are `terms.md`.
 
 ## Per Check
 
@@ -10,7 +10,7 @@ True as of 2026-08-29 (`deletion-purges-everything` shipped). The privacy policy
 ## Per run
 
 - Timestamp, trigger, verdict, and the diff message.
-- The **fingerprint**: record count, sample size, the set of field names, per-field empty-percentages, and a **SHA-256 hash of the newest record** — enough to tell "unchanged" from "changed", not enough to reconstruct the row.
+- The **fingerprint**: record count, sample size, the previous count observation, an opaque hash binding observations to destination configuration, read-success and count-accuracy flags, the set of field names, per-field empty-percentages, and a **SHA-256 hash of the newest record**.
 - The claimed count from the webhook body, if one was sent; whether the workflow reported failure and the `error` string it sent (up to 500 characters — keep secrets out of it); and which alert channels were attempted — per channel, its kind, whether it delivered, and a short error string on failure. A single service-wide counter of failed alert deliveries is also kept (a number only — no targets, no message bodies).
 - **No destination rows and no upstream response bodies** — unless the Check has **"Store raw samples"** turned on.
 

@@ -13,7 +13,16 @@ export interface Fingerprint {
   newest_defined: boolean;
   null_pct: Record<string, number>;
   /** Set when the connector knows the count is wrong: capped at a page ceiling or estimated after a
-   *  COUNT timeout. Either flag, on this run or the baseline PASS, makes the growth rule sit out. */
+   *  COUNT timeout. Either flag makes a configured growth assertion incomplete. */
+  count_capped?: boolean;
+  count_estimated?: boolean;
+  read_succeeded?: boolean;
+  source_key?: string;
+  count_baseline?: CountBaseline | null;
+}
+
+export interface CountBaseline {
+  record_count: number;
   count_capped?: boolean;
   count_estimated?: boolean;
 }
@@ -67,36 +76,35 @@ export function humanJoin(items: string[]): string {
 
 export type Verdict = "PASS" | "FAIL";
 
-export function computeVerdict(fp: Fingerprint, prevPasses: { fingerprint: any }[], expectations: Partial<Expectations>, claimedNew: number | null = null): [Verdict, string] {
+export function computeVerdict(fp: Fingerprint, prevPasses: { fingerprint: any }[], expectations: Partial<Expectations>, claimedNew: number | null = null, countBaseline: CountBaseline | null = prevPasses.at(-1)?.fingerprint ?? null): [Verdict, string] {
   const reasons: string[] = [];
+  const incomplete: string[] = [];
   const minNew = Number(expectations.min_new_records ?? 1) || 0;
   const mode = expectations.growth_mode || "growth";
   const required = (expectations.required_fields || []).map((f) => f.trim()).filter(Boolean);
   const nonEmpty = (expectations.non_empty_fields || []).map((f) => f.trim()).filter(Boolean);
 
-  const prevLast = prevPasses.length ? prevPasses[prevPasses.length - 1] : null;
-  const prevCount = prevLast ? Number(prevLast.fingerprint.record_count) : 0;
-  const delta = prevLast ? fp.record_count - prevCount : fp.record_count;
+  const prevLast = countBaseline;
+  const delta = prevLast ? fp.record_count - prevLast.record_count : 0;
 
   // A count the connector knows is wrong (capped page ceiling, timed-out COUNT) on either side of
-  // the comparison must not decide the verdict: the growth rule sits out with a note instead of
-  // failing on a saturated or collapsed delta. Field and non-empty rules are unaffected.
-  const anyCapped = !!(fp.count_capped || (prevLast && prevLast.fingerprint.count_capped));
-  const countExact = !anyCapped && !fp.count_estimated && !(prevLast && prevLast.fingerprint.count_estimated);
+  // the comparison cannot substantiate a growth assertion. Field rules still run.
+  const anyCapped = !!(fp.count_capped || prevLast?.count_capped);
+  const countExact = !anyCapped && !fp.count_estimated && !prevLast?.count_estimated;
+  const needsCount = mode === "steady" || mode === "claimed" || claimedNew !== null || minNew > 0;
+  if (needsCount && !countExact) incomplete.push(`Record-count checks could not be evaluated: the count is ${anyCapped ? "capped" : "estimated"}. Use a complete, countable destination.`);
+  else if (needsCount && !prevLast) incomplete.push(`Baseline recorded at ${fp.record_count} records. Growth has not been verified yet; send the next run after the workflow writes to the destination.`);
 
-  if (mode === "claimed" && claimedNew === null) {
+  if (mode === "claimed" && claimedNew === null && prevLast) {
     // About the body, not the count: enforced even when the count is inexact.
     reasons.push('your workflow sent no record count (this Check expects {"wrote": N} in the webhook body)');
-  } else if (countExact) {
+  } else if (needsCount && countExact && prevLast) {
     if (mode === "steady") {
       if (prevLast && delta !== 0) reasons.push(`the destination changed by ${delta > 0 ? "+" : ""}${delta} records (expected no change)`);
     } else if (claimedNew !== null) {
       if (prevLast && delta < claimedNew) reasons.push(`your workflow said it wrote ${claimedNew} records; the destination gained ${delta}`);
-      else if (!prevLast && fp.record_count < claimedNew) reasons.push(`your workflow said it wrote ${claimedNew} records; the destination has only ${fp.record_count}`);
     } else if (prevLast && delta < minNew) {
       reasons.push(`the destination gained ${delta} records (expected at least ${minNew})`);
-    } else if (!prevLast && fp.record_count < minNew) {
-      reasons.push(`the destination has only ${fp.record_count} records (expected at least ${minNew})`);
     }
   }
 
@@ -112,30 +120,34 @@ export function computeVerdict(fp: Fingerprint, prevPasses: { fingerprint: any }
   }
 
   const notes: string[] = [];
-  // This run's own flag names the cause; the baseline's flag is the fallback.
-  const skipWord = fp.count_capped ? "capped" : fp.count_estimated ? "estimated" : anyCapped ? "capped" : "estimated";
-  if (!countExact) notes.push(`Record-count checks were skipped: the count is ${skipWord}.`);
+  if (!needsCount) notes.push("No record-growth requirement was configured.");
+  if (!needsCount && !countExact) notes.push("The record count is approximate; only configured field checks were evaluated.");
   const newest = fp.newest_record || {};
   const window = fp.newest_window?.length ? fp.newest_window : fp.newest_record ? [fp.newest_record] : [];
   if (nonEmpty.length && fp.newest_defined === false) {
-    notes.push("Newest-record checks were skipped: add ORDER BY <timestamp column> DESC to the query to enable them.");
+    incomplete.push("Newest-record checks could not be evaluated: the newest sample is unavailable. Use a complete result; for Postgres, add ORDER BY <timestamp column> DESC.");
+  } else if (nonEmpty.length && !window.length) {
+    reasons.push("there are no records to inspect for the configured non-empty fields");
   } else if (window.length) {
     for (const f of nonEmpty) {
-      if (!fp.fields.includes(f) || !isEmpty((newest as any)[f])) continue;
+      if (!fp.fields.includes(f)) {
+        if (!missingRequired.includes(f)) reasons.push(`the field \`${f}\` is missing (configured as non-empty)`);
+        continue;
+      }
+      if (!isEmpty((newest as any)[f])) continue;
       const empties = window.filter((r) => isEmpty((r || {})[f])).length;
       if (window.length === 1) reasons.push(`the field \`${f}\` is empty in the newest record`);
       else if (empties * 2 > window.length) reasons.push(`the field \`${f}\` is empty in ${empties} of the ${window.length} newest records`);
     }
   }
 
-  const suffix = notes.length ? " " + notes.join(" ") : "";
+  const suffix = [...incomplete, ...notes].length ? " " + [...incomplete, ...notes].join(" ") : "";
   if (reasons.length) return ["FAIL", `Run reported success, but ${humanJoin(reasons)}.${suffix}`];
-  // Delta-based PASS wording would repeat the number we just refused to judge by.
-  if (!countExact) return ["PASS", `All expectations met.${suffix}`];
-  if (!prevLast) return ["PASS", `First successful check. Destination has ${fp.record_count} records across ${fp.fields.length} fields.${suffix}`];
-  if (mode === "steady") return ["PASS", `Destination unchanged at ${fp.record_count} records. All expectations met.${suffix}`];
-  if (claimedNew !== null) return ["PASS", `Destination gained ${delta} record(s), matching what your workflow reported.${suffix}`];
-  return ["PASS", `Destination gained ${delta} record(s). All expectations met.${suffix}`];
+  if (incomplete.length) return ["FAIL", `Verification incomplete.${suffix}`];
+  if (!needsCount) return ["PASS", `Destination read successfully. Configured checks passed.${suffix}`];
+  if (mode === "steady") return ["PASS", `Destination unchanged at ${fp.record_count} records since the previous observation. Configured checks passed.`];
+  if (claimedNew !== null) return ["PASS", `Destination gained ${delta} record(s) since the previous observation; your workflow reported at least ${claimedNew}. Configured checks passed.`];
+  return ["PASS", `Destination gained ${delta} record(s) since the previous observation. Configured checks passed.`];
 }
 
 // `count` was dropped as a claim alias (2026-08-31): forwarded node payloads carry it accidentally,
@@ -152,6 +164,7 @@ export function parseClaimed(body: unknown): [number | null, string | null] {
       if (typeof v === "number" && Number.isInteger(v)) n = v;
       else if (typeof v === "string" && /^-?\d+$/.test(v.trim())) n = Number(v.trim());
       else return [null, `webhook body ignored: \`${key}\` is not an integer`];
+      if (!Number.isSafeInteger(n)) return [null, `webhook body ignored: \`${key}\` is not a safe integer`];
       if (n < 0) return [null, `webhook body ignored: \`${key}\` is negative`];
       return [n, null];
     }
