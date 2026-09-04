@@ -113,7 +113,6 @@ jobs:
         env:
           CI: "false" # CRA treats warnings as errors under CI=true; ci.yml is the lint gate
           REACT_APP_BACKEND_URL: https://verifyruns-api.farjad-developer.workers.dev
-          REACT_APP_POSTHOG_KEY: phc_pvRHXAdUAzreQzCNxcu6b7JezduKoE4BXgTMvSBSesau
           INLINE_RUNTIME_CHUNK: "false"
       # From the repo root so worker/wrangler.toml (no pages_build_output_dir) isn't consulted.
       - name: Deploy Pages

@@ -1,6 +1,5 @@
 import { useState } from "react";
 import { useNavigate, Link } from "react-router-dom";
-import posthog from "posthog-js";
 import api, { formatError } from "../lib/api";
 import Nav from "../components/Nav";
 import Footer from "../components/Footer";
@@ -82,7 +81,6 @@ export default function NewCheck() {
         heartbeat_window: windowToPayload(heartbeatHours, heartbeatWindow),
       };
       const { data } = await api.post("/checks", payload);
-      if (posthog.__loaded) posthog.capture("check_created", { connector_kind: kind });
       toast.success("Check created");
       nav(`/checks/${data.id}`);
     } catch (err) {
