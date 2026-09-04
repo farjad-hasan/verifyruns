@@ -187,6 +187,8 @@ the "newest →" caption — so the reader can always tell the product's claim f
 
 **Key Characteristics:**
 - Two-tone status vocabulary (emerald / red) on an otherwise achromatic zinc scale.
+- The three faces are vendored (`frontend/src/fonts/`, SIL OFL, latin variable woff2) and served
+  from the site's own origin; no page requests a font provider.
 - Three faces with fixed jobs: Outfit for claims, Manrope for prose and UI, JetBrains Mono for
   evidence.
 - Flat surfaces separated by hairlines; depth comes from tonal steps, never from shadow at rest.
