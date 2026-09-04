@@ -8,10 +8,10 @@
 ## 2. Restore the CSP
 
 - [x] 2.1 `frontend/public/_headers`: `script-src 'self'`; `connect-src 'self' https://verifyruns-api.farjad-developer.workers.dev`; drop the "analytics-ready" comment
-- [ ] 2.2 `openspec/specs/deployment/spec.md`: delta applied at archive; `openspec validate --all --strict` green
+- [x] 2.2 `openspec/specs/deployment/spec.md`: delta applied at archive; `openspec validate --all --strict` green
 
 ## 3. Verify, then ship
 
 - [x] 3.1 `CI=true corepack yarn build` compiles (2026-09-04); `grep -c 'posthog\|phc_' build/static/js/main.*.js` is 0; diff is exactly the eight files in Impact, 6 insertions / 93 deletions
-- [ ] 3.2 PR merged; deploy workflow green; live checks: bundle has no `phc_` key, the CSP response header names no third-party host, `read_network_requests` on `/` shows no request to `posthog.com` or `cloudflareinsights.com`
-- [ ] 3.3 `CLAIMS.md` row flipped to `done`; change archived; worktree removed
+- [x] 3.2 PR #13 merged 2026-09-04 (`9b37629`); deploy run 33907648093 green. Live: bundle `main.d2b69cce.js` has 0 `posthog`/`phc_` references; CSP header is `script-src 'self'; connect-src 'self' <API>`; in Edge, `window.posthog` is undefined, no resource request to any posthog host, and the Pages-injected `beacon.min.js` tag is present but its two resource-timing entries show status 0 / 0 bytes / 0 ms — blocked by the CSP before fetch
+- [x] 3.3 `CLAIMS.md` row flipped to `done`; change archived; worktree removed

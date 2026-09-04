@@ -19,7 +19,7 @@ by flipping `status` to `done` in your merge commit. Rules in [`AGENTS.md`](../A
 | dogfood-fleet | claude/dogfood (Mac) | worktree `../verifyruns-dogfood-fleet`, branch `dogfood-fleet` | 2026-09-03 | done — merged 2026-09-03; six Checks live, work-* wiring handed to the work repo |
 | heartbeat-schedule-window | claude/dogfood (Mac) | [PR #11](https://github.com/farjad-hasan/verifyruns/pull/11) | 2026-09-03 | done — merged + deployed 2026-09-04 (run 33794699794) |
 | unreachable-destination-recipe | claude/dogfood (Mac) | worktree `../verifyruns-unreachable-destination-recipe`, branch `unreachable-destination-recipe` | 2026-09-03 | done — merged 2026-09-03; page exists, unlinked until the activation trigger |
-| remove-analytics | claude/legal-review (Mac) | worktree `../verifyruns-remove-analytics`, branch `remove-analytics` | 2026-09-04 | in progress |
+| remove-analytics | claude/legal-review (Mac) | [PR #13](https://github.com/farjad-hasan/verifyruns/pull/13) | 2026-09-04 | done — merged + deployed 2026-09-04 (run 33907648093), archived |
 | reported-failure | claude/dogfood (Mac) | [PR #12](https://github.com/farjad-hasan/verifyruns/pull/12) | 2026-09-04 | done — merged + deployed 2026-09-04 (run 33809890906), proven live on kb-reindex |
 
 All seven production-readiness changes were implemented as a **stacked PR chain** (#1→#7, one
