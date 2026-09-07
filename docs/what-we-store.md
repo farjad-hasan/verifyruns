@@ -1,11 +1,19 @@
 # What VerifyRuns stores
 
-Updated 2026-09-05. The privacy policy is `privacy.md`; the terms are `terms.md`.
+Updated 2026-09-07. The privacy policy is `privacy.md`; the terms are `terms.md`.
 
 ## Per Check
 
 - Name, connector kind, and connector config. Bearer tokens, Airtable PATs, Postgres connection strings and alert-channel targets (Slack/Discord webhook URLs, email addresses) are **encrypted at rest with AES-256-GCM** and only ever returned masked to the last four characters.
-- Expectations, heartbeat cadence, the webhook secret, snooze state, and the last alerted verdict.
+- Expectations, heartbeat cadence, the webhook secret, snooze state, and the last enqueued alert transition.
+
+## Pending work
+
+Manual and queued webhook jobs keep their run ID, trigger, claimed count and supplied failure metadata until recorded. Pending notifications keep the Check name, original verdict message/time, encrypted channel targets and delivery-attempt results until accepted or cancelled by removing the targets or deleting the Check. A pending notification also retains its original run until resolved. Leases and attempt times allow interrupted work to resume.
+
+## Pending work
+
+Manual and queued webhook jobs keep their run ID, trigger, claimed count and supplied failure metadata until recorded. Pending notifications keep the Check name, original verdict message/time, encrypted channel targets and delivery-attempt results until accepted or cancelled by removing the targets or deleting the Check. A pending notification also retains its original run until resolved. Leases and attempt times allow interrupted work to resume.
 
 ## Per run
 
@@ -16,7 +24,7 @@ Updated 2026-09-05. The privacy policy is `privacy.md`; the terms are `terms.md`
 
 ## How long runs are kept
 
-Run rows are deleted once they are **older than 90 days** (`VR_RUN_RETENTION_DAYS`) — except that every Check always keeps its **newest 35 runs** and its **newest 30 PASS runs**, regardless of age, so the verdict engine's comparison baseline and the 30-square timeline are never touched by retention. The sweep runs as part of the periodic tick; when the tick is not running (dead cron on a self-host), neither retention nor sample expiry happens.
+Run rows are deleted once they are **older than 90 days** (`VR_RUN_RETENTION_DAYS`) — except that every Check always keeps its **newest 35 runs** and its **newest 30 PASS runs**, regardless of age, plus runs referenced by pending notifications until resolved, so the verdict engine's comparison baseline and the 30-square timeline are never touched by retention. The sweep runs as part of the periodic tick; when the tick is not running (dead cron on a self-host), neither retention nor sample expiry happens.
 
 ## When "Store raw samples" is on (off by default)
 
@@ -24,8 +32,8 @@ A separate `run_samples` record keeps, per run, the newest record, the five newe
 
 ## Deletion
 
-- Deleting a Check deletes its runs and samples.
-- **Delete account** (the bin icon next to Sign out) deletes samples, runs, Checks, pricing-interest rows, password-reset tokens and the user record immediately, in one batch.
+- Deleting a Check deletes its runs, samples and pending work.
+- **Delete account** (the bin icon next to Sign out) deletes samples, runs, Checks, pricing-interest rows, password-reset tokens, pending work and the user record immediately, in transactional batches.
 
 ## What is never stored
 

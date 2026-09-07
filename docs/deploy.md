@@ -170,3 +170,12 @@ npm test                         # vitest inside workerd with a real D1
 ```
 
 Frontend: `REACT_APP_BACKEND_URL=http://localhost:8787` in `frontend/.env`, then `PORT=3100 npm start`.
+
+
+## Client-readiness hardening migration
+
+Apply `0007_client_readiness.sql` before deploying the client-readiness branch: staging migration, staging deploy and smoke, then production migration and deploy. It adds reset-consumption markers, manual-run leases and `alert_outbox`. Existing runs/Checks are preserved. Production deployment is a separate release action.
+
+Notification events retry automatically with 1–15 minute backoff; interrupted delivery leases expire after one minute. Manual-run leases renew while processing and expire after two minutes if an invocation dies. Monitor pending work with `SELECT COUNT(*) AS pending, MIN(next_attempt_at) AS oldest_due FROM alert_outbox` alongside `/api/health` and its delivery-failure counter. Sustained pending work requires checking provider settings, queue logs and scheduler health. One provider accepting completes an event; a lost acknowledgement can duplicate a message.
+
+Deleting a Check/account deletes pending notifications through foreign keys. Pending notifications protect their run from retention. Rolling back only the code leaves the additive schema intact but stops outbox processing: inspect/drain pending work with the new release before rollback, or restore the fixed release promptly. Never describe the older code as providing the same delivery guarantee. Old lost alert claims cannot be reconstructed from this migration and are not automatically replayed.

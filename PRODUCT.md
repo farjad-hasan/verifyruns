@@ -45,7 +45,7 @@ The alpha does not verify record identities, duplicates, arbitrary values, updat
 - Verdicts arrive on the dashboard, on a public read-only status page (`/status/:token`) **for
   teammates to monitor the same Check without an account** *(confirmed 2026-08-29; the landing copy's
   "hand it to a client" line is a secondary use, not the design target)*, and via Slack / Discord / email — on the first FAIL and again on recovery,
-  with retries when all providers reject delivery. Provider acceptance is not a receipt guarantee.
+  with durable scheduler retries when all providers reject delivery or processing is interrupted. A lost acknowledgement can duplicate an alert. Provider acceptance is not a receipt guarantee.
 - Heartbeat rule: "expect a run every N hours"; a missing run is itself a FAIL.
 - The n8n community node (`verifyruns-n8n`) fails the execution on FAIL; the webhook returns the
   verdict in the same request (`?wait=30`).

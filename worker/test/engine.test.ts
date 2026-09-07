@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { annotateCount, canonicalHash, computeVerdict, fingerprint, hasOrderBy, parseClaimed, parseReported, reportedFailureMessage, splitSample } from "../src/engine";
+import { annotateCount, canonicalHash, computeVerdict, fingerprint, hasOrderBy, postgresSampleOrder, parseClaimed, parseReported, reportedFailureMessage, splitSample } from "../src/engine";
 
 const records = (n: number, extra: Record<string, unknown> = {}) => Array.from({ length: n }, (_, i) => ({ id: i, name: `row ${i}`, ...extra }));
 const passRun = (record_count: number, fields: string[] = ["id", "name"], sample_size?: number) => ({
@@ -196,7 +196,7 @@ describe("helpers", () => {
   });
   it("hasOrderBy", () => {
     expect(hasOrderBy("SELECT * FROM orders ORDER BY created_at DESC")).toBe(true);
-    expect(hasOrderBy("select id from t order\n by ts")).toBe(true);
+    expect(hasOrderBy("select id from t order\n by ts")).toBe(false);
     expect(hasOrderBy("SELECT * FROM orders")).toBe(false);
     expect(hasOrderBy("SELECT border_by FROM t")).toBe(false);
   });
@@ -252,3 +252,30 @@ describe("parseReported", () => {
   });
 });
 
+
+
+describe("Postgres newest ordering evidence", () => {
+  it.each([
+    "SELECT * FROM t ORDER BY created_at ASC",
+    "SELECT * FROM t ORDER BY created_at",
+    "SELECT * FROM t /* ORDER BY created_at DESC */",
+    "SELECT 'ORDER BY created_at DESC' FROM t",
+    'SELECT "ORDER BY created_at DESC" FROM t',
+    "SELECT $$ ORDER BY created_at DESC $$ FROM t",
+    "SELECT $tag$ ORDER BY created_at DESC $tag$ FROM t",
+    "SELECT row_number() OVER (ORDER BY created_at DESC) FROM t",
+    "SELECT * FROM (SELECT * FROM t ORDER BY created_at DESC) nested",
+    "SELECT * FROM t ORDER BY coalesce(created_at, now()) DESC",
+    "SELECT * FROM t ORDER BY 1 DESC",
+    "SELECT * FROM t ORDER BY created_at DESC,",
+    "SELECT * FROM t /* nested /* ORDER BY created_at DESC */ comment */",
+  ])("fails closed for %s", query => {
+    expect(postgresSampleOrder(query)).toBeNull();
+    expect(computeVerdict(fingerprint([{email:"ok"}],1,hasOrderBy(query)), [], {min_new_records:0,non_empty_fields:["email"]})[0]).toBe("FAIL");
+  });
+  it("preserves qualified, quoted descending columns and explicit tie breakers outside the subquery", () => {
+    expect(postgresSampleOrder('SELECT * FROM t ORDER BY t.created_at DESC NULLS LAST, t.id ASC')).toBe('"created_at" DESC NULLS LAST, "id" ASC');
+    expect(postgresSampleOrder('WITH q AS (SELECT * FROM t ORDER BY id ASC) SELECT * FROM q ORDER BY "Created At" DESC')).toBe('"Created At" DESC');
+    expect(postgresSampleOrder('SELECT * FROM t ORDER BY created_at /* nested /* comment */ end */ DESC')).toBe('"created_at" DESC');
+  });
+});

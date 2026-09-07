@@ -1,7 +1,7 @@
 /** Destination readers: HTTP/JSON, Airtable, Postgres. Each returns a newest-first sample plus a true count. */
 import { decryptSecret } from "./crypto";
 import { egressViolation } from "./egress";
-import { FetchMeta, hasOrderBy, sortDesc } from "./engine";
+import { FetchMeta, postgresSampleOrder, sortDesc } from "./engine";
 import { Env, flag, num } from "./env";
 import { httpFetch, readCapped } from "./net";
 import pg from "./vendor/pg.mjs";
@@ -155,6 +155,7 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
     const v = egressViolation(dsn, allowPrivate);
     if (v) return fail(v);
     const query: string = cfg.query;
+    const sampleOrder = postgresSampleOrder(query);
     const countTimeout = num(env.VR_PG_COUNT_TIMEOUT_MS, 15000);
     const sampleTimeout = num(env.VR_PG_SAMPLE_TIMEOUT_MS, 15000);
     const connectTimeout = num(env.VR_PG_CONNECT_TIMEOUT_MS, 15000);
@@ -193,7 +194,7 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
         else throw e;
       }
       await client.query(`SET statement_timeout = ${Math.floor(sampleTimeout)}`);
-      rows = (await client.query(`SELECT * FROM (${query}) AS _vr LIMIT ${PG_SAMPLE_LIMIT}`)).rows;
+      rows = (await client.query(`SELECT * FROM (${query}) AS _vr${sampleOrder ? ` ORDER BY ${sampleOrder}` : ""} LIMIT ${PG_SAMPLE_LIMIT}`)).rows;
     } catch (e: any) {
       await client.end().catch(() => {});
       if (e?.code) return fail(`Postgres query failed: PostgresError ${e.code}.`, String(e?.message || e).slice(0, 500));
@@ -207,7 +208,7 @@ export async function fetchRecords(env: Env, kind: string, cfg: Record<string, a
       return row;
     });
     if (total === null) total = flat.length;
-    return { records: flat, meta: meta(total, { count_estimated: countEstimated, newest_defined: hasOrderBy(query) }), error: null, details: null };
+    return { records: flat, meta: meta(total, { count_estimated: countEstimated, newest_defined: sampleOrder !== null }), error: null, details: null };
   }
 
   return fail(`Unknown connector kind: ${kind}`);

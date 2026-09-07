@@ -1,6 +1,6 @@
 /** Password reset by emailed one-time token. Only the SHA-256 of the token is stored. */
 import { deliver } from "./alerts";
-import { hashPassword, sha256Hex, signJwt, tokenUrlsafe } from "./crypto";
+import { hashPassword, sha256Hex, signJwt, tokenUrlsafe, uuid } from "./crypto";
 import { emailAvailable, Env, nowIso, num } from "./env";
 import { clientIp, HttpError, json, readJson, validation } from "./http";
 import { isEmail } from "./validate";
@@ -48,14 +48,17 @@ export async function resetPassword(env: Env, request: Request): Promise<Respons
   const user = await env.DB.prepare("SELECT id, email FROM users WHERE id = ?").bind(row.user_id).first<{ id: string; email: string }>();
   if (!user) throw new HttpError(400, RESET_INVALID);
   const pw = await hashPassword(body.password, num(env.VR_PBKDF2_ITERATIONS, 600000));
+  const consumedBy = uuid();
+  const consumedAt = nowIso();
   const results = await env.DB.batch([
-    // token_version++ kills every previously issued JWT (currentUser compares the `ver` claim);
-    // RETURNING gives this reset's own version, so a concurrent second reset cannot hand us a stale one
-    env.DB.prepare("UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ? RETURNING token_version").bind(pw, user.id),
-    env.DB.prepare("UPDATE password_resets SET used_at = ? WHERE token_hash = ?").bind(nowIso(), hash),
-    env.DB.prepare("DELETE FROM password_resets WHERE user_id = ? AND token_hash != ?").bind(user.id, hash),
+    // Recheck at write time: hashing can overlap consumption, expiry, or a newer /forgot.
+    // The unique marker predicates every later write on THIS request winning the claim.
+    env.DB.prepare("UPDATE password_resets SET used_at = ?, consumed_by = ? WHERE token_hash = ? AND user_id = ? AND used_at IS NULL AND expires_at > ? AND EXISTS (SELECT 1 FROM users WHERE id = ?)").bind(consumedAt, consumedBy, hash, user.id, consumedAt, user.id),
+    env.DB.prepare("UPDATE users SET password_hash = ?, token_version = token_version + 1 WHERE id = ? AND EXISTS (SELECT 1 FROM password_resets WHERE token_hash = ? AND consumed_by = ?) RETURNING token_version").bind(pw, user.id, hash, consumedBy),
+    env.DB.prepare("DELETE FROM password_resets WHERE user_id = ? AND token_hash != ? AND EXISTS (SELECT 1 FROM password_resets WHERE token_hash = ? AND consumed_by = ?)").bind(user.id, hash, hash, consumedBy),
   ]);
-  const ver = Number((results[0]?.results?.[0] as any)?.token_version ?? 0);
+  if (!results[0].meta.changes || !results[1].results.length) throw new HttpError(400, RESET_INVALID);
+  const ver = Number((results[1].results[0] as any).token_version);
   const exp = Math.floor(Date.now() / 1000) + JWT_EXPIRE_DAYS * 86400;
   return json({ token: await signJwt({ sub: user.id, email: user.email, ver, exp }, env.JWT_SECRET), user: { id: user.id, email: user.email } });
 }

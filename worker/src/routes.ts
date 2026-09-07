@@ -483,7 +483,7 @@ export async function interest(env: Env, request: Request): Promise<Response> {
 // ---------- webhook + manual run ----------
 import { executeCheck } from "./execute";
 import { parseClaimed, parseReported } from "./engine";
-import { enqueueRun } from "./tick";
+import { enqueueRun, drainPendingRuns } from "./tick";
 import { HeartbeatWindow } from "./schedule";
 
 export async function webhook(env: Env, request: Request, ctx: ExecutionContext, secret: string): Promise<Response> {
@@ -509,6 +509,8 @@ export async function runNow(env: Env, request: Request, ctx: ExecutionContext, 
   const user = await currentUser(env, request);
   await getCheckForUser(env, id, user.id);
   const runId = uuid();
-  ctx.waitUntil(executeCheck(env, id, "manual", runId).catch((e) => console.error("manual run failed", e)));
+  enforce(limiter(env, "create"), `manual-run:${user.id}`);
+  await enqueueRun(env, id, { run_id: runId, trigger: "manual", claimed_new: null, body_note: null, queued_at: nowIso() });
+  ctx.waitUntil(drainPendingRuns(env, 1, executeCheck, id).catch((e) => console.error("manual run remains queued", e)));
   return json({ run_id: runId, status: "queued" });
 }

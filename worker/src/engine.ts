@@ -196,8 +196,98 @@ export function reportedFailureMessage(error: string | null): string {
   return error ? `Your workflow reported failure: ${error.replace(/\.+$/, "")}.` : "Your workflow reported failure (no reason given).";
 }
 
+/** Conservative top-level SQL tokens. Literal/comment contents and nested clauses
+ * cannot establish ordering. Unsupported or unclosed syntax fails closed. */
+function outerSqlTokens(query: string): { text: string; identifier: boolean }[] | null {
+  const tokens: { text: string; identifier: boolean }[] = [];
+  let depth = 0;
+  for (let i = 0; i < query.length;) {
+    const tail = query.slice(i);
+    if (/^\s/.test(tail)) { i++; continue; }
+    if (tail.startsWith("--")) { const end = query.indexOf("\n", i); i = end < 0 ? query.length : end; continue; }
+    if (tail.startsWith("/*")) {
+      let comments = 1; i += 2;
+      while (i < query.length && comments) {
+        if (query.startsWith("/*", i)) { comments++; i += 2; }
+        else if (query.startsWith("*/", i)) { comments--; i += 2; }
+        else i++;
+      }
+      if (comments) return null;
+      continue;
+    }
+    const dollar = tail.match(/^\$(?:[A-Za-z_][A-Za-z_0-9]*)?\$/)?.[0];
+    if (dollar) {
+      const end = query.indexOf(dollar, i + dollar.length);
+      if (end < 0) return null;
+      if (!depth) tokens.push({ text: "<literal>", identifier: false });
+      i = end + dollar.length; continue;
+    }
+    if (query[i] === "'" || query[i] === '"') {
+      const quote = query[i++]; let value = ""; let closed = false;
+      while (i < query.length) {
+        const ch = query[i++];
+        // Reject backslash-escaped strings rather than guessing standard_conforming_strings.
+        if (quote === "'" && ch === "\\") return null;
+        if (ch === quote) {
+          if (query[i] === quote) { value += quote; i++; }
+          else { closed = true; break; }
+        } else value += ch;
+      }
+      if (!closed) return null;
+      if (!depth) tokens.push({ text: quote === '"' ? value : "<literal>", identifier: quote === '"' });
+      continue;
+    }
+    if (query[i] === "(") { if (!depth) tokens.push({ text: "<expression>", identifier: false }); depth++; i++; continue; }
+    if (query[i] === ")") { if (--depth < 0) return null; i++; continue; }
+    const word = tail.match(/^[A-Za-z_][A-Za-z_0-9$]*/)?.[0];
+    if (word) { if (!depth) tokens.push({ text: word.toLowerCase(), identifier: false }); i += word.length; continue; }
+    if (!depth) tokens.push({ text: query[i], identifier: false });
+    i++;
+  }
+  return depth ? null : tokens;
+}
+
+/** Safe ORDER BY for the OUTER sample, using only quoted output-column names.
+ * The first column must explicitly descend; remaining columns are tie-breakers.
+ * The operator is responsible for choosing a column that actually grows with time. */
+export function postgresSampleOrder(query: string): string | null {
+  const tokens = outerSqlTokens(query || "");
+  if (!tokens) return null;
+  const keyword = (i: number, word: string) => tokens[i]?.text === word && !tokens[i]?.identifier;
+  const starts = tokens.map((_, i) => keyword(i, "order") && keyword(i + 1, "by") ? i : -1).filter(i => i >= 0);
+  if (starts.length !== 1) return null;
+  let i = starts[0] + 2;
+  const parts: string[] = [];
+  const column = () => {
+    const t = tokens[i];
+    if (!t || (!t.identifier && !/^[a-z_][a-z_0-9$]*$/.test(t.text))) return null;
+    i++; return t.text;
+  };
+  while (i < tokens.length) {
+    let name = column();
+    if (name === null) return null;
+    while (keyword(i, ".")) { i++; name = column(); if (name === null) return null; }
+    const direction = keyword(i, "desc") ? "DESC" : keyword(i, "asc") ? "ASC" : null;
+    if (!direction || (!parts.length && direction !== "DESC")) return null;
+    i++;
+    let nulls = "";
+    if (keyword(i, "nulls")) {
+      i++;
+      if (!keyword(i, "first") && !keyword(i, "last")) return null;
+      nulls = ` NULLS ${tokens[i++].text.toUpperCase()}`;
+    }
+    parts.push(`"${name.replace(/"/g, '""')}" ${direction}${nulls}`);
+    if (i === tokens.length) break;
+    if (keyword(i, "limit") || keyword(i, "offset") || keyword(i, "fetch") || keyword(i, "for")) break;
+    if (!keyword(i, ",")) return null;
+    i++;
+    if (i === tokens.length) return null;
+  }
+  return parts.length ? parts.join(", ") : null;
+}
+
 export function hasOrderBy(query: string): boolean {
-  return /\border\s+by\b/i.test(query || "");
+  return postgresSampleOrder(query) !== null;
 }
 
 /** Newest-first by `key`; records without the key go last, original order kept among ties. */
