@@ -6,6 +6,7 @@ by flipping `status` to `done` in your merge commit. Rules in [`AGENTS.md`](../A
 
 | change | owner | where | started | status |
 |---|---|---|---|---|
+| n8n-local-demo | codex/n8n-demo | branch `codex/n8n-local-demo`, worktree `../verifyruns-n8n-local-demo` | 2026-09-08 | active — isolated manual n8n demo and synthetic destination |
 | client-readiness-hardening | codex/client-readiness | branch `codex/client-readiness-hardening`, worktree `../verifyruns-client-readiness-hardening` | 2026-09-07 | done — merged 2026-09-08 via PR #16; durable notifications/manual runs, atomic resets, explicit Postgres ordering |
 | verdict-correctness | claude/prod-readiness | [PR #2](https://github.com/farjad-hasan/verifyruns/pull/2) | 2026-08-31 | done — merged 2026-09-01 |
 | alert-delivery-durability | claude/prod-readiness | [PR #1](https://github.com/farjad-hasan/verifyruns/pull/1) | 2026-08-31 | done — merged 2026-09-01 |
