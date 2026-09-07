@@ -22,7 +22,7 @@ and the field `price` disappeared — it was present in the last 30 good runs.
         -H "content-type: application/json" -d '{"wrote": 3}'
    ```
    A workflow that knows it failed can say so — `{"failed": true, "error": "step 4 timed out"}` — and the run is a FAIL with that reason, whatever the destination shows (your error workflow or a cron wrapper's non-zero exit is the usual sender).
-4. **Test alerts and get verdicts** — use Send test and confirm receipt. — every run is PASS or FAIL with a diff message. Configured Slack, Discord and email channels are attempted on the first FAIL and on recovery. Confirm actual receipt; a provider accepting the message is not a delivery guarantee.
+4. **Test alerts and get verdicts** — use Send test and confirm receipt. — every run is PASS or FAIL with a diff message. Configured Slack, Discord and email channels are attempted on the first FAIL and on recovery. Failed deliveries are retried by the scheduler without another workflow run. An interrupted acknowledgement can duplicate an alert. Failed deliveries are retried by the scheduler without another workflow run. An interrupted acknowledgement can duplicate an alert. Confirm actual receipt; a provider accepting the message is not a delivery guarantee.
 
 Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/zapier.md). The webhook returns the verdict in the same request; the n8n community node ([`n8n-nodes-verifyruns`](https://www.npmjs.com/package/n8n-nodes-verifyruns)) does that and fails the execution on FAIL.
 
@@ -32,7 +32,7 @@ Per-platform setup: [n8n](docs/n8n.md) · [Make](docs/make.md) · [Zapier](docs/
 |---|---|---|---|
 | HTTP / JSON | GET URL, optional bearer token, optional JSON path to the array, optional `newest_key` | length of the array | max of `newest_key`, else the last element |
 | Airtable | base id, table, optional view, personal access token | true count via `offset` paging (ceiling 4,000; beyond it the count is marked capped and configured count assertions return FAIL / incomplete) | newest `createdTime` |
-| Postgres | connection string (TLS unless `sslmode=disable`; on the hosted build the certificate must be publicly trusted — see `docs/deploy.md`), a single read-only `SELECT`/`WITH` | `COUNT(*)` of the query | the query's own `ORDER BY … DESC`; without one, configured newest-record assertions return FAIL / incomplete |
+| Postgres | connection string (TLS unless `sslmode=disable`; on the hosted build the certificate must be publicly trusted — see `docs/deploy.md`), a single read-only `SELECT`/`WITH` | `COUNT(*)` of the query | explicit top-level `ORDER BY <output_column> DESC`, reapplied to the outer sample; ambiguous, nested-only or ascending order makes newest-record assertions FAIL / incomplete |
 
 Secrets are encrypted at rest with AES-256-GCM and only ever shown masked to their last four characters. All destination reads happen server-side.
 

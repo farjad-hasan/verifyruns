@@ -590,7 +590,7 @@ function AlertChannelsCard({ check, onSaved }) {
         <h2 className="font-display text-lg">Alert channels</h2>
       </div>
       <p className="text-sm text-quiet mb-4">
-        Alerts are attempted on the first FAIL and recovery. Repeated failures are quiet after a provider accepts an alert. If every channel rejects it, a later run retries delivery.
+        Alerts are attempted on the first FAIL and recovery. Repeated failures are quiet after a provider accepts an alert. If every channel rejects it, delivery is retried automatically. Interrupted delivery can produce a duplicate notification.
       </p>
 
       {channels.length > 0 && (

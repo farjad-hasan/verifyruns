@@ -1,7 +1,7 @@
 /** Everything time-based, in one idempotent sweep: missed heartbeats, queued runs, due retries, sample expiry.
  *  Driven by the Worker's cron trigger, by traffic (lazy), or by POST /api/internal/tick. */
 import { CheckDoc, rowToCheck, updateCheck } from "./checks";
-import { maybeAlert } from "./alerts";
+import { drainAlerts, queueAlertStatements } from "./alerts";
 import { uuid } from "./crypto";
 import { Env, nowIso, num } from "./env";
 import { executeCheck } from "./execute";
@@ -48,11 +48,15 @@ export async function heartbeatTick(env: Env, now: Date): Promise<number> {
     const fp = { record_count: 0, sample_size: 0, fields: [], newest_hash: null, sample_stored: false, newest_defined: true, null_pct: {} };
     // One statement: insert only if no heartbeat already landed inside this window, so concurrent ticks cannot both fire.
     const windowStart = new Date(now.getTime() - c.heartbeat_hours * 3600_000).toISOString();
-    const res = await env.DB.prepare(
+    const insert = env.DB.prepare(
       `INSERT INTO check_runs (id, check_id, timestamp, heartbeat_at, trigger, verdict, diff_message, fingerprint, error_details, is_retry, count_capped, count_estimated, claimed_new, body_note)
        SELECT ?, ?, ?, ?, 'heartbeat', 'FAIL', ?, ?, NULL, 0, 0, 0, NULL, NULL
        WHERE NOT EXISTS (SELECT 1 FROM check_runs WHERE check_id = ? AND trigger = 'heartbeat' AND COALESCE(heartbeat_at, timestamp) >= ?)`,
-    ).bind(runId, c.id, timestamp, now.toISOString(), message, JSON.stringify(fp), c.id, windowStart).run();
+    ).bind(runId, c.id, timestamp, now.toISOString(), message, JSON.stringify(fp), c.id, windowStart);
+    const snoozed = !!(c.snooze_until && c.snooze_until > nowIso());
+    const alertStatements = queueAlertStatements(env, c, { id: runId, verdict: "FAIL", diff_message: message, timestamp }, snoozed);
+    // Only the winner of the conditional heartbeat insert can enqueue this event.
+    const res = (await env.DB.batch([insert, ...alertStatements]))[0];
     // Advance the due time whether or not this caller won the insert (the loser must not re-select the
     // Check every tick), predicated on the value we read so a fresher run-insert update is not clobbered.
     const nextDue = nextHeartbeatDue(now, c.heartbeat_hours, c.heartbeat_window).toISOString();
@@ -60,8 +64,7 @@ export async function heartbeatTick(env: Env, now: Date): Promise<number> {
     if (!res.meta.changes) continue; // another tick fired this window first
     fired += 1;
     try {
-      const snoozed = !!(c.snooze_until && c.snooze_until > nowIso());
-      await maybeAlert(env, c, { id: runId, verdict: "FAIL", diff_message: message, timestamp }, snoozed);
+      if (!snoozed) await drainAlerts(env, new Date(), c.id);
     } catch (e) {
       console.error("heartbeat alert routing failed", e);
     }
@@ -113,32 +116,53 @@ async function removeQueued(env: Env, checkId: string, runId: string): Promise<v
  *  mid-drain — thrown error or hard eviction — resumes where it stopped on the next tick. An item
  *  whose run is already recorded (eviction landed between execute and remove) is reconciled without
  *  a second destination fetch, since run ids are primary keys. */
-export async function drainPendingRuns(env: Env, batch?: number, exec: typeof executeCheck = executeCheck): Promise<number> {
+export const RUN_LEASE_MS = 120_000;
+export async function drainPendingRuns(env: Env, batch?: number, exec: typeof executeCheck = executeCheck, checkId?: string): Promise<number> {
   const limit = batch ?? batchOf(env);
   let ran = 0;
-  // The item budget is shared across the whole sweep, not per Check — each execution is a
-  // destination fetch, and the Workers subrequest budget is per invocation.
   let budget = limit;
-  const rows = (await env.DB.prepare("SELECT id, pending_runs FROM checks WHERE pending_runs != '[]' LIMIT ?").bind(limit).all<{ id: string; pending_runs: string }>()).results;
+  const rows = (await env.DB.prepare("SELECT id FROM checks WHERE pending_runs != '[]' AND (run_lease_until IS NULL OR run_lease_until <= ?) AND (? IS NULL OR id = ?) LIMIT ?")
+    .bind(nowIso(), checkId ?? null, checkId ?? null, limit).all<{ id: string }>()).results;
   for (const row of rows) {
     if (budget <= 0) break;
-    const items = JSON.parse(row.pending_runs) as CheckDoc["pending_runs"];
-    for (const item of items.slice(0, budget)) {
-      budget -= 1;
-      const recorded = await env.DB.prepare("SELECT 1 AS x FROM check_runs WHERE id = ?").bind(item.run_id).first();
-      if (!recorded) {
-        try {
-          const reported = item.reported_failure ? { failed: true, error: item.reported_error ?? null } : null;
-          await exec(env, row.id, "webhook", item.run_id, false, item.claimed_new ?? null, item.body_note ?? null, reported);
-          ran += 1;
-        } catch (e) {
-          // Leave this item and its successors queued: order is preserved and the next tick resumes
-          // here. A stuck item is visible (queue depth), a dropped one would not be.
-          console.error("queued run failed; leaving it queued", item.run_id, e);
-          break;
+    const token = uuid();
+    const claimed = await env.DB.prepare("UPDATE checks SET run_lease_token = ?, run_lease_until = ? WHERE id = ? AND (run_lease_until IS NULL OR run_lease_until <= ?)")
+      .bind(token, new Date(Date.now() + RUN_LEASE_MS).toISOString(), row.id, nowIso()).run();
+    if (!claimed.meta.changes) continue;
+    let lostLease = false;
+    let renewal: Promise<void> = Promise.resolve();
+    const timer = setInterval(() => {
+      renewal = renewal.then(async () => {
+        const r = await env.DB.prepare("UPDATE checks SET run_lease_until = ? WHERE id = ? AND run_lease_token = ?")
+          .bind(new Date(Date.now() + RUN_LEASE_MS).toISOString(), row.id, token).run();
+        if (!r.meta.changes) lostLease = true;
+      }).catch(e => { lostLease = true; console.error("run lease renewal failed", row.id, e); });
+    }, RUN_LEASE_MS / 3);
+    try {
+      const fresh = await env.DB.prepare("SELECT pending_runs FROM checks WHERE id = ? AND run_lease_token = ?").bind(row.id, token).first<{ pending_runs: string }>();
+      if (!fresh) continue;
+      const items = JSON.parse(fresh.pending_runs) as CheckDoc["pending_runs"];
+      for (const item of items.slice(0, budget)) {
+        if (lostLease) break;
+        budget -= 1;
+        const recorded = await env.DB.prepare("SELECT 1 AS x FROM check_runs WHERE id = ?").bind(item.run_id).first();
+        if (!recorded) {
+          try {
+            const reported = item.reported_failure ? { failed: true, error: item.reported_error ?? null } : null;
+            const result = await exec(env, row.id, item.trigger ?? "webhook", item.run_id, false, item.claimed_new ?? null, item.body_note ?? null, reported);
+            if (!result) break;
+            ran += 1;
+          } catch (e) {
+            console.error("queued run failed; leaving it queued", item.run_id, e);
+            break;
+          }
         }
+        if (!lostLease) await removeQueued(env, row.id, item.run_id);
       }
-      await removeQueued(env, row.id, item.run_id);
+    } finally {
+      clearInterval(timer);
+      await renewal;
+      await env.DB.prepare("UPDATE checks SET run_lease_token = NULL, run_lease_until = NULL WHERE id = ? AND run_lease_token = ?").bind(row.id, token).run();
     }
   }
   return ran;
@@ -182,6 +206,7 @@ export async function retentionSweep(env: Env, now: Date, rowBudget = RETENTION_
       `DELETE FROM check_runs WHERE id IN (
          SELECT id FROM check_runs WHERE check_id = ?1 AND timestamp < ?2
            AND id NOT IN (SELECT id FROM check_runs WHERE check_id = ?1 ORDER BY timestamp DESC LIMIT ?3)
+           AND id NOT IN (SELECT run_id FROM alert_outbox WHERE check_id = ?1)
            AND id NOT IN (SELECT id FROM check_runs WHERE check_id = ?1 AND verdict = 'PASS' ORDER BY timestamp DESC LIMIT 30)
          ORDER BY timestamp ASC LIMIT ?4
        )`,
@@ -230,6 +255,7 @@ export async function tick(env: Env, now: Date = new Date()): Promise<TickResult
   const heartbeats = await heartbeatTick(env, now);
   const queued = await drainPendingRuns(env);
   const retries = await drainRetries(env, now);
+  await drainAlerts(env, now);
   const expired_samples = await expireSamples(env, now);
   const expired_runs = (await retentionDue(env, now)) ? await retentionSweep(env, now) : 0;
   // Completion stamp, distinct from the start stamp above: a tick that starts and then throws every

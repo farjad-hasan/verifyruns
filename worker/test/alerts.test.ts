@@ -47,7 +47,7 @@ describe("deliver", () => {
 });
 
 describe("delivery durability", () => {
-  it("all channels failing rolls the claim back so the next FAIL of the streak alerts again", async () => {
+  it("all channels failing keeps one durable event that the next drain retries", async () => {
     setFetchForTests(async () => new Response("no", { status: 500 }));
     const u = await user();
     const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }] });
@@ -56,17 +56,18 @@ describe("delivery durability", () => {
     await maybeAlert(env, (await getCheck(env, c.id))!, run1, false);
     expect(await alertsSent("af1")).toEqual([{ kind: "slack", ok: false, error: "500 no" }]);
     expect(await failureCounter()).toBe(before + 1);
-    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBeNull();
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("FAIL");
     setFetchForTests(async () => new Response("ok"));
     const run2 = await insertRun(c.id, "af2", "FAIL");
+    await env.DB.prepare("UPDATE alert_outbox SET next_attempt_at = ? WHERE check_id = ?").bind("1970-01-01T00:00:00.000Z", c.id).run();
     const mid = await failureCounter();
     await maybeAlert(env, (await getCheck(env, c.id))!, run2, false);
     expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("FAIL");
-    expect(await alertsSent("af2")).toEqual([{ kind: "slack", ok: true }]);
+    expect(await alertsSent("af1")).toEqual([{ kind: "slack", ok: true }]);
     expect(await failureCounter()).toBe(mid); // healthy delivery does not move the counter
   });
 
-  it("a stale doc cannot make the rollback re-assert this caller's own FAIL claim", async () => {
+  it("a stale doc cannot lose a newly enqueued FAIL", async () => {
     setFetchForTests(async () => new Response("no", { status: 500 }));
     const u = await user();
     const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }] });
@@ -77,15 +78,16 @@ describe("delivery durability", () => {
     await env.DB.prepare("UPDATE checks SET last_alerted_verdict = 'PASS' WHERE id = ?").bind(c.id).run();
     const run = await insertRun(c.id, "as1", "FAIL");
     await maybeAlert(env, staleDoc, run, false);
-    // the failed delivery must release the claim, not restore the stale 'FAIL'
-    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBeNull();
+    // The event stays queued; the transition state must not be taken from the stale doc.
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("FAIL");
     setFetchForTests(async () => new Response("ok"));
+    await env.DB.prepare("UPDATE alert_outbox SET next_attempt_at = ? WHERE check_id = ?").bind("1970-01-01T00:00:00.000Z", c.id).run();
     const run2 = await insertRun(c.id, "as2", "FAIL");
     await maybeAlert(env, (await getCheck(env, c.id))!, run2, false);
-    expect(await alertsSent("as2")).toEqual([{ kind: "slack", ok: true }]);
+    expect(await alertsSent("as1")).toEqual([{ kind: "slack", ok: true }]);
   });
 
-  it("a failed recovery delivery re-alerts on the next PASS even with a stale doc", async () => {
+  it("a failed recovery remains queued despite a stale doc", async () => {
     setFetchForTests(async () => new Response("no", { status: 500 }));
     const u = await user();
     const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }] });
@@ -94,12 +96,13 @@ describe("delivery durability", () => {
     const run = await insertRun(c.id, "ar1", "PASS");
     await maybeAlert(env, staleDoc, run, false);
     expect(await alertsSent("ar1")).toEqual([{ kind: "slack", ok: false, error: "500 no" }]);
-    // the rollback must restore 'FAIL' (guaranteed by the claim predicate), not the stale null
-    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("FAIL");
+    // Recovery is durably queued; subsequent PASS runs cannot enqueue a duplicate.
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("PASS");
     setFetchForTests(async () => new Response("ok"));
+    await env.DB.prepare("UPDATE alert_outbox SET next_attempt_at = ? WHERE check_id = ?").bind("1970-01-01T00:00:00.000Z", c.id).run();
     const run2 = await insertRun(c.id, "ar2", "PASS");
     await maybeAlert(env, (await getCheck(env, c.id))!, run2, false);
-    expect(await alertsSent("ar2")).toEqual([{ kind: "slack", ok: true }]);
+    expect(await alertsSent("ar1")).toEqual([{ kind: "slack", ok: true }]);
     expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("PASS");
   });
 
@@ -128,7 +131,7 @@ describe("delivery durability", () => {
     expect(await alertsSent("ap2")).toBeNull();
   });
 
-  it("concurrent maybeAlerts with a failing channel attempt delivery once, then roll back", async () => {
+  it("concurrent maybeAlerts with a failing channel create one retryable event", async () => {
     let attempts = 0;
     setFetchForTests(async () => {
       attempts++;
@@ -140,10 +143,10 @@ describe("delivery durability", () => {
     const run = await insertRun(c.id, "ac1", "FAIL");
     await Promise.all([maybeAlert(env, doc, run, false), maybeAlert(env, doc, run, false), maybeAlert(env, doc, run, false)]);
     expect(attempts).toBe(1);
-    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBeNull();
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("FAIL");
   });
 
-  it("rollback does not clobber a state another caller moved meanwhile", async () => {
+  it("failed delivery does not clobber a newer enqueued state", async () => {
     const u = await user();
     const c = await makeCheck(u.token, { alert_channels: [{ kind: "slack", target: SLACK }] });
     setFetchForTests(async () => {
@@ -173,7 +176,7 @@ describe("delivery durability", () => {
     expect(fetched).toBe(0);
     expect(await alertsSent("ad1")).toEqual([{ kind: "slack", ok: false, error: "decrypt" }]);
     expect(await failureCounter()).toBe(before + 1);
-    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBeNull();
+    expect((await getCheck(env, c.id))!.last_alerted_verdict).toBe("FAIL");
   });
 
   it("a redirecting webhook is a failure, not a follow", async () => {

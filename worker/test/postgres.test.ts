@@ -64,6 +64,25 @@ async function pg(dsn: string, query: string) {
 const PLAIN = DSN + "?sslmode=disable";
 
 describe("postgres connector (Docker pg on TEST_PG_DSN; skipped when unreachable)", () => {
+  it("samples the newest 100 rows with explicit outer ordering", async (ctx) => {
+    if (!reachable) return ctx.skip();
+    const r = await pg(PLAIN, "SELECT n AS created_at, CASE WHEN n > 117 THEN NULL ELSE 'valid' END AS email FROM generate_series(1,120) n ORDER BY created_at DESC");
+    expect(r.error).toBeNull();
+    expect(r.meta).toMatchObject({ total: 120, newest_defined: true });
+    expect(r.records).toHaveLength(100);
+    expect(r.records![0]).toEqual({ created_at: 120, email: null });
+    expect(r.records![99].created_at).toBe(21);
+  });
+  for (const query of [
+    "SELECT n AS created_at FROM generate_series(1,7) n ORDER BY created_at ASC",
+    "SELECT n AS created_at FROM generate_series(1,7) n /* ORDER BY created_at DESC */",
+    "SELECT * FROM (SELECT n AS created_at FROM generate_series(1,7) n ORDER BY created_at DESC) q",
+  ]) it(`does not claim newest evidence from ${query}`, async (ctx) => {
+    if (!reachable) return ctx.skip();
+    const r = await pg(PLAIN, query);
+    expect(r.error).toBeNull();
+    expect(r.meta).toMatchObject({ total: 7, newest_defined: false });
+  });
   it("reads rows, fields and an exact count through workerd", async (ctx) => {
     if (!reachable) return ctx.skip();
     const t0 = Date.now();

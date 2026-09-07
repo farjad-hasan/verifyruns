@@ -5,7 +5,11 @@ import useTitle from "../lib/useTitle";
 const SECTIONS = [
   {
     title: "Per Check",
-    body: "Name, connector kind and config. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets are encrypted at rest (AES-256-GCM) and only ever shown masked to their last four characters. Expectations, heartbeat cadence, the webhook secret, snooze state, and the last verdict an alert went out for.",
+    body: "Name, connector kind and config. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets are encrypted at rest (AES-256-GCM) and only ever shown masked to their last four characters. Expectations, heartbeat cadence, the webhook secret, snooze state, and the last enqueued alert transition.",
+  },
+  {
+    title: "Pending work",
+    body: "Queued runs keep their ID, trigger, claimed count and supplied failure metadata until recorded. Pending notifications keep the Check name, original verdict message/time, encrypted channel targets and attempt results until accepted or cancelled by removing the targets or deleting the Check. The original run is retained while its notification is pending.",
   },
   {
     title: "Per run",
@@ -13,7 +17,7 @@ const SECTIONS = [
   },
   {
     title: "How long runs are kept",
-    body: "Run rows are deleted once they are older than 90 days, except that every Check always keeps its newest 35 runs and its newest 30 PASS runs regardless of age, so the comparison baseline and the 30-square timeline are never touched by retention. The sweep runs with the periodic tick; when the tick is not running, neither retention nor sample expiry happens.",
+    body: "Run rows are deleted once they are older than 90 days, except that every Check always keeps its newest 35 runs and its newest 30 PASS runs regardless of age, plus runs with pending notifications until resolved, so the comparison baseline and the 30-square timeline are never touched by retention. The sweep runs with the periodic tick; when the tick is not running, neither retention nor sample expiry happens.",
   },
   {
     title: "If you turn on “Store raw samples”",
@@ -25,7 +29,7 @@ const SECTIONS = [
   },
   {
     title: "Deleting",
-    body: "Deleting a Check deletes its runs and samples. Delete account (the bin icon next to Sign out) removes your Checks, runs, samples, pricing interest, password-reset tokens and the account itself immediately — no soft delete, no retention.",
+    body: "Deleting a Check deletes its runs, samples and pending work. Delete account (the bin icon next to Sign out) removes your Checks, runs, samples, pricing interest, password-reset tokens, pending work and the account itself immediately — no soft delete, no retention.",
   },
   {
     title: "Public status pages",
@@ -48,7 +52,7 @@ export default function DataPage() {
         <p className="text-zinc-400 text-lg leading-relaxed max-w-[65ch]">
           A watchdog that reads your database has to be careful about what it keeps. Here is the whole list, and every change to it ships with this page.
         </p>
-        <p className="text-sm text-quiet mt-3 font-mono">Last updated 2026-09-05</p>
+        <p className="text-sm text-quiet mt-3 font-mono">Last updated 2026-09-07</p>
         <div className="mt-12 space-y-8">
           {SECTIONS.map((s) => (
             <div key={s.title}>

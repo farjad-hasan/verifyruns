@@ -53,3 +53,15 @@ No schema migration is introduced. Existing deployment applies outstanding migra
 ## Repeat the deployed rehearsal
 
 Run `node scripts/alpha-live-smoke.mjs` from the repository root. It creates disposable accounts on the hard-coded staging and production APIs and deletes both in a finally block. It checks HTTP notification acceptance using a synthetic receiver; it does not send to a real chat channel or inbox. Use the OPG rehearsal in [alpha-review.md](alpha-review.md) for actual pilot-specific receipt confirmation.
+
+
+## Client readiness hardening — 2026-09-07 (branch verification)
+
+This follow-up adds migration `0007_client_readiness.sql`; it has not been deployed as part of this review. Apply it before the new Worker, following docs/deploy.md. The earlier no-migration statement describes the September 5 release only.
+
+The branch makes password reset consumption atomic, persists ordered retryable alert events, queues manual runs before acknowledgement with recoverable drain leases, and requires an explicit outer descending Postgres ordering for newest-record evidence. Delivery remains at least once: a provider acceptance followed by an interrupted database acknowledgement can duplicate a notification. A newer workflow observation cannot enqueue an overtaken retry recovery.
+
+Local verification: 248 worker tests passed; nine real-Postgres tests skipped because Docker/Postgres is unavailable locally. Typecheck, the frontend production build, all seven local migrations, strict OpenSpec validation, and all 12 alpha-smoke API checks passed. CI must run the nine Postgres cases before merge. Pilot-specific channel receipt and destination compatibility remain the external evidence gates described above.
+
+
+The built frontend also passed the local browser flow: signup, Check creation, manual baseline, claimed-growth FAIL, explicitly growth-disabled PASS, 390px layout, anonymous public status and revocation, logout, and account cleanup, with zero page JavaScript errors. The browser harness served this branch's build through request routing because another session owned port 3100. Chromium's local-network-access check was disabled only for that harness so its intercepted page could reach the loopback API; no application security settings changed.

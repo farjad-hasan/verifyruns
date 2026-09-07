@@ -1,6 +1,6 @@
 /** One check run: read the destination, fingerprint, verdict, persist, route alerts. */
-import { maybeAlert } from "./alerts";
-import { getCheck, updateCheck } from "./checks";
+import { drainAlerts, queueAlertStatements } from "./alerts";
+import { getCheck } from "./checks";
 import { fetchRecords } from "./connectors";
 import { annotateCount, canonicalHash, computeVerdict, CountBaseline, FetchMeta, fingerprint, Fingerprint, Reported, reportedFailureMessage, splitSample } from "./engine";
 import { Env, nowIso, num } from "./env";
@@ -107,33 +107,26 @@ export async function executeCheck(env: Env, checkId: string, trigger: string, r
   // A reported failure also cancels a retry left by an earlier ordinary FAIL: that retry would read a
   // healthy destination, PASS, and send a false Recovered seconds after the failure alert.
   if (!isRetry) stmts.push(env.DB.prepare("UPDATE checks SET pending_retry = NULL WHERE id = ?").bind(checkId));
-  await env.DB.batch(stmts);
   const run: RunResult = { id: runId, verdict, diff_message: message, timestamp };
-
-  // Establishing the first baseline is setup, not an incident. Real failures still alert.
-  if (superseded || (message.startsWith("Verification incomplete.") && message.includes("Baseline recorded at"))) return run;
-  try {
-    const snoozed = !!(c.snooze_until && c.snooze_until > nowIso());
-    const freshFail = verdict === "FAIL" && c.last_alerted_verdict !== "FAIL";
-    // A retry is claimed (pending_retry cleared) before it reads the destination, so a reported
-    // failure landing during that read cannot cancel it. If one did, this PASS must not say Recovered.
-    if (isRetry && verdict === "PASS") {
-      const overtaken = await env.DB.prepare("SELECT 1 AS x FROM check_runs WHERE check_id = ? AND is_retry = 0 AND trigger != 'heartbeat' AND timestamp >= ? AND id != ? LIMIT 1").bind(checkId, startedAt, runId).first();
-      if (overtaken) {
-        console.warn("retry PASS overtaken by a reported failure; not alerting", checkId, runId);
-        return run;
-      }
-    }
-    // A reported failure is never retried: re-reading the destination cannot change what the
-    // workflow said, and a passing retry would swallow the alert.
-    if (!isRetry && freshFail && c.retry_before_alert && !snoozed && !reportedFailure && baseline && !message.startsWith("Verification incomplete.") && !message.includes("checks could not be evaluated:")) {
+  const setupOnly = message.startsWith("Verification incomplete.") && message.includes("Baseline recorded at");
+  const snoozed = !!(c.snooze_until && c.snooze_until > nowIso());
+  const freshFail = verdict === "FAIL" && c.last_alerted_verdict !== "FAIL";
+  const retry = !isRetry && freshFail && c.retry_before_alert && !snoozed && !reportedFailure && baseline && !message.startsWith("Verification incomplete.") && !message.includes("checks could not be evaluated:");
+  if (!superseded && !setupOnly) {
+    if (retry) {
       const due = new Date(Date.now() + num(env.VR_RETRY_DELAY_SECONDS, 30) * 1000).toISOString();
-      await updateCheck(env, checkId, { pending_retry: { due_at: due, claimed_new: claimedNew, count_baseline: baseline, source_key: sourceKey } });
+      stmts.push(env.DB.prepare("UPDATE checks SET pending_retry = ? WHERE id = ?")
+        .bind(JSON.stringify({ due_at: due, claimed_new: claimedNew, count_baseline: baseline, source_key: sourceKey }), checkId));
     } else {
-      await maybeAlert(env, c, run, snoozed);
+      stmts.push(...queueAlertStatements(env, c, run, snoozed, isRetry ? startedAt : null));
     }
-  } catch (e) {
-    console.error("post-run alert routing failed", e);
+  }
+  // Verdict, retry scheduling and notification enqueue commit together. An invocation
+  // interrupted after this transaction leaves all remaining notification work recoverable.
+  await env.DB.batch(stmts);
+  if (!superseded && !setupOnly && !retry && !snoozed) {
+    try { await drainAlerts(env, new Date(), checkId); }
+    catch (e) { console.error("post-run alert drain failed; event remains queued", e); }
   }
   return run;
 }
