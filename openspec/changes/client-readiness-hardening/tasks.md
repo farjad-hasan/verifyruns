@@ -9,4 +9,6 @@
 
 - [x] 2.1 Update product/security/storage/deployment documentation for changed guarantees and migration.
 - [x] 2.2 Run worker tests including Postgres when available, typecheck, frontend build and strict OpenSpec validation; review final diff.
-- [ ] 2.3 Commit exact paths and publish the reviewed branch/PR without deploying main.
+- [x] 2.3 Commit exact paths and publish the reviewed branch/PR without deploying main.
+
+Published for review: https://github.com/farjad-hasan/verifyruns/pull/16. Production deployment remains outside this change.
