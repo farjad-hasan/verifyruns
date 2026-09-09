@@ -1,17 +1,26 @@
-# RunProof - PRD
+# VerifyRuns - PRD
 
-## Original problem statement
-Build RunProof — a web app that verifies whether "successful" no-code automation
-runs (n8n, Make, Zapier) actually landed data in their destination. After each
-run, RunProof re-reads the destination itself and posts a PASS or FAIL verdict
-with a human-readable diff.
+## What this is now (2026-09-08)
+VerifyRuns is a **working lab**, not a business. It is a complete, live, $0-hosted web app
+(Cloudflare Workers + D1 + Pages) used as the subject of content: a long YouTube video, shorts
+cut from it, and written posts about building and hardening a real app on free and open-source
+tools with AI agents. The narrative, timeline and episode map live in `docs/story.md`.
 
-Tagline: "Your automation said Done. RunProof checks if that's true."
+The product still does what it did: after a no-code automation (n8n, Make, Zapier) reports a
+run as successful, VerifyRuns re-reads the destination and posts a PASS or FAIL verdict with a
+human-readable diff. The rest of this document tracks what is implemented versus backlog and
+stays the source of truth for that.
 
-## User personas
-- **No-code operator**: builds n8n/Make/Zapier workflows; needs assurance the
-  destination actually received the data.
-- **Ops/eng manager**: wants a dashboard-level view of workflow reliability.
+What changes for new work:
+- Frame work as episodes or experiments, not customer features. Launch, marketing and pricing
+  work is off the table (pricing tiers stay deferred).
+- Keep the $0 infrastructure constraint.
+- Experiments that extend VerifyRuns are OpenSpec changes here; unrelated experiments get their
+  own repo and link back.
+
+Original pitch (2026-08-19, for the record): "Your automation said Done. RunProof checks if
+that's true." Personas were the no-code operator and the ops/eng manager. Full history in
+`docs/story.md` and `git log`.
 
 ## Architecture
 - **2026-08-28: ported to Cloudflare Workers + D1 (`worker/`, TypeScript)** — same API contract; the Python `backend/` was removed 2026-08-28 (tag `python-backend-final`). Cron trigger runs the tick every minute; AES-GCM secrets under `ENC_KEY`; PBKDF2 passwords; HS256 JWT. 72 vitest tests in workerd. Deploy: `docs/deploy.md`. **LIVE 2026-08-28:** API https://verifyruns-api.farjad-developer.workers.dev, app https://verifyruns.pages.dev.
