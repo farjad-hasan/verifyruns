@@ -175,7 +175,7 @@ export default function Landing() {
             {[
               { icon: <ShieldCheck size={20} />, title: "Create a Check", body: "Connect a supported destination with read-only access. Choose count and field expectations, then run a first read to establish the baseline." },
               { icon: <Zap size={20} />, title: "Paste the webhook", body: "POST after the batch commits. Send {\"wrote\": N} to require at least N net additions since the previous destination observation." },
-              { icon: <Eye size={20} />, title: "Get verdicts", body: "Read the PASS or FAIL sentence. Configure and test Slack, Discord or email delivery. Add a heartbeat to detect missing runs." },
+              { icon: <Eye size={20} />, title: "Get verdicts", body: "Read the PASS or FAIL sentence. Configure and test Slack or Discord delivery. Add a heartbeat to detect missing runs." },
             ].map((s) => (
               <div key={s.title} className="rp-card p-8">
                 <div className="w-10 h-10 rounded-lg bg-emerald-500/10 border border-emerald-500/25 flex items-center justify-center text-emerald-400 mb-6">

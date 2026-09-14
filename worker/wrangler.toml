@@ -18,7 +18,8 @@ PUBLIC_APP_URL = "https://verifyruns.pages.dev"     # set to the Pages URL / cus
 CORS_ORIGINS = "https://verifyruns.pages.dev"
 
 # Secrets (wrangler secret put): JWT_SECRET, ENC_KEY (32 random bytes, base64), VR_TICK_SECRET,
-# optional RESEND_API_KEY + ALERT_FROM for email alerts.
+# optional RESEND_API_KEY + ALERT_FROM for password-reset (and email alerts when VR_EMAIL_ALERTS=1).
+# email alert channels stay upcoming unless VR_EMAIL_ALERTS=1.
 
 [[d1_databases]]
 binding = "DB"

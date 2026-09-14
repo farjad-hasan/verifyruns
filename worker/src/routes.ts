@@ -1,7 +1,7 @@
 /** HTTP handlers — same paths, payloads, status codes and messages as backend/server.py. */
 import { CheckDoc, deleteCheckCascade, getCheckForUser, insertCheck, prepareConfigForStorage, recomputeHeartbeatDue, rowToCheck, sanitizeChannel, sanitizeCheck, updateCheck } from "./checks";
 import { dummyVerify, effectiveIterations, encryptSecret, hashIterations, hashPassword, signJwt, tokenUrlsafe, uuid, verifyJwt, verifyPassword } from "./crypto";
-import { emailAvailable, Env, flag, nowIso, num } from "./env";
+import { emailAlertsEnabled, emailAvailable, Env, flag, nowIso, num } from "./env";
 import { clientIp, HttpError, json, readJson, validation } from "./http";
 import { PLAN_IDS, PLANS } from "./plans";
 import { CONNECTOR_KINDS, isEmail, parseChannel, parseExpectations, parseHeartbeat, parseHeartbeatWindow, parseName, validateHeartbeatCapacity, validateChannelTarget } from "./validate";
@@ -9,6 +9,12 @@ import { RateLimiter } from "./egress";
 import { channels, deliver, slackEscape } from "./alerts";
 
 export const EMAIL_NOT_CONFIGURED = "Email alerts are not configured on this host (set RESEND_API_KEY and ALERT_FROM).";
+export const EMAIL_ALERTS_UPCOMING = "Email alerts are upcoming. Use Slack or Discord for now.";
+
+function assertEmailChannelAllowed(env: Env): void {
+  if (!emailAlertsEnabled(env)) throw new HttpError(400, EMAIL_ALERTS_UPCOMING);
+  if (!emailAvailable(env)) throw new HttpError(400, EMAIL_NOT_CONFIGURED);
+}
 
 export async function testChannel(env: Env, request: Request, id: string, channelId: string): Promise<Response> {
   const user = await currentUser(env, request);
@@ -168,7 +174,7 @@ export async function createCheck(env: Env, request: Request): Promise<Response>
     for (const [i, raw] of (body.alert_channels as unknown[]).entries()) {
       const ch = parseChannel(raw);
       validateChannelTarget(ch.kind, ch.target.trim(), allowPrivate, ["body", "alert_channels", i, "target"]);
-      if (ch.kind === "email" && !emailAvailable(env)) throw new HttpError(400, EMAIL_NOT_CONFIGURED);
+      if (ch.kind === "email") assertEmailChannelAllowed(env);
       channels.push({ id: uuid(), kind: ch.kind, target_encrypted: await encryptSecret(env.ENC_KEY, ch.target.trim()), created_at: nowIso() });
     }
   }
@@ -364,7 +370,7 @@ export async function addChannel(env: Env, request: Request, id: string): Promis
   const c = await getCheckForUser(env, id, user.id);
   const ch = parseChannel(await readJson(request));
   validateChannelTarget(ch.kind, ch.target.trim(), flag(env.VR_ALLOW_PRIVATE_EGRESS, false), ["body", "target"]);
-  if (ch.kind === "email" && !emailAvailable(env)) throw new HttpError(400, EMAIL_NOT_CONFIGURED);
+  if (ch.kind === "email") assertEmailChannelAllowed(env);
   const doc = { id: uuid(), kind: ch.kind, target_encrypted: await encryptSecret(env.ENC_KEY, ch.target.trim()), created_at: nowIso() };
   await updateCheck(env, id, { alert_channels: [...c.alert_channels, doc] });
   return json(await sanitizeChannel(env, doc));
@@ -464,7 +470,7 @@ export async function health(env: Env): Promise<Response> {
 }
 
 export function meta(env: Env): Response {
-  return json({ email_alerts: emailAvailable(env) });
+  return json({ password_reset: emailAvailable(env), email_alerts: emailAlertsEnabled(env) });
 }
 
 export function plans(env: Env): Response {

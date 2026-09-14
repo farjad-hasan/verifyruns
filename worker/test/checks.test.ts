@@ -165,13 +165,37 @@ describe("checks CRUD (parity with backend_test.py + test_egress/test_heartbeat 
     expect(d.data.target).toBeUndefined();
     const e = await api(`/checks/${c.id}/channels`, { method: "POST", token: u.token, json: { kind: "email", target: "ops@example.com" } });
     expect(e.status).toBe(400);
-    expect(e.data.detail).toBe("Email alerts are not configured on this host (set RESEND_API_KEY and ALERT_FROM).");
+    expect(e.data.detail).toBe("Email alerts are upcoming. Use Slack or Discord for now.");
     const listed = (await api(`/checks/${c.id}`, { token: u.token })).data.alert_channels;
     expect(listed.map((x: any) => x.kind)).toEqual(["slack", "discord"]);
     expect((await api(`/checks/${c.id}/channels/legacy-slack`, { method: "DELETE", token: u.token })).status).toBe(200);
     expect((await api(`/checks/${c.id}/channels/${d.data.id}`, { method: "DELETE", token: u.token })).status).toBe(200);
     expect((await api(`/checks/${c.id}`, { token: u.token })).data.alert_channels).toEqual([]);
-    expect((await api(`/meta`)).data).toEqual({ email_alerts: false });
+    expect((await api(`/meta`)).data).toEqual({ password_reset: false, email_alerts: false });
+    // Resend secrets alone must not unlock alert email; only VR_EMAIL_ALERTS does.
+    const prevKey = env.RESEND_API_KEY;
+    const prevFrom = env.ALERT_FROM;
+    const prevFlag = env.VR_EMAIL_ALERTS;
+    try {
+      (env as any).RESEND_API_KEY = "re_test";
+      (env as any).ALERT_FROM = "VerifyRuns <x@example.com>";
+      delete (env as any).VR_EMAIL_ALERTS;
+      expect((await api(`/meta`)).data).toEqual({ password_reset: true, email_alerts: false });
+      const still = await api(`/checks/${c.id}/channels`, { method: "POST", token: u.token, json: { kind: "email", target: "ops@example.com" } });
+      expect(still.status).toBe(400);
+      expect(still.data.detail).toBe("Email alerts are upcoming. Use Slack or Discord for now.");
+      (env as any).VR_EMAIL_ALERTS = "1";
+      expect((await api(`/meta`)).data).toEqual({ password_reset: true, email_alerts: true });
+      delete (env as any).RESEND_API_KEY;
+      delete (env as any).ALERT_FROM;
+      const noSender = await api(`/checks/${c.id}/channels`, { method: "POST", token: u.token, json: { kind: "email", target: "ops@example.com" } });
+      expect(noSender.status).toBe(400);
+      expect(noSender.data.detail).toBe("Email alerts are not configured on this host (set RESEND_API_KEY and ALERT_FROM).");
+    } finally {
+      if (prevKey === undefined) delete (env as any).RESEND_API_KEY; else (env as any).RESEND_API_KEY = prevKey;
+      if (prevFrom === undefined) delete (env as any).ALERT_FROM; else (env as any).ALERT_FROM = prevFrom;
+      if (prevFlag === undefined) delete (env as any).VR_EMAIL_ALERTS; else (env as any).VR_EMAIL_ALERTS = prevFlag;
+    }
   });
 
   it("plans are public; interest needs login and a known plan", async () => {

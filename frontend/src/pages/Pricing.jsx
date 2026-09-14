@@ -60,7 +60,7 @@ export default function Pricing() {
 
         <section className="mt-10 max-w-[65ch]" data-testid="available-today">
           <h2 className="font-display text-2xl mb-3">Available today, free</h2>
-          <p className="text-zinc-400 leading-relaxed">HTTP / JSON, Airtable and read-only Postgres Checks; record-growth and sampled-field checks; scheduled heartbeats; reported workflow failures; Slack, Discord and configured email alerts; delivery tests; and read-only public status links. Accounts are single-user. Connector limits apply.</p>
+          <p className="text-zinc-400 leading-relaxed">HTTP / JSON, Airtable and read-only Postgres Checks; record-growth and sampled-field checks; scheduled heartbeats; reported workflow failures; Slack and Discord alerts; delivery tests; and read-only public status links. Email alerts are upcoming. Accounts are single-user. Connector limits apply.</p>
           <Link to="/setup" className="rp-inline inline-block mt-3" data-testid="pricing-setup-link">Read the setup guide and verification limits</Link>
         </section>
         <h2 className="font-display text-2xl mt-12 mb-3">Proposed paid packages</h2>

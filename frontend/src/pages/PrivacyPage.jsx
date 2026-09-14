@@ -10,7 +10,7 @@ const SECTIONS = [
     paras: ["Everything below exists to do one job: re-read a destination your automation wrote to and tell you whether it really changed."],
     list: [
       <><strong className="text-zinc-300">Account:</strong> your email address and a salted PBKDF2 hash of your password, so you can log in. Passwords are hashed before storage.</>,
-      <><strong className="text-zinc-300">Checks:</strong> the name, destination and expectations you configure. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets (Slack/Discord webhook URLs, email addresses) are encrypted with AES-256-GCM before they are stored and are only ever shown back masked to the last four characters. They are used solely to read the destination and to deliver your alerts.</>,
+      <><strong className="text-zinc-300">Checks:</strong> the name, destination and expectations you configure. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets (Slack/Discord webhook URLs; email addresses if that channel is enabled later) are encrypted with AES-256-GCM before they are stored and are only ever shown back masked to the last four characters. They are used solely to read the destination and to deliver your alerts.</>,
       <><strong className="text-zinc-300">Runs:</strong> per run, a timestamp, the verdict, the diff sentence, the count your workflow claimed, any reported failure and supplied error text (up to 500 characters), delivery outcomes, and a fingerprint of the destination — record count, its previous observation, count-accuracy flags, an opaque destination-configuration hash, field names, per-field empty rates and a SHA-256 hash of the newest record. Not the rows. See <Link className="rp-inline" to="/data">What we store</Link> for the exact list.</>,
       <><strong className="text-zinc-300">Raw samples, only if you turn them on:</strong> up to five sampled destination records and up to 500 characters of an upstream error, kept about 30 days and then deleted automatically.</>,
       <><strong className="text-zinc-300">Pending work:</strong> queued run metadata until recorded; notification messages, encrypted targets and attempt results until accepted or cancelled by removing the targets or deleting the Check. Their original runs remain while pending.</>,
@@ -28,7 +28,7 @@ const SECTIONS = [
     paras: ["Cloudflare hosts the service and Resend sends email. Configured Slack or Discord webhooks receive alert text through the destination you choose. Nothing is sold or shared for advertising."],
     list: [
       <><strong className="text-zinc-300">Cloudflare</strong> hosts the application, the API and the database (Workers, Pages and D1), and processes operational request and error logs according to the hosting configuration.</>,
-      <><strong className="text-zinc-300">Resend</strong> sends password-reset emails and email alerts, and therefore sees the recipient address and the alert text.</>,
+      <><strong className="text-zinc-300">Resend</strong> sends password-reset emails (and would send alert email if that channel is enabled later), and therefore sees the recipient address and the message text.</>,
     ],
   },
   {

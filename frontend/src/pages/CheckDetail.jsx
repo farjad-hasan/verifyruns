@@ -532,7 +532,7 @@ function AlertChannelsCard({ check, onSaved }) {
   const [kind, setKind] = useState("slack");
   const [target, setTarget] = useState("");
   const [busy, setBusy] = useState(false);
-  const [emailAvailable, setEmailAvailable] = useState(null);
+  const [emailAlerts, setEmailAlerts] = useState(false);
   const [testing, setTesting] = useState("");
   const [testResult, setTestResult] = useState("");
   const test = async (ch) => {
@@ -547,7 +547,7 @@ function AlertChannelsCard({ check, onSaved }) {
   };
 
   useEffect(() => {
-    api.get("/meta").then(({ data }) => setEmailAvailable(!!data.email_alerts)).catch(() => setEmailAvailable(false));
+    api.get("/meta").then(({ data }) => setEmailAlerts(!!data.email_alerts)).catch(() => setEmailAlerts(false));
   }, []);
 
   const placeholder = {
@@ -620,8 +620,8 @@ function AlertChannelsCard({ check, onSaved }) {
         <select className="rp-input font-mono" aria-label="Channel kind" value={kind} onChange={(e) => setKind(e.target.value)} data-testid="channel-kind-select">
           <option value="slack">Slack</option>
           <option value="discord">Discord</option>
-          <option value="email" disabled={emailAvailable === false}>
-            {emailAvailable === false ? "Email (not configured on this host)" : "Email"}
+          <option value="email" disabled={!emailAlerts}>
+            {emailAlerts ? "Email" : "Email · upcoming"}
           </option>
         </select>
         <input
@@ -633,10 +633,13 @@ function AlertChannelsCard({ check, onSaved }) {
           onChange={(e) => setTarget(e.target.value)}
           data-testid="channel-target-input"
         />
-        <button className="rp-btn-primary" onClick={add} disabled={busy || !target.trim()} data-testid="add-channel-btn">
+        <button className="rp-btn-primary" onClick={add} disabled={busy || !target.trim() || (kind === "email" && !emailAlerts)} data-testid="add-channel-btn">
           <Save size={14} /> {busy ? "Adding…" : "Add"}
         </button>
       </div>
+      {!emailAlerts && (
+        <p className="text-xs text-quiet mt-2" data-testid="email-alerts-upcoming-hint">Email alerts are next. Use Slack or Discord for now.</p>
+      )}
       <p className="text-xs text-quiet mt-2">Stored encrypted; only the last 4 characters are shown afterwards.</p>
     </div>
   );

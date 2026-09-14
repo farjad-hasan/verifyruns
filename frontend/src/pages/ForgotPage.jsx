@@ -14,7 +14,7 @@ export default function ForgotPage() {
   const [available, setAvailable] = useState(true);
 
   useEffect(() => {
-    api.get("/meta").then(({ data }) => setAvailable(!!data.email_alerts)).catch(() => {});
+    api.get("/meta").then(({ data }) => setAvailable(!!data.password_reset)).catch(() => {});
   }, []);
 
   const submit = async (e) => {
