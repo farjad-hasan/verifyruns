@@ -83,3 +83,7 @@ Planned work is tracked with [OpenSpec](https://github.com/Fission-AI/OpenSpec) 
 ## Status
 
 Built for the Emergent Builder Fest (August 2026); developed locally since 2026-08-27. Alpha — the API and data model may change. Security disclosures: [docs/security.md](docs/security.md). Terms: [docs/terms.md](docs/terms.md); privacy: [docs/privacy.md](docs/privacy.md).
+
+## License
+
+Proprietary — see [`LICENSE`](LICENSE). Source is public for transparency; it is **not** open source. Hosted product terms: https://verifyruns.pages.dev/terms
