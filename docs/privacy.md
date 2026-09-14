@@ -13,12 +13,12 @@ VerifyRuns is operated by Farjad Hasan, an individual developer, from Pakistan. 
 Everything below exists to do one job: re-read a destination your automation wrote to and tell you whether it really changed.
 
 - **Account:** your email address and a salted PBKDF2 hash of your password, so you can log in. Passwords are hashed before storage.
-- **Checks:** the name, destination and expectations you configure. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets (Slack/Discord webhook URLs, email addresses) are encrypted with AES-256-GCM before they are stored and are only ever shown back masked to the last four characters. They are used solely to read the destination and to deliver your alerts.
+- **Checks:** the name, destination and expectations you configure. Bearer tokens, Airtable tokens, Postgres connection strings and alert targets (Slack/Discord webhook URLs; email addresses if that channel is enabled later) are encrypted with AES-256-GCM before they are stored and are only ever shown back masked to the last four characters. They are used solely to read the destination and to deliver your alerts.
 - **Runs:** per run, a timestamp, the verdict, the diff sentence, the count your workflow claimed, any reported failure and supplied error text (up to 500 characters), delivery outcomes, and a fingerprint of the destination — record count, its previous observation, count-accuracy flags, an opaque destination-configuration hash, field names, per-field empty rates and a SHA-256 hash of the newest record. Not the rows. See `what-we-store.md` for the exact list.
 - **Raw samples, only if you turn them on:** up to five sampled destination records and up to 500 characters of an upstream error, kept about 30 days and then deleted automatically.
 - **Pending work:** queued runs retain their run ID, trigger, count and supplied failure metadata until recorded. Pending notifications retain the Check name, original message/time, encrypted targets and attempt results until accepted or cancelled by removing the targets or deleting the Check. Their original runs are retained while pending.
 - **Pricing interest:** if you click a plan on the pricing page, the plan and any note you type, with your email.
-- **Password resets:** a hash of the one-time token, for one hour.
+- **Password resets:** when enabled, a hash of the one-time token, for one hour. Password reset by email is currently upcoming.
 - **Not stored:** The application uses IP addresses in memory for rate limiting; hosting-provider request logs may include connection metadata. There are no analytics or advertising trackers and no cookies; your session token lives in your browser's local storage.
 
 ## Your destinations
@@ -36,7 +36,7 @@ Cloudflare hosts the service. Resend will send email when password reset or aler
 
 - Account and Checks: until you delete them. Runs: 90 days, retaining at least the newest 35 runs and newest 30 PASS runs per Check regardless of age, plus runs with pending notifications until resolved; deleting a Check or account removes them.
 - Raw samples: about 30 days from the run, removed by the periodic cleanup task.
-- Password-reset tokens: one hour, or until used.
+- Password-reset tokens (when reset-by-email is enabled): one hour, or until used.
 - Operational logs: retained according to the configured Cloudflare logging service.
 
 ## Deleting and exporting
