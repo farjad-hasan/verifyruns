@@ -25,7 +25,7 @@ const SECTIONS = [
   },
   {
     title: "Who else touches the data",
-    paras: ["Cloudflare hosts the service and Resend sends email. Configured Slack or Discord webhooks receive alert text through the destination you choose. Nothing is sold or shared for advertising."],
+    paras: ["Cloudflare hosts the service. Resend will send email when password reset or alert email is enabled. Configured Slack or Discord webhooks receive alert text through the destination you choose. Nothing is sold or shared for advertising."],
     list: [
       <><strong className="text-zinc-300">Cloudflare</strong> hosts the application, the API and the database (Workers, Pages and D1), and processes operational request and error logs according to the hosting configuration.</>,
       <><strong className="text-zinc-300">Resend</strong> would send password-reset (and later alert) email when those features are enabled, and would then see the recipient address and the message text. Neither is live until a verified sending domain is configured.</>,
@@ -56,5 +56,5 @@ const SECTIONS = [
 ];
 
 export default function PrivacyPage() {
-  return <LegalPage eyebrow="Privacy" title="Privacy policy." intro="Short, because the product stores little. This page says what VerifyRuns keeps about you and your destinations, who else touches it, and how to make it go away." updated="2026-09-07" sections={SECTIONS} />;
+  return <LegalPage eyebrow="Privacy" title="Privacy policy." intro="Short, because the product stores little. This page says what VerifyRuns keeps about you and your destinations, who else touches it, and how to make it go away." updated="2026-09-14" sections={SECTIONS} />;
 }

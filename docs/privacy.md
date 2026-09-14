@@ -1,6 +1,6 @@
 # Privacy policy
 
-Canonical text of https://verifyruns.pages.dev/privacy. Last updated 2026-09-07.
+Canonical text of https://verifyruns.pages.dev/privacy. Last updated: 2026-09-14.
 
 Short, because the product stores little. This page says what VerifyRuns keeps about you and your destinations, who else touches it, and how to make it go away.
 
@@ -27,10 +27,10 @@ When a Check runs, VerifyRuns connects to the destination you configured — an 
 
 ## Who else touches the data
 
-Cloudflare hosts the service and Resend sends email. Configured Slack or Discord webhooks receive alert text through the destination you choose. Nothing is sold or shared for advertising.
+Cloudflare hosts the service. Resend will send email when password reset or alert email is enabled. Configured Slack or Discord webhooks receive alert text through the destination you choose. Nothing is sold or shared for advertising.
 
 - **Cloudflare** hosts the application, the API and the database (Workers, Pages and D1), and processes operational request and error logs according to the hosting configuration.
-- **Resend** sends password-reset emails and email alerts, and therefore sees the recipient address and the alert text.
+- **Resend** will send password-reset (and later alert) email when those features are enabled, and would then see the recipient address and the message text. Neither is live until a verified sending domain is configured.
 
 ## How long we keep it
 
