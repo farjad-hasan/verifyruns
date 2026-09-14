@@ -8,6 +8,7 @@
 - [x] 2.1 `/meta` returns `{ password_reset, email_alerts }`; `email_alerts` defaults false unless `VR_EMAIL_ALERTS=1`
 - [x] 2.2 POST create-check / add-channel email returns upcoming error unless `VR_EMAIL_ALERTS=1` (then existing RESEND gate)
 - [x] 2.3 Update `checks.test.ts` for meta shape and email gate
+- [x] 2.4 Gate `deliver`/outbox email send on `VR_EMAIL_ALERTS`; update `alerts.test.ts` (+ alpha testChannel fixture)
 
 ## 3. Frontend + copy
 

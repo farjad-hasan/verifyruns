@@ -7,6 +7,7 @@ Resend secrets are live for password-reset dogfood, but there is no Resend-verif
 - Split `/meta` into `password_reset` (from `RESEND_API_KEY` + `ALERT_FROM`) and `email_alerts` (false by default; set `VR_EMAIL_ALERTS=1` to re-enable later).
 - Forgot password uses `password_reset`. Alert channel UI and creation use `email_alerts`.
 - Reject adding email alert channels with a clear upcoming error even when Resend secrets exist, unless `VR_EMAIL_ALERTS=1` (then the existing not-configured gate still applies if secrets are missing).
+- Gate email alert *delivery* on the same `VR_EMAIL_ALERTS` flag (default off) so pre-existing email channels do not keep sending; password-reset mail via Resend stays independent of the flag.
 - UI: Email option labeled `Email · upcoming` and disabled; helper “Email alerts are next. Use Slack or Discord for now.” Slack/Discord unchanged.
 - Marketing/docs: Available today and setup mention Slack/Discord only; Email stays only under proposed Pro packages; Privacy ties Resend to password-reset without implying live alert email.
 

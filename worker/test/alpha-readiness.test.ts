@@ -118,7 +118,7 @@ describe("configured email delivery test", () => {
     await env.DB.prepare("UPDATE checks SET alert_channels = ? WHERE id = ?").bind(JSON.stringify([{id:"email-test", kind:"email", target_encrypted:encrypted}]),c.id).run();
     let sent: any;
     setFetchForTests(async (url, init) => {expect(url).toBe("https://api.resend.com/emails");sent=JSON.parse(String(init?.body));return jsonResponse({id:"accepted"});});
-    const result = await testChannel({...env, RESEND_API_KEY:"fixture-key", ALERT_FROM:"VerifyRuns <alpha@example.test>"}, new Request("http://api.test", {headers:{authorization:"Bearer "+u.token}}), c.id, "email-test");
+    const result = await testChannel({...env, RESEND_API_KEY:"fixture-key", ALERT_FROM:"VerifyRuns <alpha@example.test>", VR_EMAIL_ALERTS:"1"}, new Request("http://api.test", {headers:{authorization:"Bearer "+u.token}}), c.id, "email-test");
     expect(result.status).toBe(200);expect(sent.to).toEqual(["reviewer@example.test"]);expect(sent.from).toContain("alpha@example.test");expect(sent.subject).toContain("test alert");
     expect((await api(`/checks/${c.id}/runs`,{token:u.token})).data).toEqual([]);
   });

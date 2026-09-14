@@ -1,7 +1,7 @@
 /** Alert channels and transition-based delivery. Ported from backend/server.py. */
 import { CheckDoc, getCheck, Channel } from "./checks";
 import { decryptSecret, uuid } from "./crypto";
-import { emailAvailable, Env, num, nowIso } from "./env";
+import { emailAlertsEnabled, emailAvailable, Env, num, nowIso } from "./env";
 import { httpFetch, readCapped } from "./net";
 
 const DISCORD_MAX_CHARS = 2000;
@@ -41,6 +41,9 @@ export async function deliver(env: Env, kind: string, target: string, text: stri
     if (kind === "slack") resp = await httpFetch(target, init({ text }));
     else if (kind === "discord") resp = await httpFetch(target, init({ content: text.slice(0, DISCORD_MAX_CHARS), allowed_mentions: { parse: [] } }));
     else if (kind === "email") {
+      // Creation is gated in routes; delivery must use the same product flag so
+      // pre-existing email channels do not keep sending while alerts are upcoming.
+      if (!emailAlertsEnabled(env)) return { ok: false, error: "Email alerts are upcoming. Use Slack or Discord for now." };
       if (!emailAvailable(env)) return { ok: false, error: "email alerts need RESEND_API_KEY and ALERT_FROM on the server" };
       resp = await httpFetch("https://api.resend.com/emails", init({ from: env.ALERT_FROM, to: [target], subject, text }, { authorization: `Bearer ${env.RESEND_API_KEY}` }));
     } else return { ok: false, error: `unknown channel kind ${kind}` };
@@ -122,7 +125,9 @@ export async function drainAlerts(env: Env, now = new Date(), checkId?: string):
       const payload = JSON.parse(row.payload) as { name: string; message: string; timestamp: string; channels: Channel[] };
       const current = [...c.alert_channels];
       if (c.alert_slack_webhook_encrypted) current.push({ id: "legacy-slack", kind: "slack", target_encrypted: c.alert_slack_webhook_encrypted, created_at: c.created_at });
-      const active = payload.channels.filter(ch => current.some(live => live.id === ch.id && live.target_encrypted === ch.target_encrypted));
+      const active = payload.channels.filter(ch =>
+        current.some(live => live.id === ch.id && live.target_encrypted === ch.target_encrypted)
+        && (ch.kind !== "email" || emailAlertsEnabled(env)));
       const sent: Sent[] = JSON.parse(row.results);
       const state: AlertState = row.verdict === "FAIL" ? "FAIL" : "Recovered";
       const link = env.PUBLIC_APP_URL ? `${env.PUBLIC_APP_URL.replace(/\/+$/, "")}/checks/${c.id}` : "";

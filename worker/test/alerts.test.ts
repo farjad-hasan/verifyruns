@@ -30,7 +30,7 @@ const failureCounter = async (): Promise<number> => {
 describe("deliver", () => {
   it("returns the provider's status and body when delivery is refused, so the run can show why", async () => {
     setFetchForTests(async () => new Response(JSON.stringify({ statusCode: 422, name: "validation_error", message: "The from field is invalid" }), { status: 422 }));
-    const r = await deliver({ ...env, RESEND_API_KEY: "re_test", ALERT_FROM: "bad-from" } as any, "email", "a@b.co", "text", "subject");
+    const r = await deliver({ ...env, RESEND_API_KEY: "re_test", ALERT_FROM: "bad-from", VR_EMAIL_ALERTS: "1" } as any, "email", "a@b.co", "text", "subject");
     expect(r.ok).toBe(false);
     expect((r as any).error).toBe('422 {"statusCode":422,"name":"validation_error","message":"The from field is invalid"}');
   });
@@ -40,9 +40,56 @@ describe("deliver", () => {
     expect(r).toEqual({ ok: true });
   });
   it("names a missing email configuration instead of failing silently", async () => {
-    const r = await deliver({ ...env, RESEND_API_KEY: "", ALERT_FROM: "" } as any, "email", "a@b.co", "text", "s");
+    const r = await deliver({ ...env, RESEND_API_KEY: "", ALERT_FROM: "", VR_EMAIL_ALERTS: "1" } as any, "email", "a@b.co", "text", "s");
     expect(r.ok).toBe(false);
     expect((r as any).error).toMatch(/RESEND_API_KEY/);
+  });
+  it("refuses email delivery while VR_EMAIL_ALERTS is off, even with Resend secrets", async () => {
+    let called = false;
+    setFetchForTests(async () => { called = true; return new Response("{}", { status: 200 }); });
+    const r = await deliver({ ...env, RESEND_API_KEY: "re_test", ALERT_FROM: "alerts@example.com" } as any, "email", "a@b.co", "text", "s");
+    expect(r.ok).toBe(false);
+    expect((r as any).error).toMatch(/upcoming/i);
+    expect(called).toBe(false);
+  });
+  it("sends email when VR_EMAIL_ALERTS is on and Resend is configured", async () => {
+    setFetchForTests(async () => new Response("{}", { status: 200 }));
+    const r = await deliver({ ...env, RESEND_API_KEY: "re_test", ALERT_FROM: "alerts@example.com", VR_EMAIL_ALERTS: "1" } as any, "email", "a@b.co", "text", "s");
+    expect(r).toEqual({ ok: true });
+  });
+});
+
+describe("email alerts upcoming delivery gate", () => {
+  it("does not POST to Resend for a stored email channel when VR_EMAIL_ALERTS is unset", async () => {
+    const { encryptSecret } = await import("../src/crypto");
+    const u = await user();
+    const c = await makeCheck(u.token);
+    const encrypted = await encryptSecret(env.ENC_KEY, "ops@example.com");
+    await env.DB.prepare("UPDATE checks SET alert_channels = ? WHERE id = ?")
+      .bind(JSON.stringify([{ id: "email-1", kind: "email", target_encrypted: encrypted, created_at: new Date().toISOString() }]), c.id).run();
+    let resendCalls = 0;
+    setFetchForTests(async (url) => {
+      if (String(url).includes("resend.com")) resendCalls++;
+      return new Response("{}", { status: 200 });
+    });
+    const prev = (env as any).VR_EMAIL_ALERTS;
+    const prevKey = (env as any).RESEND_API_KEY;
+    const prevFrom = (env as any).ALERT_FROM;
+    delete (env as any).VR_EMAIL_ALERTS;
+    (env as any).RESEND_API_KEY = "re_test";
+    (env as any).ALERT_FROM = "alerts@example.com";
+    try {
+      const run = await insertRun(c.id, "em1", "FAIL");
+      await maybeAlert(env, (await getCheck(env, c.id))!, run, false);
+      expect(resendCalls).toBe(0);
+      // email channels are skipped while upcoming, so the outbox completes instead of retrying forever
+      const left = await env.DB.prepare("SELECT COUNT(*) AS n FROM alert_outbox WHERE check_id = ?").bind(c.id).first<{ n: number }>();
+      expect(Number(left?.n ?? 0)).toBe(0);
+    } finally {
+      if (prev === undefined) delete (env as any).VR_EMAIL_ALERTS; else (env as any).VR_EMAIL_ALERTS = prev;
+      if (prevKey === undefined) delete (env as any).RESEND_API_KEY; else (env as any).RESEND_API_KEY = prevKey;
+      if (prevFrom === undefined) delete (env as any).ALERT_FROM; else (env as any).ALERT_FROM = prevFrom;
+    }
   });
 });
 
