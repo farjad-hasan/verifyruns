@@ -1,7 +1,7 @@
 /** HTTP handlers — same paths, payloads, status codes and messages as backend/server.py. */
 import { CheckDoc, deleteCheckCascade, getCheckForUser, insertCheck, prepareConfigForStorage, recomputeHeartbeatDue, rowToCheck, sanitizeChannel, sanitizeCheck, updateCheck } from "./checks";
 import { dummyVerify, effectiveIterations, encryptSecret, hashIterations, hashPassword, signJwt, tokenUrlsafe, uuid, verifyJwt, verifyPassword } from "./crypto";
-import { emailAlertsEnabled, emailAvailable, Env, flag, nowIso, num } from "./env";
+import { emailAlertsEnabled, emailAvailable, Env, flag, nowIso, num, passwordResetEnabled } from "./env";
 import { clientIp, HttpError, json, readJson, validation } from "./http";
 import { PLAN_IDS, PLANS } from "./plans";
 import { CONNECTOR_KINDS, isEmail, parseChannel, parseExpectations, parseHeartbeat, parseHeartbeatWindow, parseName, validateHeartbeatCapacity, validateChannelTarget } from "./validate";
@@ -470,7 +470,7 @@ export async function health(env: Env): Promise<Response> {
 }
 
 export function meta(env: Env): Response {
-  return json({ password_reset: emailAvailable(env), email_alerts: emailAlertsEnabled(env) });
+  return json({ password_reset: passwordResetEnabled(env) && emailAvailable(env), email_alerts: emailAlertsEnabled(env) });
 }
 
 export function plans(env: Env): Response {

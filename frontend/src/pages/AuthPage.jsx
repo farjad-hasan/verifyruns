@@ -96,11 +96,7 @@ export default function AuthPage({ mode }) {
             <button type="submit" className="rp-btn-primary w-full justify-center" disabled={busy} data-testid="auth-submit-btn">
               {busy ? "Working…" : isLogin ? "Log in" : "Create account"}
             </button>
-            {isLogin ? (
-              <p className="text-sm text-quiet">
-                <Link to="/forgot" className="rp-inline" data-testid="auth-forgot-link">Forgot your password?</Link>
-              </p>
-            ) : (
+            {isLogin ? null : (
               <p className="text-xs text-quiet leading-relaxed" data-testid="auth-terms-note">
                 By creating an account you agree to the <Link to="/terms" className="rp-inline">Terms</Link> and the <Link to="/privacy" className="rp-inline">Privacy Policy</Link>.
               </p>

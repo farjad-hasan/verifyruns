@@ -56,7 +56,7 @@ The alpha does not verify record identities, duplicates, arbitrary values, updat
 ## Capabilities and Constraints
 
 - Routes: `/` (landing), `/login`, `/signup`, `/dashboard`, `/checks/new`, `/checks/:id`,
-  `/status/:token` (public), `/pricing`, `/data`, `/security`; `/forgot`, `/reset`, `/terms`,
+  `/status/:token` (public), `/pricing`, `/data`, `/security`; `/forgot` and `/reset` (password reset by email upcoming), `/terms`,
   `/privacy` and `/setup` are available.
 - Stack: React 19 + Tailwind + shadcn/ui (CRA, `react-scripts`), Cloudflare Worker + D1 API,
   Cloudflare Pages hosting. Dev: `cd frontend && PORT=3100 yarn start` against `localhost:8787`.

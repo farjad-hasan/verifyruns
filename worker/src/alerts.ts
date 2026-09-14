@@ -28,6 +28,30 @@ export async function channels(env: Env, c: CheckDoc): Promise<LiveChannel[]> {
 
 export type DeliveryResult = { ok: true } | { ok: false; error: string };
 
+/** Transactional Resend send (password reset). Not gated by VR_EMAIL_ALERTS. */
+export async function sendResendEmail(env: Env, to: string, text: string, subject: string): Promise<DeliveryResult> {
+  if (!emailAvailable(env)) return { ok: false, error: "email alerts need RESEND_API_KEY and ALERT_FROM on the server" };
+  try {
+    const resp = await httpFetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${env.RESEND_API_KEY}` },
+      body: JSON.stringify({ from: env.ALERT_FROM, to: [to], subject, text }),
+      redirect: "manual",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (resp.status >= 300) {
+      const raw = await readCapped(resp, num(env.VR_MAX_RESPONSE_BYTES, 5 * 1024 * 1024)).catch(() => null);
+      const body = raw ? new TextDecoder().decode(raw).slice(0, 300) : "";
+      console.warn(`resend non-2xx: ${resp.status} ${body}`);
+      return { ok: false, error: `${resp.status} ${body}`.trim() };
+    }
+    return { ok: true };
+  } catch (e: any) {
+    console.error("resend delivery failed", e);
+    return { ok: false, error: String(e?.message || e).slice(0, 300) };
+  }
+}
+
 export async function deliver(env: Env, kind: string, target: string, text: string, subject = ""): Promise<DeliveryResult> {
   try {
     let resp: Response;
@@ -44,8 +68,7 @@ export async function deliver(env: Env, kind: string, target: string, text: stri
       // Creation is gated in routes; delivery must use the same product flag so
       // pre-existing email channels do not keep sending while alerts are upcoming.
       if (!emailAlertsEnabled(env)) return { ok: false, error: "Email alerts are upcoming. Use Slack or Discord for now." };
-      if (!emailAvailable(env)) return { ok: false, error: "email alerts need RESEND_API_KEY and ALERT_FROM on the server" };
-      resp = await httpFetch("https://api.resend.com/emails", init({ from: env.ALERT_FROM, to: [target], subject, text }, { authorization: `Bearer ${env.RESEND_API_KEY}` }));
+      return sendResendEmail(env, target, text, subject);
     } else return { ok: false, error: `unknown channel kind ${kind}` };
     // With redirect: "manual" a 3xx surfaces here as its own status; a redirecting webhook is a failure.
     if (resp.status >= 300) {

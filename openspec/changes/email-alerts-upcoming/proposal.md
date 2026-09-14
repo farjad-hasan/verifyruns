@@ -24,3 +24,5 @@ Resend secrets are live for password-reset dogfood, but there is no Resend-verif
 - `frontend/src/pages/{ForgotPage,CheckDetail,NewCheck,Pricing,Landing,SetupPage,PrivacyPage}.jsx`
 - `worker/src/plans.ts`, `PRODUCT.md`, `README.md`
 - `openspec/CLAIMS.md`, `openspec/changes/email-alerts-upcoming/**`
+
+- Password reset by email is also upcoming by default (`VR_PASSWORD_RESET`, default off); login hides the forgot link; `/forgot` returns upcoming until re-enabled.

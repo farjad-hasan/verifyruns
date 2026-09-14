@@ -15,7 +15,7 @@ const SECTIONS = [
       <><strong className="text-zinc-300">Raw samples, only if you turn them on:</strong> up to five sampled destination records and up to 500 characters of an upstream error, kept about 30 days and then deleted automatically.</>,
       <><strong className="text-zinc-300">Pending work:</strong> queued run metadata until recorded; notification messages, encrypted targets and attempt results until accepted or cancelled by removing the targets or deleting the Check. Their original runs remain while pending.</>,
       <><strong className="text-zinc-300">Pricing interest:</strong> if you click a plan on the pricing page, the plan and any note you type, with your email.</>,
-      <><strong className="text-zinc-300">Password resets:</strong> a hash of the one-time token, for one hour.</>,
+      <><strong className="text-zinc-300">Password resets:</strong> when enabled, a hash of the one-time token, for one hour. Password reset by email is currently upcoming.</>,
       <><strong className="text-zinc-300">Not stored:</strong> The application uses IP addresses in memory for rate limiting; hosting-provider request logs may include connection metadata. There are no analytics or advertising trackers and no cookies; your session token lives in your browser's local storage.</>,
     ],
   },
@@ -28,7 +28,7 @@ const SECTIONS = [
     paras: ["Cloudflare hosts the service and Resend sends email. Configured Slack or Discord webhooks receive alert text through the destination you choose. Nothing is sold or shared for advertising."],
     list: [
       <><strong className="text-zinc-300">Cloudflare</strong> hosts the application, the API and the database (Workers, Pages and D1), and processes operational request and error logs according to the hosting configuration.</>,
-      <><strong className="text-zinc-300">Resend</strong> sends password-reset emails (and would send alert email if that channel is enabled later), and therefore sees the recipient address and the message text.</>,
+      <><strong className="text-zinc-300">Resend</strong> would send password-reset (and later alert) email when those features are enabled, and would then see the recipient address and the message text. Neither is live until a verified sending domain is configured.</>,
     ],
   },
   {
@@ -36,7 +36,7 @@ const SECTIONS = [
     list: [
       "Account and Checks: until you delete them. Runs: 90 days, retaining at least the newest 35 runs and newest 30 PASS runs per Check regardless of age, plus runs with pending notifications until resolved; deleting a Check or account removes them.",
       "Raw samples: about 30 days from the run, removed by the periodic cleanup task.",
-      "Password-reset tokens: one hour, or until used.",
+      "Password-reset tokens (when reset-by-email is enabled): one hour, or until used.",
       "Operational logs: retained according to the configured Cloudflare logging service.",
     ],
     paras: [],

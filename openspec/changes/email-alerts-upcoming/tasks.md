@@ -9,6 +9,7 @@
 - [x] 2.2 POST create-check / add-channel email returns upcoming error unless `VR_EMAIL_ALERTS=1` (then existing RESEND gate)
 - [x] 2.3 Update `checks.test.ts` for meta shape and email gate
 - [x] 2.4 Gate `deliver`/outbox email send on `VR_EMAIL_ALERTS`; update `alerts.test.ts` (+ alpha testChannel fixture)
+- [x] 2.5 Gate password reset on `VR_PASSWORD_RESET` (default off); hide login forgot link; transactional Resend path separate from alert delivery
 
 ## 3. Frontend + copy
 

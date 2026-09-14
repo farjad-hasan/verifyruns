@@ -176,15 +176,19 @@ describe("checks CRUD (parity with backend_test.py + test_egress/test_heartbeat 
     const prevKey = env.RESEND_API_KEY;
     const prevFrom = env.ALERT_FROM;
     const prevFlag = env.VR_EMAIL_ALERTS;
+    const prevReset = (env as any).VR_PASSWORD_RESET;
     try {
       (env as any).RESEND_API_KEY = "re_test";
       (env as any).ALERT_FROM = "VerifyRuns <x@example.com>";
       delete (env as any).VR_EMAIL_ALERTS;
-      expect((await api(`/meta`)).data).toEqual({ password_reset: true, email_alerts: false });
+      // Resend secrets alone must not unlock password reset or alert email.
+      expect((await api(`/meta`)).data).toEqual({ password_reset: false, email_alerts: false });
       const still = await api(`/checks/${c.id}/channels`, { method: "POST", token: u.token, json: { kind: "email", target: "ops@example.com" } });
       expect(still.status).toBe(400);
       expect(still.data.detail).toBe("Email alerts are upcoming. Use Slack or Discord for now.");
       (env as any).VR_EMAIL_ALERTS = "1";
+      expect((await api(`/meta`)).data).toEqual({ password_reset: false, email_alerts: true });
+      (env as any).VR_PASSWORD_RESET = "1";
       expect((await api(`/meta`)).data).toEqual({ password_reset: true, email_alerts: true });
       delete (env as any).RESEND_API_KEY;
       delete (env as any).ALERT_FROM;
@@ -195,6 +199,7 @@ describe("checks CRUD (parity with backend_test.py + test_egress/test_heartbeat 
       if (prevKey === undefined) delete (env as any).RESEND_API_KEY; else (env as any).RESEND_API_KEY = prevKey;
       if (prevFrom === undefined) delete (env as any).ALERT_FROM; else (env as any).ALERT_FROM = prevFrom;
       if (prevFlag === undefined) delete (env as any).VR_EMAIL_ALERTS; else (env as any).VR_EMAIL_ALERTS = prevFlag;
+      if (prevReset === undefined) delete (env as any).VR_PASSWORD_RESET; else (env as any).VR_PASSWORD_RESET = prevReset;
     }
   });
 

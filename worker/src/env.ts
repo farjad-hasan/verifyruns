@@ -27,6 +27,7 @@ export interface Env {
   VR_HEALTH_MAX_TICK_AGE_SECONDS?: string;
   VR_TEST_PG_DSN?: string;
   VR_EMAIL_ALERTS?: string;
+  VR_PASSWORD_RESET?: string;
 }
 
 export const num = (v: string | undefined, dflt: number): number => {
@@ -42,3 +43,5 @@ export const nowIso = (): string => new Date().toISOString();
 export const emailAvailable = (env: Env): boolean => !!(env.RESEND_API_KEY && env.ALERT_FROM);
 /** Product email alert channels; off until a verified sending domain exists. */
 export const emailAlertsEnabled = (env: Env): boolean => flag(env.VR_EMAIL_ALERTS, false);
+/** Password-reset mail; off until a verified sending domain exists (same Resend constraint). */
+export const passwordResetEnabled = (env: Env): boolean => flag(env.VR_PASSWORD_RESET, false);
