@@ -44,7 +44,7 @@ The alpha does not verify record identities, duplicates, arbitrary values, updat
   Postgres destination), paste one HTTP Request node at the end of the workflow, get verdicts.
 - Verdicts arrive on the dashboard, on a public read-only status page (`/status/:token`) **for
   teammates to monitor the same Check without an account** *(confirmed 2026-08-29; the landing copy's
-  "hand it to a client" line is a secondary use, not the design target)*, and via Slack / Discord / email — on the first FAIL and again on recovery,
+  "hand it to a client" line is a secondary use, not the design target)*, and via Slack / Discord (email alerts upcoming) — on the first FAIL and again on recovery,
   with durable scheduler retries when all providers reject delivery or processing is interrupted. A lost acknowledgement can duplicate an alert. Provider acceptance is not a receipt guarantee.
 - Heartbeat rule: "expect a run every N hours"; a missing run is itself a FAIL.
 - The n8n community node (`verifyruns-n8n`) fails the execution on FAIL; the webhook returns the
@@ -56,7 +56,7 @@ The alpha does not verify record identities, duplicates, arbitrary values, updat
 ## Capabilities and Constraints
 
 - Routes: `/` (landing), `/login`, `/signup`, `/dashboard`, `/checks/new`, `/checks/:id`,
-  `/status/:token` (public), `/pricing`, `/data`, `/security`; `/forgot`, `/reset`, `/terms`,
+  `/status/:token` (public), `/pricing`, `/data`, `/security`; `/forgot` and `/reset` (password reset by email upcoming), `/terms`,
   `/privacy` and `/setup` are available.
 - Stack: React 19 + Tailwind + shadcn/ui (CRA, `react-scripts`), Cloudflare Worker + D1 API,
   Cloudflare Pages hosting. Dev: `cd frontend && PORT=3100 yarn start` against `localhost:8787`.

@@ -1,18 +1,21 @@
 /** Password reset by emailed one-time token. Only the SHA-256 of the token is stored. */
-import { deliver } from "./alerts";
+import { sendResendEmail } from "./alerts";
 import { hashPassword, sha256Hex, signJwt, tokenUrlsafe, uuid } from "./crypto";
-import { emailAvailable, Env, nowIso, num } from "./env";
+import { emailAvailable, Env, nowIso, num, passwordResetEnabled } from "./env";
 import { clientIp, HttpError, json, readJson, validation } from "./http";
 import { isEmail } from "./validate";
 import { enforce, limiter } from "./routes";
 
 export const RESET_TTL_MS = 3600_000;
 export const RESET_UNAVAILABLE = "Password reset is not available on this host (email is not configured)";
+export const RESET_UPCOMING = "Password reset is upcoming. Email sending is not available yet.";
 export const RESET_INVALID = "Reset link is invalid or has expired";
 const JWT_EXPIRE_DAYS = 7;
 
 export async function forgot(env: Env, request: Request): Promise<Response> {
   enforce(limiter(env, "auth"), clientIp(request));
+  // Off until a verified sending domain exists; set VR_PASSWORD_RESET=1 to re-enable with Resend.
+  if (!passwordResetEnabled(env)) throw new HttpError(503, RESET_UPCOMING);
   if (!emailAvailable(env)) throw new HttpError(503, RESET_UNAVAILABLE);
   const body = await readJson(request);
   if (!isEmail(body?.email)) throw validation("value is not a valid email address", ["body", "email"]);
@@ -28,7 +31,7 @@ export async function forgot(env: Env, request: Request): Promise<Response> {
     const appUrl = (env.PUBLIC_APP_URL || "").replace(/\/+$/, "");
     const link = `${appUrl}/reset?token=${token}`;
     const text = ["Someone asked to reset the password for this VerifyRuns account.", "", `Set a new password here (the link works once, for one hour):`, link, "", "If that wasn't you, ignore this email — nothing changes."].join("\n");
-    const r = await deliver(env, "email", email, text, "Reset your VerifyRuns password");
+    const r = await sendResendEmail(env, email, text, "Reset your VerifyRuns password");
     if (!r.ok) {
       console.error("reset email failed", r.error);
       throw new HttpError(502, "The reset email could not be sent. Try again in a minute.");

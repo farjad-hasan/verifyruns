@@ -11,10 +11,10 @@ export default function ForgotPage() {
   const [busy, setBusy] = useState(false);
   const [sent, setSent] = useState(false);
   const [error, setError] = useState("");
-  const [available, setAvailable] = useState(true);
+  const [available, setAvailable] = useState(false);
 
   useEffect(() => {
-    api.get("/meta").then(({ data }) => setAvailable(!!data.email_alerts)).catch(() => {});
+    api.get("/meta").then(({ data }) => setAvailable(!!data.password_reset)).catch(() => {});
   }, []);
 
   const submit = async (e) => {
@@ -40,7 +40,7 @@ export default function ForgotPage() {
           <h1 className="font-display text-3xl sm:text-4xl font-semibold tracking-tight mb-2">Reset your password</h1>
           {!available ? (
             <p className="text-zinc-400 mb-10" data-testid="forgot-unavailable">
-              This host has no email sending configured, so it cannot send reset links. Ask whoever runs it to set <code className="font-mono">RESEND_API_KEY</code> and <code className="font-mono">ALERT_FROM</code>.
+              Password reset by email is upcoming — we cannot send reset links yet. If you are locked out, contact whoever runs this VerifyRuns instance.
             </p>
           ) : sent ? (
             <p className="text-zinc-400 mb-10" data-testid="forgot-sent">

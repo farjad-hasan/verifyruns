@@ -1,7 +1,7 @@
 /** Alert channels and transition-based delivery. Ported from backend/server.py. */
 import { CheckDoc, getCheck, Channel } from "./checks";
 import { decryptSecret, uuid } from "./crypto";
-import { emailAvailable, Env, num, nowIso } from "./env";
+import { emailAlertsEnabled, emailAvailable, Env, num, nowIso } from "./env";
 import { httpFetch, readCapped } from "./net";
 
 const DISCORD_MAX_CHARS = 2000;
@@ -28,6 +28,30 @@ export async function channels(env: Env, c: CheckDoc): Promise<LiveChannel[]> {
 
 export type DeliveryResult = { ok: true } | { ok: false; error: string };
 
+/** Transactional Resend send (password reset). Not gated by VR_EMAIL_ALERTS. */
+export async function sendResendEmail(env: Env, to: string, text: string, subject: string): Promise<DeliveryResult> {
+  if (!emailAvailable(env)) return { ok: false, error: "email alerts need RESEND_API_KEY and ALERT_FROM on the server" };
+  try {
+    const resp = await httpFetch("https://api.resend.com/emails", {
+      method: "POST",
+      headers: { "content-type": "application/json", authorization: `Bearer ${env.RESEND_API_KEY}` },
+      body: JSON.stringify({ from: env.ALERT_FROM, to: [to], subject, text }),
+      redirect: "manual",
+      signal: AbortSignal.timeout(8000),
+    });
+    if (resp.status >= 300) {
+      const raw = await readCapped(resp, num(env.VR_MAX_RESPONSE_BYTES, 5 * 1024 * 1024)).catch(() => null);
+      const body = raw ? new TextDecoder().decode(raw).slice(0, 300) : "";
+      console.warn(`resend non-2xx: ${resp.status} ${body}`);
+      return { ok: false, error: `${resp.status} ${body}`.trim() };
+    }
+    return { ok: true };
+  } catch (e: any) {
+    console.error("resend delivery failed", e);
+    return { ok: false, error: String(e?.message || e).slice(0, 300) };
+  }
+}
+
 export async function deliver(env: Env, kind: string, target: string, text: string, subject = ""): Promise<DeliveryResult> {
   try {
     let resp: Response;
@@ -41,8 +65,10 @@ export async function deliver(env: Env, kind: string, target: string, text: stri
     if (kind === "slack") resp = await httpFetch(target, init({ text }));
     else if (kind === "discord") resp = await httpFetch(target, init({ content: text.slice(0, DISCORD_MAX_CHARS), allowed_mentions: { parse: [] } }));
     else if (kind === "email") {
-      if (!emailAvailable(env)) return { ok: false, error: "email alerts need RESEND_API_KEY and ALERT_FROM on the server" };
-      resp = await httpFetch("https://api.resend.com/emails", init({ from: env.ALERT_FROM, to: [target], subject, text }, { authorization: `Bearer ${env.RESEND_API_KEY}` }));
+      // Creation is gated in routes; delivery must use the same product flag so
+      // pre-existing email channels do not keep sending while alerts are upcoming.
+      if (!emailAlertsEnabled(env)) return { ok: false, error: "Email alerts are upcoming. Use Slack or Discord for now." };
+      return sendResendEmail(env, target, text, subject);
     } else return { ok: false, error: `unknown channel kind ${kind}` };
     // With redirect: "manual" a 3xx surfaces here as its own status; a redirecting webhook is a failure.
     if (resp.status >= 300) {
@@ -122,7 +148,9 @@ export async function drainAlerts(env: Env, now = new Date(), checkId?: string):
       const payload = JSON.parse(row.payload) as { name: string; message: string; timestamp: string; channels: Channel[] };
       const current = [...c.alert_channels];
       if (c.alert_slack_webhook_encrypted) current.push({ id: "legacy-slack", kind: "slack", target_encrypted: c.alert_slack_webhook_encrypted, created_at: c.created_at });
-      const active = payload.channels.filter(ch => current.some(live => live.id === ch.id && live.target_encrypted === ch.target_encrypted));
+      const active = payload.channels.filter(ch =>
+        current.some(live => live.id === ch.id && live.target_encrypted === ch.target_encrypted)
+        && (ch.kind !== "email" || emailAlertsEnabled(env)));
       const sent: Sent[] = JSON.parse(row.results);
       const state: AlertState = row.verdict === "FAIL" ? "FAIL" : "Recovered";
       const link = env.PUBLIC_APP_URL ? `${env.PUBLIC_APP_URL.replace(/\/+$/, "")}/checks/${c.id}` : "";

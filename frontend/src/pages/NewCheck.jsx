@@ -38,9 +38,9 @@ export default function NewCheck() {
   const [heartbeatWindow, setHeartbeatWindow] = useState(null);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
-  const [emailAvailable, setEmailAvailable] = useState(false);
+  const [emailAlerts, setEmailAlerts] = useState(false);
   useEffect(() => {
-    api.get("/meta").then(({ data }) => setEmailAvailable(!!data.email_alerts)).catch(() => {});
+    api.get("/meta").then(({ data }) => setEmailAlerts(!!data.email_alerts)).catch(() => {});
   }, []);
 
   const submit = async (e) => {
@@ -216,7 +216,7 @@ export default function NewCheck() {
               <select className="rp-input font-mono" aria-label="Alert channel kind" value={alertKind} onChange={(e) => setAlertKind(e.target.value)} data-testid="check-alert-kind">
                 <option value="slack">Slack</option>
                 <option value="discord">Discord</option>
-                <option value="email" disabled={!emailAvailable}>Email{!emailAvailable ? " (unavailable on this host)" : ""}</option>
+                <option value="email" disabled={!emailAlerts}>{emailAlerts ? "Email" : "Email · upcoming"}</option>
               </select>
               <input
                 id="check-alert-target"
@@ -228,6 +228,7 @@ export default function NewCheck() {
                 data-testid="check-slack-input"
               />
             </div>
+            {!emailAlerts && <p className="text-xs text-quiet mt-2" data-testid="email-alerts-upcoming-hint">Email alerts are next. Use Slack or Discord for now.</p>}
             <p className="text-xs text-quiet mt-2" data-testid="new-check-alert-guidance">{slackWebhook.trim() ? "After creating the Check, send a test and confirm it arrives." : "Without a channel, failures appear only in VerifyRuns. You can add a channel later."}</p>
             <p className="text-xs text-quiet leading-relaxed mt-2">
               Stored encrypted; only the last 4 characters are shown afterwards.

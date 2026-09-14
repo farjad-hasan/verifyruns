@@ -8,7 +8,7 @@ import { tick } from "../src/tick";
 
 afterEach(() => setFetchForTests(null));
 
-const mailEnv = () => ({ ...env, RESEND_API_KEY: "re_test", ALERT_FROM: "VerifyRuns <x@example.com>", PUBLIC_APP_URL: "https://app.test/" }) as any;
+const mailEnv = () => ({ ...env, RESEND_API_KEY: "re_test", ALERT_FROM: "VerifyRuns <x@example.com>", PUBLIC_APP_URL: "https://app.test/", VR_PASSWORD_RESET: "1" }) as any;
 const post = (body: unknown) => new Request("http://api.test/api/auth/forgot", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(body) });
 
 /** Run /forgot for `email` on a mail-enabled host; returns the token from the sent link and the captured Resend payloads. */
@@ -24,6 +24,25 @@ async function requestReset(email: string) {
 }
 
 describe("POST /auth/forgot", () => {
+  it("stays unavailable by default even when Resend secrets exist", async () => {
+    setFetchForTests(async () => new Response("{}", { status: 200 }));
+    const prevKey = (env as any).RESEND_API_KEY;
+    const prevFrom = (env as any).ALERT_FROM;
+    const prevReset = (env as any).VR_PASSWORD_RESET;
+    try {
+      (env as any).RESEND_API_KEY = "re_test";
+      (env as any).ALERT_FROM = "VerifyRuns <x@example.com>";
+      delete (env as any).VR_PASSWORD_RESET;
+      const r = await api("/auth/forgot", { method: "POST", json: { email: "a@example.com" } });
+      expect(r.status).toBe(503);
+      expect(r.data.detail).toMatch(/upcoming/i);
+    } finally {
+      if (prevKey === undefined) delete (env as any).RESEND_API_KEY; else (env as any).RESEND_API_KEY = prevKey;
+      if (prevFrom === undefined) delete (env as any).ALERT_FROM; else (env as any).ALERT_FROM = prevFrom;
+      if (prevReset === undefined) delete (env as any).VR_PASSWORD_RESET; else (env as any).VR_PASSWORD_RESET = prevReset;
+    }
+  });
+
   it("emails the account holder one link and stores only the token's hash", async () => {
     const u = await user("fp");
     const r = await requestReset(u.email);
@@ -45,9 +64,21 @@ describe("POST /auth/forgot", () => {
   });
 
   it("says so when the host has no email configured", async () => {
-    const r = await api("/auth/forgot", { method: "POST", json: { email: "a@example.com" } });
-    expect(r.status).toBe(503);
-    expect(r.data.detail).toBe("Password reset is not available on this host (email is not configured)");
+    const prevReset = (env as any).VR_PASSWORD_RESET;
+    const prevKey = (env as any).RESEND_API_KEY;
+    const prevFrom = (env as any).ALERT_FROM;
+    try {
+      (env as any).VR_PASSWORD_RESET = "1";
+      delete (env as any).RESEND_API_KEY;
+      delete (env as any).ALERT_FROM;
+      const r = await api("/auth/forgot", { method: "POST", json: { email: "a@example.com" } });
+      expect(r.status).toBe(503);
+      expect(r.data.detail).toBe("Password reset is not available on this host (email is not configured)");
+    } finally {
+      if (prevReset === undefined) delete (env as any).VR_PASSWORD_RESET; else (env as any).VR_PASSWORD_RESET = prevReset;
+      if (prevKey === undefined) delete (env as any).RESEND_API_KEY; else (env as any).RESEND_API_KEY = prevKey;
+      if (prevFrom === undefined) delete (env as any).ALERT_FROM; else (env as any).ALERT_FROM = prevFrom;
+    }
   });
 });
 

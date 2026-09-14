@@ -18,7 +18,7 @@ describe("client IP trust", () => {
 });
 
 describe("sessions die on password reset", () => {
-  const mailEnv = () => ({ ...env, RESEND_API_KEY: "re_test", ALERT_FROM: "VerifyRuns <x@example.com>", PUBLIC_APP_URL: "https://app.test/" }) as any;
+  const mailEnv = () => ({ ...env, RESEND_API_KEY: "re_test", ALERT_FROM: "VerifyRuns <x@example.com>", PUBLIC_APP_URL: "https://app.test/", VR_PASSWORD_RESET: "1" }) as any;
   async function resetVia(email: string) {
     const { setFetchForTests } = await import("../src/net");
     const { forgot } = await import("../src/reset");

@@ -44,7 +44,7 @@ export default function SetupPage() {
       </section>
       <section className="mt-10 space-y-4">
         <h2 className="font-display text-2xl">4. Test alerts, failure and recovery</h2>
-        <p className="text-zinc-400 leading-relaxed">Add Slack, Discord or email, then click <strong>Send test</strong>. Provider acceptance is not proof of inbox delivery: confirm receipt. With no channel, failures appear only in VerifyRuns.</p>
+        <p className="text-zinc-400 leading-relaxed">Add Slack or Discord, then click <strong>Send test</strong>. Provider acceptance is not proof of inbox delivery: confirm receipt. Email alerts are upcoming. With no channel, failures appear only in VerifyRuns.</p>
         <p className="text-zinc-400 leading-relaxed">Use a disposable workflow for the rehearsal. Establish a baseline; insert records and send the matching claim for PASS. Then skip an insert and send a positive claim for FAIL. Restore the insert and repeat for recovery. Confirm both alerts. Turn retry off for an immediate rehearsal; otherwise a retry is due after 30 seconds and runs on the next scheduler tick.</p>
         <p className="text-zinc-400 leading-relaxed">For scheduled workflows, set a heartbeat longer than the normal gap. Optional active hours and weekdays count only time inside that window. Manual reads and retries also refresh the heartbeat, so stop manual checks when testing a missing workflow run.</p>
       </section>
